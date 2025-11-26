@@ -3327,17 +3327,28 @@ async function callTavernAPI(prompt) {
         // 如果配置里写了 gemini，或者当前酒馆选的模型名字里带 gemini
         const currentModel = API_CONFIG.model || 'unknown';
         const isGemini = currentModel.toLowerCase().includes('gemini');
-        
+
         let finalPrompt = prompt;
 
+        // ❌ [已禁用] Gemini 格式转换导致手机端返回空内容
+        // 现代 SillyTavern 已支持 Gemini 的 messages 数组格式，不需要转换
+        // if (isGemini) {
+        //     console.log('✨ 检测到 Gemini 模型，正在将数组转换为纯文本以兼容酒馆后端...');
+        //     finalPrompt = convertPromptToString(prompt);
+        // } else {
+        //     // 对于 OpenAI 等其他模型，确保是数组
+        //     if (!Array.isArray(prompt)) {
+        //         finalPrompt = [{ role: 'user', content: prompt }];
+        //     }
+        // }
+
+        // ✅ 统一处理：确保 prompt 是数组格式
+        if (!Array.isArray(prompt)) {
+            finalPrompt = [{ role: 'user', content: String(prompt) }];
+        }
+
         if (isGemini) {
-            console.log('✨ 检测到 Gemini 模型，正在将数组转换为纯文本以兼容酒馆后端...');
-            finalPrompt = convertPromptToString(prompt);
-        } else {
-            // 对于 OpenAI 等其他模型，确保是数组
-            if (!Array.isArray(prompt)) {
-                finalPrompt = [{ role: 'user', content: prompt }];
-            }
+            console.log('🛡️ 检测到 Gemini 模型，使用标准 messages 数组格式');
         }
 
         // 3. 调用酒馆接口
