@@ -1519,8 +1519,9 @@ function inj(ev) {
     let strTable = '';
     let strPrompt = '';
     
-    // A. 准备总结数据 (如果有)
-    if (m.sm.has()) {
+    // A. 准备总结数据 (如果有且未开启世界书同步)
+    // 互斥逻辑：开启世界书同步后，由酒馆的世界书系统负责发送总结，插件不再重复注入
+    if (m.sm.has() && !C.syncWorldInfo) {
         strSummary = '=== 📚 记忆总结（历史存档） ===\n\n' + m.sm.load() + '\n\n';
     }
 
@@ -4427,8 +4428,11 @@ function shcf() {
         });
 
         $('#save-cfg').on('click', async function() {
+            // ✨ 保存旧配置状态，用于检测世界书同步的变化
+            const oldSyncWorldInfo = C.syncWorldInfo;
+
             C.enabled = $('#c-enabled').is(':checked');
-            
+
             C.autoBackfill = $('#c-auto-bf').is(':checked');
             C.autoBackfillFloor = parseInt($('#c-auto-bf-floor').val()) || 10;
             C.autoBackfillPrompt = $('#c-auto-bf-prompt').is(':checked');
@@ -4459,6 +4463,12 @@ function shcf() {
             C.hideTag = $('#c-hide').is(':checked');
             C.filterHistory = $('#c-filter').is(':checked');
             C.syncWorldInfo = $('#c-sync-wi').is(':checked');
+
+            // ✨ 检测世界书同步从开启到关闭的状态变化，提示用户手动禁用世界书条目
+            if (oldSyncWorldInfo === true && C.syncWorldInfo === false) {
+                await customAlert('⚠️ 检测到您关闭了世界书同步\n\n请务必手动前往酒馆顶部的【世界书/知识书】面板，禁用或删除 [Memory_Context_Auto] 条目，否则旧的总结内容仍会持续发送给 AI。\n\n💡 互斥机制：\n• 开启同步：由世界书发送总结（插件不重复注入）\n• 关闭同步：由插件注入总结（需手动清理世界书）', '重要提示');
+            }
+
             try { localStorage.setItem(CK, JSON.stringify(C)); } catch (e) {}
 
             applyUiFold();
