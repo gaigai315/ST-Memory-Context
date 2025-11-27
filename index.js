@@ -232,22 +232,6 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
 请按照输出格式输出总结内容，严禁包含任何角色扮演的剧情描写、开场白、结束语或非剧情相关的交互性对话（如"收到"、"好的"）：`;
 
-    // ----- 4. 填表尾部阻断指令（防止AI角色扮演） -----
-    const DEFAULT_BACKFILL_FOOTER = `
-
-[系统指令] 近期剧情记录已结束。
-
-🛑 请立即停止角色扮演，不要回复最后一条消息。
-👉 现在，请作为数据库管理员，从头到尾、无一遗漏地按照填表规则分析上述所有剧情，并更新表格。`;
-
-    // ----- 5. 总结尾部阻断指令（防止AI角色扮演） -----
-    const DEFAULT_SUMMARY_FOOTER = `
-
-[系统指令] 对话记录已结束。
-
-🛑 请立即停止角色扮演，不要回复最后一条消息。
-👉 现在，请作为客观的记录者，从头到尾分析上述内容，生成结构化的剧情总结。`;
-
     // ========================================================================
     // 运行时提示词配置对象（引用上面的默认提示词）
     // ========================================================================
@@ -257,9 +241,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         tablePromptPosType: 'system_end',
         tablePromptDepth: 0,
         summaryPromptTable: DEFAULT_SUM_TABLE,
-        summaryPromptChat: DEFAULT_SUM_CHAT,
-        backfillFooter: DEFAULT_BACKFILL_FOOTER,
-        summaryFooter: DEFAULT_SUMMARY_FOOTER
+        summaryPromptChat: DEFAULT_SUM_CHAT
     };
 
     // ========================================================================
@@ -3028,35 +3010,58 @@ ${currentTableData ? currentTableData : "（表格为空）"}
              return;
         }
 
-        messages.push({ role: 'system', content: `[系统指令] 请对以上 ${startIndex} 到 ${endIndex} 层的对话进行剧情总结。` });
+        // ✨ Instruction-Last：将总结指令放在最后
+        const summaryInstruction = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🛑 [对话历史结束] 以上是 ${startIndex} 到 ${endIndex} 层的完整对话
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👉 现在，请停止角色扮演，切换为客观记录者身份。
+
+📝 你的任务是：根据上述对话历史，生成结构化的剧情总结。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【📋 总结规则】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${targetPrompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ 立即开始执行：请按照规则生成剧情总结。
+`;
+        messages.push({ role: 'user', content: summaryInstruction });
         logMsg = `📝 聊天总结: ${startIndex}-${endIndex} (消息数:${messages.length})`;
 
-    } 
+    }
     // === 场景 B: 总结表格数据 ===
     else {
-        // 把破限词加在最前面
-        messages.push({ role: 'system', content: NSFW_UNLOCK + targetPrompt });
         const tableText = m.getTableText();
+
+        // ✨ Instruction-Last：先放表格数据，再放总结指令
+        messages.push({ role: 'system', content: NSFW_UNLOCK + `你是一名专业的记录员和总结专家。你的任务是阅读表格数据，然后生成结构化的剧情总结。` });
         messages.push({ role: 'user', content: `【待总结的表格数据】\n\n${tableText}` });
+
+        const summaryInstruction = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🛑 [表格数据结束] 以上是完整的记忆表格
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👉 现在，请根据上述表格数据，生成结构化的剧情总结。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【📋 总结规则】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${targetPrompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ 立即开始执行：请按照规则生成剧情总结。
+`;
+        messages.push({ role: 'user', content: summaryInstruction });
         logMsg = '📝 表格总结';
     }
 
-    // ✨ [关键修复] 追加尾部阻断指令 (Merge 模式 - 兼容 Gemini 中转 API)
-    // 防止 AI 误读最后一条消息而继续角色扮演
-    // 许多 Gemini 中转服务严格要求对话必须以 User 角色结尾，因此将指令合并到最后一条 User 消息中
-    const footerText = PROMPTS.summaryFooter || DEFAULT_SUMMARY_FOOTER;
-    const lastMsg = messages[messages.length - 1];
-
-    if (lastMsg && lastMsg.role === 'user') {
-        // 方案 A：合并到最后一条 User 消息 (最稳妥)
-        lastMsg.content += footerText;
-        console.log('✅ [尾部注入] 已合并阻断指令到末尾 User 消息（Merge 模式，总结）');
-    } else {
-        // 方案 B：最后不是 User，新建一条 User 消息
-        messages.push({ role: 'user', content: footerText });
-        console.log('✅ [尾部注入] 已追加 User 阻断消息（总结）');
-    }
-
+    console.log('✅ [Instruction-Last] 总结任务已采用后置指令模式');
     console.log(logMsg);
     
     window.Gaigai.lastRequestData = {
@@ -4166,26 +4171,6 @@ function shpmt() {
             <div style="font-size:10px; opacity:0.5; margin-top:4px; text-align:right;" id="pmt-desc">当前编辑：记忆表格数据的总结指令</div>
         </div>
 
-        <!-- 填表尾部阻断指令 -->
-        <div style="margin-top: 20px;">
-            <div style="margin-bottom: 8px; font-weight: 600; display:flex; justify-content:space-between; align-items:center;">
-                <span>🛑 填表尾部阻断指令</span>
-                <span style="font-size:10px; opacity:0.5; font-weight:normal;">防止AI角色扮演（合并到最后一条User消息）</span>
-            </div>
-            <textarea id="pmt-backfill-footer" style="width:100%; height:80px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${esc(PROMPTS.backfillFooter)}</textarea>
-            <div style="font-size:10px; opacity:0.5; margin-top:4px;">此指令会在填表时自动追加到对话末尾，引导AI专注于数据填写而非角色扮演。</div>
-        </div>
-
-        <!-- 总结尾部阻断指令 -->
-        <div style="margin-top: 16px;">
-            <div style="margin-bottom: 8px; font-weight: 600; display:flex; justify-content:space-between; align-items:center;">
-                <span>🛑 总结尾部阻断指令</span>
-                <span style="font-size:10px; opacity:0.5; font-weight:normal;">防止AI角色扮演（合并到最后一条User消息）</span>
-            </div>
-            <textarea id="pmt-summary-footer" style="width:100%; height:80px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${esc(PROMPTS.summaryFooter)}</textarea>
-            <div style="font-size:10px; opacity:0.5; margin-top:4px;">此指令会在总结时自动追加到对话末尾，引导AI生成客观的剧情总结。</div>
-        </div>
-
         <div style="display: flex; gap: 10px; margin-top: 5px;">
             <button id="reset-pmt" style="flex:1; background:rgba(108, 117, 125, 0.8); font-size:12px; padding:10px; border-radius:6px;">🔄 恢复默认</button>
             <button id="save-pmt" style="flex:2; padding:10px; font-weight:bold; font-size:13px; border-radius:6px;">💾 保存设置</button>
@@ -4256,10 +4241,6 @@ function shpmt() {
             PROMPTS.summaryPromptTable = tempTablePmt;
             PROMPTS.summaryPromptChat = tempChatPmt;
 
-            // ✨ 保存两个尾部阻断指令
-            PROMPTS.backfillFooter = $('#pmt-backfill-footer').val();
-            PROMPTS.summaryFooter = $('#pmt-summary-footer').val();
-
             // 移除旧的单字段，防止混淆
             delete PROMPTS.summaryPrompt;
 
@@ -4304,22 +4285,6 @@ function shpmt() {
                         </div>
                     </label>
 
-                    <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
-                        <input type="checkbox" id="rst-backfill-footer" checked style="transform:scale(1.2);">
-                        <div style="color:${UI.tc || '#333'}">
-                            <div style="font-weight:bold;">🛑 填表尾部阻断指令</div>
-                            <div style="font-size:10px; opacity:0.8;">(防止AI角色扮演)</div>
-                        </div>
-                    </label>
-
-                    <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
-                        <input type="checkbox" id="rst-summary-footer" checked style="transform:scale(1.2);">
-                        <div style="color:${UI.tc || '#333'}">
-                            <div style="font-weight:bold;">🛑 总结尾部阻断指令</div>
-                            <div style="font-size:10px; opacity:0.8;">(防止AI角色扮演)</div>
-                        </div>
-                    </label>
-
                     <div style="margin-top:15px; font-size:11px; color:#dc3545; text-align:center;">
                         ⚠️ 注意：点击确定后，现有内容将被覆盖！
                     </div>
@@ -4345,8 +4310,6 @@ function shpmt() {
                 const restoreTable = $('#rst-table').is(':checked');
                 const restoreSumTable = $('#rst-sum-table').is(':checked');
                 const restoreSumChat = $('#rst-sum-chat').is(':checked');
-                const restoreBackfillFooter = $('#rst-backfill-footer').is(':checked');
-                const restoreSummaryFooter = $('#rst-summary-footer').is(':checked');
 
                 let msg = [];
 
@@ -4371,16 +4334,6 @@ function shpmt() {
                         $('#pmt-summary').val(DEFAULT_SUM_CHAT);
                     }
                     msg.push('聊天总结');
-                }
-
-                if (restoreBackfillFooter) {
-                    $('#pmt-backfill-footer').val(DEFAULT_BACKFILL_FOOTER);
-                    msg.push('填表尾部阻断指令');
-                }
-
-                if (restoreSummaryFooter) {
-                    $('#pmt-summary-footer').val(DEFAULT_SUMMARY_FOOTER);
-                    msg.push('总结尾部阻断指令');
                 }
 
                 $o.remove();
@@ -5062,41 +5015,14 @@ async function autoRunBackfill(start, end, isManual = false) {
     let userName = (ctx.name1) ? ctx.name1 : 'User';
     let charName = (ctx.name2) ? ctx.name2 : 'Character';
 
-    // 2. 准备 System Prompt (明确包含表格和总结)
-    const existingSummary = m.sm.has() ? m.sm.load() : "（暂无历史总结）";
-    const currentTableData = m.getTableText(); 
-    
-    let rulesContent = PROMPTS.tablePrompt || DEFAULT_TABLE_PROMPT;
-    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
-
-    let contextInfo = '';
-    if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
-        const char = ctx.characters[ctx.characterId];
-        if (char.description) contextInfo += `[人物简介]\n${char.description}\n`;
-    }
-
-    const combinedSystemMsg = `
-${rulesContent}
-
-【📚 前情提要 (参考)】
-${existingSummary}
-
-【📊 当前表格状态 (参考)】
-${currentTableData ? currentTableData : "（表格为空，请从第0行开始记录）"}
-
-【👥 角色信息】
-${contextInfo}
-
-==================================================
-【任务指令】
-请阅读下方的对话历史，严格遵循上方指南将剧情写入 <Memory> 标签。
-`;
-
-    // 3. 构建消息数组
+    // 2. ✨ Instruction-Last 模式：只在 System 中放身份设定，不放规则
     const messages = [];
-    messages.push({ role: 'system', content: combinedSystemMsg });
+    messages.push({
+        role: 'system',
+        content: NSFW_UNLOCK + `你是一名专业的数据库管理员和记录员。你的任务是阅读对话历史，然后根据稍后提供的规则更新数据表格。`
+    });
 
-    // 🛑 核心修正：直接切片 ctx.chat
+    // 3. 🗣️ 构建聊天历史
     const chatSlice = ctx.chat.slice(start, end);
     console.log(`📊 [追溯] 计划提取 ${start} 到 ${end} 层，实际切片得到 ${chatSlice.length} 条`);
 
@@ -5104,28 +5030,28 @@ ${contextInfo}
 
     chatSlice.forEach(msg => {
         if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
-        
+
         let content = msg.mes || msg.content || '';
-        content = cleanMemoryTags(content); 
-        
+        content = cleanMemoryTags(content);
+
         if (C.filterTags) {
             try {
                 const tags = C.filterTags.split(/[,，]/).map(t => t.trim()).filter(t => t);
                 if (tags.length > 0) {
                     const re = new RegExp(`<(${tags.join('|')})(?:\\s+[^>]*)?>[\\s\\S]*?<\\/\\1>`, 'gi');
-                    content = content.replace(re, ''); 
+                    content = content.replace(re, '');
                 }
             } catch (e) {}
         }
 
         if (content && content.trim()) {
             const isUser = msg.is_user || msg.role === 'user';
-            const role = isUser ? 'user' : 'assistant'; 
+            const role = isUser ? 'user' : 'assistant';
             const name = isUser ? userName : (msg.name || charName);
-            
-            messages.push({ 
-                role: role, 
-                content: `${name}: ${content}` 
+
+            messages.push({
+                role: role,
+                content: `${name}: ${content}`
             });
             validCount++;
         }
@@ -5136,24 +5062,50 @@ ${contextInfo}
         return;
     }
 
-    // ✨ [关键修复] 追加尾部阻断指令 (Merge 模式 - 兼容 Gemini 中转 API)
-    // 防止 AI 误读最后一条消息而继续角色扮演
-    // 许多 Gemini 中转服务严格要求对话必须以 User 角色结尾，因此将指令合并到最后一条 User 消息中
-    const footerText = PROMPTS.backfillFooter || DEFAULT_BACKFILL_FOOTER;
-    const lastMsg = messages[messages.length - 1];
+    // 4. 📋 Instruction-Last：将所有规则和任务放在最后一条 User 消息中
+    const existingSummary = m.sm.has() ? m.sm.load() : "（暂无历史总结）";
+    const currentTableData = m.getTableText();
 
-    if (lastMsg && lastMsg.role === 'user') {
-        // 方案 A：合并到最后一条 User 消息 (最稳妥)
-        lastMsg.content += footerText;
-        console.log('✅ [尾部注入] 已合并阻断指令到末尾 User 消息（Merge 模式）');
-    } else {
-        // 方案 B：最后不是 User，新建一条 User 消息
-        messages.push({ role: 'user', content: footerText });
-        console.log('✅ [尾部注入] 已追加 User 阻断消息');
+    let rulesContent = PROMPTS.tablePrompt || DEFAULT_TABLE_PROMPT;
+    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
+
+    let contextInfo = '';
+    if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
+        const char = ctx.characters[ctx.characterId];
+        if (char.description) contextInfo += `[人物简介]\n${char.description}\n`;
     }
 
-    // ❌ [已禁用] Pre-fill 导致 Gemini 误判返回空内容
-    // messages.push({ role: 'user', content: `<Memory><!-- --></Memory>` });
+    const finalInstruction = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🛑 [对话历史结束] 以上是完整的剧情记录
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👉 现在，请停止角色扮演，切换为数据库管理员身份。
+
+📊 你的任务是：根据上述对话历史，严格按照以下规则更新记忆表格。
+
+【📚 前情提要 (参考)】
+${existingSummary}
+
+【📊 当前表格状态 (参考)】
+${currentTableData ? currentTableData : "（表格为空，请从第0行开始记录）"}
+
+【👥 角色信息】
+${contextInfo}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【📋 填表规则】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${rulesContent}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ 立即开始执行：
+请从头到尾分析上述所有剧情，按照规则更新表格，将结果输出在 <Memory> 标签中。
+`;
+
+    messages.push({ role: 'user', content: finalInstruction });
+    console.log('✅ [Instruction-Last] 已将所有规则和任务放在最后一条 User 消息中');
 
     console.log(`⚡ [追溯] 构建完成，准备发送 ${messages.length} 条消息`);
 
@@ -5854,37 +5806,13 @@ function showBackfillEditPopup(content, newIndex = null, regenParams = null) {
                     let userName = (ctx.name1) ? ctx.name1 : 'User';
                     let charName = (ctx.name2) ? ctx.name2 : 'Character';
 
-                    const existingSummary = m.sm.has() ? m.sm.load() : "（暂无历史总结）";
-                    const currentTableData = m.getTableText();
+                    // ✨ Instruction-Last 模式：System 只放身份
+                    const messages = [{
+                        role: 'system',
+                        content: NSFW_UNLOCK + `你是一名专业的数据库管理员和记录员。你的任务是阅读对话历史，然后根据稍后提供的规则更新数据表格。`
+                    }];
 
-                    let rulesContent = PROMPTS.tablePrompt || DEFAULT_TABLE_PROMPT;
-                    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
-
-                    let contextInfo = '';
-                    if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
-                        const char = ctx.characters[ctx.characterId];
-                        if (char.description) contextInfo += `[人物简介]\n${char.description}\n`;
-                    }
-
-                    const combinedSystemMsg = `
-${rulesContent}
-
-【📚 前情提要 (参考)】
-${existingSummary}
-
-【📊 当前表格状态 (参考)】
-${currentTableData ? currentTableData : "（表格为空，请从第0行开始记录）"}
-
-【👥 角色信息】
-${contextInfo}
-
-==================================================
-【任务指令】
-请阅读下方的对话历史，严格遵循上方指南将剧情写入 <Memory> 标签。
-`;
-
-                    const messages = [{ role: 'system', content: combinedSystemMsg }];
-
+                    // 构建聊天历史
                     const chatSlice = ctx.chat.slice(regenParams.start, regenParams.end);
                     chatSlice.forEach(msg => {
                         if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
@@ -5909,17 +5837,50 @@ ${contextInfo}
                         }
                     });
 
-                    // ✨ [关键修复] 追加尾部阻断指令 (Merge 模式 - 兼容 Gemini 中转 API)
-                    const footerText = PROMPTS.backfillFooter || DEFAULT_BACKFILL_FOOTER;
-                    const lastMsg = messages[messages.length - 1];
+                    // 📋 Instruction-Last：将所有规则放在最后
+                    const existingSummary = m.sm.has() ? m.sm.load() : "（暂无历史总结）";
+                    const currentTableData = m.getTableText();
 
-                    if (lastMsg && lastMsg.role === 'user') {
-                        lastMsg.content += footerText;
-                        console.log('✅ [重新生成-尾部注入] 已合并阻断指令到末尾 User 消息');
-                    } else {
-                        messages.push({ role: 'user', content: footerText });
-                        console.log('✅ [重新生成-尾部注入] 已追加 User 阻断消息');
+                    let rulesContent = PROMPTS.tablePrompt || DEFAULT_TABLE_PROMPT;
+                    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
+
+                    let contextInfo = '';
+                    if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
+                        const char = ctx.characters[ctx.characterId];
+                        if (char.description) contextInfo += `[人物简介]\n${char.description}\n`;
                     }
+
+                    const finalInstruction = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🛑 [对话历史结束] 以上是完整的剧情记录
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👉 现在，请停止角色扮演，切换为数据库管理员身份。
+
+📊 你的任务是：根据上述对话历史，严格按照以下规则更新记忆表格。
+
+【📚 前情提要 (参考)】
+${existingSummary}
+
+【📊 当前表格状态 (参考)】
+${currentTableData ? currentTableData : "（表格为空，请从第0行开始记录）"}
+
+【👥 角色信息】
+${contextInfo}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【📋 填表规则】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${rulesContent}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ 立即开始执行：
+请从头到尾分析上述所有剧情，按照规则更新表格，将结果输出在 <Memory> 标签中。
+`;
+
+                    messages.push({ role: 'user', content: finalInstruction });
+                    console.log('✅ [Instruction-Last] 重新生成已采用后置指令模式');
 
                     // 重新调用 API
                     isSummarizing = true;
