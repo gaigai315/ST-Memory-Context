@@ -4776,20 +4776,41 @@ function esc(t) { const mp = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&qu
     /**
      * 消息监听核心函数（支持回滚处理和UI自动刷新）
      * 监听每条新消息，解析Memory标签，触发批量填表和自动总结
+     * ✨ 已优化：加入防抖和延迟机制，确保 AI 消息完全生成后再处理
      * @param {number} id - 消息ID（可选，默认为最新消息）
      */
 function omsg(id) {
     try {
         const x = m.ctx();
         if (!x || !x.chat) return;
-        
+
         // 确定当前触发的消息ID
         const i = typeof id === 'number' ? id : x.chat.length - 1;
         const mg = x.chat[i];
-        
-        if (!mg || mg.is_user) return; 
-        
+
+        if (!mg || mg.is_user) return;
+
         const msgKey = i.toString();
+
+        // ✨ [防抖机制] 检查该消息是否已处理过
+        if (processedMessages.has(msgKey)) {
+            console.log(`⏭️ [跳过] 消息 ${msgKey} 已处理过，避免重复执行`);
+            return;
+        }
+
+        // ✨ [延迟机制] 延迟 2000ms 执行，确保 AI 消息完全生成并写入上下文
+        console.log(`⏳ [延迟] 消息 ${msgKey} 将在 2 秒后处理（等待流式传输完成）`);
+        setTimeout(() => {
+            try {
+                // 标记该消息已处理（防止重复触发）
+                processedMessages.add(msgKey);
+                console.log(`✅ [处理] 开始处理消息 ${msgKey}`);
+
+                // 重新获取最新上下文（2秒后消息内容可能已更新）
+                const x = m.ctx();
+                if (!x || !x.chat) return;
+                const mg = x.chat[i];
+                if (!mg || mg.is_user) return;
 
         // ============================================================
         // 模块 A: 实时记忆 (Real-time Mode)
@@ -4858,7 +4879,7 @@ function omsg(id) {
             const threshold = C.autoBackfillFloor || 10;
 
             if (diff >= threshold) {
-                console.log(`⚡ [自动填表] 触发！`);
+                console.log(`⚡ [自动检测] 当前:${currentCount} - 上次:${lastBfIndex} = 差值:${diff} (阈值:${threshold})`);
 
                 // ✨ 发起模式逻辑（与完成模式一致）：勾选=静默，未勾选=弹窗
                 if (!C.autoBackfillPrompt) {
@@ -4936,7 +4957,7 @@ function omsg(id) {
                 }
             }
         }
-        
+
         setTimeout(hideMemoryTags, 100);
         setTimeout(applyUiFold, 200);
 
@@ -4949,7 +4970,12 @@ function omsg(id) {
                 console.log(`🔄 [UI] 表格视图已自动刷新`);
             }
         }
-        
+
+            } catch (e) {
+                console.error('❌ [延迟处理] setTimeout 内部错误:', e);
+            }
+        }, 2000); // ✨ 延迟 2000ms（2秒）
+
     } catch (e) {
         console.error('❌ omsg 错误:', e);
     }
