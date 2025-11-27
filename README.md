@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![版本](https://img.shields.io/badge/版本-4.5.4-blue)
+![版本](https://img.shields.io/badge/版本-4.5.6-blue)
 ![兼容](https://img.shields.io/badge/SillyTavern-1.13.5+-green)
 
 **SillyTavern插件**
