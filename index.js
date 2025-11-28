@@ -245,7 +245,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 你现在处于历史回溯模式。你的目标是：**能合并的行绝对不新增！能追加的字绝对不分行！**
 
 【核心指令】
-你现在处于历史回溯模式。必须从第一行读到最后一行，将这段历史中发生的所有符合规则的事件整理入库，不要遗漏早期剧情，并自动合并同类项。
+你必须将以上最开头的第一句剧情读到最后一句剧情，将整段历史中发生的从头到尾所有符合表格记录规则的事件整理入库，严禁遗漏早期剧情，并自动合并同类项。
 
 【强制时间线处理】
 在填写表格时，你必须按照剧情发生的时间顺序及严格遵守各表格记录规则进行记录。
@@ -273,7 +273,6 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 1.必须输出 <Memory> 标签
 2.<Memory> 标签必须在最后一行，不能有任何内容在它后面
 3.严禁使用 Markdown 代码块、JSON 格式或其他标签。
-4.⚠️【增量更新原则】：只输出本次处理产生的【新变化】。严禁重复输出已存在的旧记录！
 
 【唯一正确格式】
 <Memory><!-- --></Memory>
@@ -322,7 +321,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
 【当前表格状态参考】
 请仔细阅读下方的"当前表格状态"，找到对应行的索引(Index)。
-不要盲目新增！优先 Update！
+不要盲目新增！有insertRow时，优先 Update！达到规则要求后才可insertRow！
 
 【输出示例】
 <Memory><!-- --></Memory>`;
@@ -4288,10 +4287,10 @@ function shpmt() {
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2);">
             <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight: 600;">📋 填表提示词</span>
+                <span style="font-weight: 600;">📋 实时填表提示词</span>
                 <span style="font-size:10px; opacity:0.6;">(更新前手动保存已修改过的提示词，避免丢失)</span>
             </div>
-            
+
             <textarea id="pmt-table" style="width:100%; height:150px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box; margin-bottom: 12px;">${esc(PROMPTS.tablePrompt)}</textarea>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -4456,8 +4455,8 @@ function shpmt() {
                     <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
                         <input type="checkbox" id="rst-table" checked style="transform:scale(1.2);">
                         <div style="color:${UI.tc || '#333'}">
-                            <div style="font-weight:bold;">📋 填表提示词</div>
-                            <div style="font-size:10px; opacity:0.8;">(Memory Guide)</div>
+                            <div style="font-weight:bold;">📋 实时填表提示词</div>
+                            <div style="font-size:10px; opacity:0.8;">(Memory Guide - Realtime)</div>
                         </div>
                     </label>
 
@@ -4524,7 +4523,7 @@ function shpmt() {
 
                 if (restoreTable) {
                     $('#pmt-table').val(DEFAULT_TABLE_PROMPT);
-                    msg.push('填表提示词');
+                    msg.push('实时填表提示词');
                 }
 
                 if (restoreSumTable) {
