@@ -239,6 +239,94 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
 请按照输出格式输出总结内容，严禁包含任何角色扮演的剧情描写、开场白、结束语或非剧情相关的交互性对话（如"收到"、"好的"）：`;
 
+    // ----- 4. 批量/追溯填表提示词 (用于历史回溯模式) -----
+    const DEFAULT_BACKFILL_PROMPT = `🔴🔴🔴 历史回溯填表指南 🔴🔴🔴
+
+你现在处于历史回溯模式。你的目标是：**能合并的行绝对不新增！能追加的字绝对不分行！**
+
+【核心指令】
+你现在处于历史回溯模式。必须从第一行读到最后一行，将这段历史中发生的所有符合规则的事件整理入库，不要遗漏早期剧情，并自动合并同类项。
+
+【强制时间线处理】
+在填写表格时，你必须按照剧情发生的时间顺序及严格遵守各表格记录规则进行记录。
+🛑 严禁只记录最近的剧情而遗漏早期剧情！
+请确保从对话开始到当前的所有符合各表格记录规则的剧情信息都被完整记录到表格中。
+
+【核心逻辑判定流程】(每次填表前必须在内心执行此流程)
+
+👉 **判定1：主线剧情 (表0)**
+   - 检查表格最后一行(索引0)的[日期]列。
+   - ❓ 新剧情的日期 == 最后一行的日期？
+     - ✅ **是** -> 必须使用 updateRow(0, 0, {3: "新事件"})。
+       ⚠️ **强制完整性检查**：若当前行(第0行)的[日期]或[开始时间]为空（例如之前被总结清空了），**必须**在本次 updateRow 中将它们一并补全！
+       ❌ 严禁只更新事件列而让日期列留空。
+       ❌ 严禁认为"事件概要里写了时间"就等于"时间列有了"，必须显式写入 {1: "HH:mm"}。
+     - ❌ **否** -> 只有日期变更了，才允许使用 insertRow(0, ...)。
+
+👉 **判定2：支线追踪 (表1)**
+   - 检查当前是否有正在进行的、同主题的支线。
+   - ❌ **错误做法**：因为换了个地点(如餐厅->画廊)，就新建一行"画廊剧情"。
+   - ✅ **正确做法**：找到【特权阶级的日常】或【某某人的委托】这一行，使用 updateRow 更新它的[事件追踪]列。
+   - 只有出现了完全无关的**新势力**或**新长期任务**，才允许 insertRow。
+
+【输出要求】
+1.必须输出 <Memory> 标签
+2.<Memory> 标签必须在最后一行，不能有任何内容在它后面
+3.严禁使用 Markdown 代码块、JSON 格式或其他标签。
+4.⚠️【增量更新原则】：只输出本次处理产生的【新变化】。严禁重复输出已存在的旧记录！
+
+【唯一正确格式】
+<Memory><!-- --></Memory>
+
+⚠️ 必须使用 <Memory> 标签！
+⚠️ 必须用<!-- -->包裹！
+⚠️ 必须使用数字索引（如 0, 1, 3），严禁使用英文单词（如 date, time）！
+
+【各表格记录规则（同一天多事件系统会自动用分号连接）】
+- 主线剧情: 仅记录{{char}}与{{user}}直接产生互动的剧情和影响主线剧情的重要事件或{{char}}/{{user}}的单人主线剧情。格式:HH:mmxx•角色在xx地点与xx或独自发生了什么事情(严禁记录角色情绪情感)
+- 支线追踪: 记录NPC独立情节、或{{user}}/{{char}}与NPC的互动。严禁记录主线剧情。状态必须明确（进行中/已完成/已失败）。格式:HH:mmxx•角色在xx地点与xx或独自发生了什么事情
+- 角色状态: 仅记录角色自由或身体的重大状态变化（如死亡、残废、囚禁、失明、失忆及恢复）。
+- 人物档案: 仅记录System基础设定中完全不存在的新角色。
+- 人物关系: 仅记录角色间的决定性关系转换（如朋友→敌人、陌生→恋人）。
+- 世界设定: 仅记录System基础设定中完全不存在的全新概念。
+- 物品追踪: 仅记录具有唯一性、剧情关键性或特殊纪念意义的道具（如：神器、钥匙、定情信物、重要礼物）。严禁记录普通消耗品（食物/金钱）或环境杂物。
+- 约定: 仅记录双方明确达成共识的严肃承诺或誓言。必须包含{{user}}的主动确认。严禁记录单方面的命令、胁迫、日常行程安排或临时口头指令。
+
+【指令语法示例】
+
+✅ 第一天开始（表格为空，新增第0行）:
+<Memory><!-- insertRow(0, {0: "2024年3月15日", 1: "上午(08:30)", 2: "", 3: "在村庄接受长老委托，前往迷雾森林寻找失落宝石", 4: "进行中"})--></Memory>
+
+✅ 同一天推进（只写新事件，系统会自动追加到列3）:
+<Memory><!-- updateRow(0, 0, {3: "在迷雾森林遭遇神秘商人艾莉娅，获得线索：宝石在古神殿深处"})--></Memory>
+
+✅ 继续推进（再次追加新事件）:
+<Memory><!-- updateRow(0, 0, {3: "在森林露营休息"})--></Memory>
+
+✅ 同一天完结（只需填写完结时间和状态）:
+<Memory><!-- updateRow(0, 0, {2: "晚上(22:00)", 4: "暂停"})--></Memory>
+
+✅ 跨天处理（完结前一天 + 新增第二天）:
+<Memory><!-- updateRow(0, 0, {2: "深夜(23:50)", 4: "已完成"})
+insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿继续探索，寻找宝石线索", 4: "进行中"})--></Memory>
+
+【表格索引】
+0: 主线剧情 (日期, 开始时间, 完结时间, 事件概要, 状态)
+1: 支线追踪 (状态, 支线名, 开始时间, 完结时间, 事件追踪, 关键NPC)
+2: 角色状态 (角色名, 状态变化, 时间, 原因, 当前位置)
+3: 人物档案 (姓名, 年龄, 身份, 地点, 性格, 备注)
+4: 人物关系 (角色A, 角色B, 关系描述, 情感态度)
+5: 世界设定 (设定名, 类型, 详细说明, 影响范围)
+6: 物品追踪 (物品名称, 物品描述, 当前位置, 持有者, 状态, 重要程度, 备注)
+7: 约定 (约定时间, 约定内容, 核心角色)
+
+【当前表格状态参考】
+请仔细阅读下方的"当前表格状态"，找到对应行的索引(Index)。
+不要盲目新增！优先 Update！
+
+【输出示例】
+<Memory><!-- --></Memory>`;
+
     // ========================================================================
     // 运行时提示词配置对象（引用上面的默认提示词）
     // ========================================================================
@@ -249,7 +337,8 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         tablePromptPosType: 'system_end',
         tablePromptDepth: 0,
         summaryPromptTable: DEFAULT_SUM_TABLE,
-        summaryPromptChat: DEFAULT_SUM_CHAT
+        summaryPromptChat: DEFAULT_SUM_CHAT,
+        backfillPrompt: DEFAULT_BACKFILL_PROMPT  // ✨ 新增：批量/追溯填表提示词
     };
 
     // ========================================================================
@@ -4186,6 +4275,7 @@ function shpmt() {
     // 2. 准备临时变量，用于在切换标签时暂存内容
     let tempTablePmt = PROMPTS.summaryPromptTable || PROMPTS.summaryPrompt; // 兼容旧版
     let tempChatPmt = PROMPTS.summaryPromptChat || PROMPTS.summaryPrompt;   // 兼容旧版
+    let tempBackfillPmt = PROMPTS.backfillPrompt || DEFAULT_BACKFILL_PROMPT; // ✨ 新增：批量填表提示词
 
     const h = `<div class="g-p" style="display: flex; flex-direction: column; gap: 15px;">
         <h4 style="margin:0 0 5px 0; opacity:0.8;">📝 提示词管理</h4>
@@ -4231,8 +4321,8 @@ function shpmt() {
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2);">
             <div style="margin-bottom: 8px; font-weight: 600; display:flex; justify-content:space-between; align-items:center;">
-                <span>📝 总结提示词</span>
-                
+                <span>📝 总结/批量提示词</span>
+
                 <div style="display:flex; background:rgba(0,0,0,0.1); border-radius:4px; padding:2px;">
                     <label style="cursor:pointer; padding:4px 8px; border-radius:3px; font-size:11px; display:flex; align-items:center; transition:all 0.2s;" id="tab-label-table" class="active-tab">
                         <input type="radio" name="pmt-sum-type" value="table" checked style="display:none;">
@@ -4242,9 +4332,13 @@ function shpmt() {
                         <input type="radio" name="pmt-sum-type" value="chat" style="display:none;">
                         💬 聊天总结
                     </label>
+                    <label style="cursor:pointer; padding:4px 8px; border-radius:3px; font-size:11px; display:flex; align-items:center; transition:all 0.2s; opacity:0.6;" id="tab-label-backfill">
+                        <input type="radio" name="pmt-sum-type" value="backfill" style="display:none;">
+                        ⚡ 批量填表
+                    </label>
                 </div>
             </div>
-            
+
             <textarea id="pmt-summary" style="width:100%; height:120px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${esc(tempTablePmt)}</textarea>
             <div style="font-size:10px; opacity:0.5; margin-top:4px; text-align:right;" id="pmt-desc">当前编辑：记忆表格数据的总结指令</div>
         </div>
@@ -4275,34 +4369,44 @@ function shpmt() {
         $('input[name="pmt-sum-type"]').on('change', function() {
             const type = $(this).val();
             const currentVal = $('#pmt-summary').val();
+            const prevType = $('input[name="pmt-sum-type"]').not(this).filter((i, el) => {
+                return $(el).data('was-checked');
+            }).val() || 'table';
 
-            // 1. 先保存当前文本框的内容到变量
-            if (type === 'chat') {
-                // 刚切到chat，说明刚才在table
-                tempTablePmt = currentVal;
-                $('#pmt-summary').val(tempChatPmt);
-                
-                // UI更新
-                $('#tab-label-table').removeClass('active-tab').css('opacity', '0.6');
-                $('#tab-label-chat').addClass('active-tab').css('opacity', '1');
-                $('#pmt-desc').text('当前编辑：聊天历史记录的总结指令');
-            } else {
-                // 刚切到table，说明刚才在chat
-                tempChatPmt = currentVal;
+            // 1. 先保存当前文本框的内容到对应变量
+            if (prevType === 'table') tempTablePmt = currentVal;
+            else if (prevType === 'chat') tempChatPmt = currentVal;
+            else if (prevType === 'backfill') tempBackfillPmt = currentVal;
+
+            // 2. 加载新选中的内容
+            if (type === 'table') {
                 $('#pmt-summary').val(tempTablePmt);
-                
-                // UI更新
-                $('#tab-label-chat').removeClass('active-tab').css('opacity', '0.6');
                 $('#tab-label-table').addClass('active-tab').css('opacity', '1');
+                $('#tab-label-chat, #tab-label-backfill').removeClass('active-tab').css('opacity', '0.6');
                 $('#pmt-desc').text('当前编辑：记忆表格数据的总结指令');
+            } else if (type === 'chat') {
+                $('#pmt-summary').val(tempChatPmt);
+                $('#tab-label-chat').addClass('active-tab').css('opacity', '1');
+                $('#tab-label-table, #tab-label-backfill').removeClass('active-tab').css('opacity', '0.6');
+                $('#pmt-desc').text('当前编辑：聊天历史记录的总结指令');
+            } else if (type === 'backfill') {
+                $('#pmt-summary').val(tempBackfillPmt);
+                $('#tab-label-backfill').addClass('active-tab').css('opacity', '1');
+                $('#tab-label-table, #tab-label-chat').removeClass('active-tab').css('opacity', '0.6');
+                $('#pmt-desc').text('当前编辑：批量/追溯填表的历史回溯指令');
             }
+
+            // 3. 标记当前选中状态
+            $('input[name="pmt-sum-type"]').data('was-checked', false);
+            $(this).data('was-checked', true);
         });
 
         // 文本框失去焦点时也同步一下变量，防止直接点保存
         $('#pmt-summary').on('input blur', function() {
             const type = $('input[name="pmt-sum-type"]:checked').val();
             if (type === 'table') tempTablePmt = $(this).val();
-            else tempChatPmt = $(this).val();
+            else if (type === 'chat') tempChatPmt = $(this).val();
+            else if (type === 'backfill') tempBackfillPmt = $(this).val();
         });
 
         // 保存按钮
@@ -4316,9 +4420,10 @@ function shpmt() {
             PROMPTS.tablePromptPosType = $('#pmt-table-pos-type').val();
             PROMPTS.tablePromptDepth = parseInt($('#pmt-table-depth').val()) || 0;
 
-            // ✨ 保存两个不同的总结提示词
+            // ✨ 保存三个不同的提示词
             PROMPTS.summaryPromptTable = tempTablePmt;
             PROMPTS.summaryPromptChat = tempChatPmt;
+            PROMPTS.backfillPrompt = tempBackfillPmt;  // ✨ 新增：批量填表提示词
 
             // 移除旧的单字段，防止混淆
             delete PROMPTS.summaryPrompt;
@@ -4372,6 +4477,14 @@ function shpmt() {
                         </div>
                     </label>
 
+                    <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
+                        <input type="checkbox" id="rst-backfill" checked style="transform:scale(1.2);">
+                        <div style="color:${UI.tc || '#333'}">
+                            <div style="font-weight:bold;">⚡ 批量填表提示词</div>
+                            <div style="font-size:10px; opacity:0.8;">(历史回溯模式填表指令)</div>
+                        </div>
+                    </label>
+
                     <div style="margin-top:15px; font-size:11px; color:#dc3545; text-align:center;">
                         ⚠️ 注意：点击确定后，现有内容将被覆盖！
                     </div>
@@ -4398,6 +4511,7 @@ function shpmt() {
                 const restoreTable = $('#rst-table').is(':checked');
                 const restoreSumTable = $('#rst-sum-table').is(':checked');
                 const restoreSumChat = $('#rst-sum-chat').is(':checked');
+                const restoreBackfill = $('#rst-backfill').is(':checked');
 
                 let msg = [];
 
@@ -4429,8 +4543,16 @@ function shpmt() {
                     msg.push('聊天总结');
                 }
 
+                if (restoreBackfill) {
+                    tempBackfillPmt = DEFAULT_BACKFILL_PROMPT;
+                    if ($('input[name="pmt-sum-type"]:checked').val() === 'backfill') {
+                        $('#pmt-summary').val(DEFAULT_BACKFILL_PROMPT);
+                    }
+                    msg.push('批量填表');
+                }
+
                 $o.remove();
-                
+
                 if (msg.length > 0) {
                     await customAlert(`✅ 已恢复：${msg.join('、')}\n\n请记得点击【💾 保存设置】以生效！`, '操作成功');
                 }
@@ -5402,23 +5524,15 @@ async function autoRunBackfill(start, end, isManual = false) {
 
     const currentTableData = tableTextRaw ? (tableTextRaw + statusStr) : statusStr;
 
-    let rulesContent = PROMPTS.tablePrompt || DEFAULT_TABLE_PROMPT;
-    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
-
-    // ✨✨✨ 增强上下文构建：参考 callAIForSummary 的逻辑 ✨✨✨
-    let contextInfo = '';
-    let charInfo = '';
+    // ✨✨✨ [重构] Step 1: 准备上下文 (Context) ✨✨✨
+    let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
 
     // 1️⃣ 角色卡信息：description, personality, scenario
     if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
         const char = ctx.characters[ctx.characterId];
-        if (char.description) charInfo += `[人物简介]\n${char.description}\n`;
-        if (char.personality) charInfo += `[性格/设定]\n${char.personality}\n`;
-        if (char.scenario) charInfo += `[场景/背景]\n${char.scenario}\n`;
-    }
-
-    if (charInfo) {
-        contextInfo += `\n【背景资料】\n角色: ${charName}\n用户: ${userName}\n\n${charInfo}`;
+        if (char.description) contextBlock += `\n[人物简介]\n${char.description}\n`;
+        if (char.personality) contextBlock += `\n[性格/设定]\n${char.personality}\n`;
+        if (char.scenario) contextBlock += `\n[场景/背景]\n${char.scenario}\n`;
     }
 
     // 2️⃣ 世界书扫描：检测关键词触发的相关设定
@@ -5446,10 +5560,19 @@ async function autoRunBackfill(start, end, isManual = false) {
     }
 
     if (triggeredLore.length > 0) {
-        contextInfo += `\n\n【相关世界设定】\n${triggeredLore.join('\n')}`;
+        contextBlock += `\n【相关世界设定】\n${triggeredLore.join('\n')}`;
     }
 
-    const finalInstruction = `${existingSummary ? '前情提要:\n' + existingSummary + '\n\n' : ''}${currentTableData ? '当前表格状态:\n' + currentTableData + '\n\n' : ''}${contextInfo ? '角色信息:\n' + contextInfo + '\n\n' : ''}${rulesContent}
+    // ✨✨✨ [重构] Step 2: 更新 System 消息 - 包含上下文 ✨✨✨
+    messages[0].content = (PROMPTS.nsfwPrompt || NSFW_UNLOCK) + '\n\n' + contextBlock;
+    console.log('✅ [Context注入] 角色信息和世界观已写入 System 消息');
+
+    // ✨✨✨ [重构] Step 3: 构建 User 指令 - 只包含任务要求 ✨✨✨
+    // 使用批量填表专用提示词
+    let rulesContent = PROMPTS.backfillPrompt || DEFAULT_BACKFILL_PROMPT;
+    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
+
+    const finalInstruction = `${existingSummary ? '【前情提要】\n' + existingSummary + '\n\n' : ''}${currentTableData ? '【当前表格状态】\n' + currentTableData + '\n\n' : ''}【填表规则】\n${rulesContent}
 
 ⚡ 立即开始执行：请从头到尾分析上述所有剧情，按照规则更新表格，将结果输出在 <Memory> 标签中。`;
 
@@ -5465,7 +5588,7 @@ async function autoRunBackfill(start, end, isManual = false) {
         console.log('✅ [智能合并] 已新增一条 User 消息包含填表指令');
     }
 
-    console.log('✅ [Instruction-Last] 已将所有规则和任务放在最后');
+    console.log('✅ [Instruction-Last] System负责身份设定，User负责填表指令');
 
     console.log(`⚡ [追溯] 构建完成，准备发送 ${messages.length} 条消息`);
 
