@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.1.11
+// 记忆表格 v1.1.12
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function() {
@@ -12,10 +12,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.1.11 启动');
+    console.log('🚀 记忆表格 v1.1.12 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.1.11';
+    const V = 'v1.1.12';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键
@@ -3231,30 +3231,29 @@ ${currentTableData ? currentTableData : "（表格为空）"}
         // 组合完整内容
         const finalContent = tableText + '\n' + statusStr;
 
-        // System Prompt（完全由用户配置决定）
+        // ✨✨✨ [多重 System 架构] ✨✨✨
+        // System 0: NSFW Prompt（完全由用户配置决定）
         messages.push({
             role: 'system',
             content: (PROMPTS.nsfwPrompt || NSFW_UNLOCK)
         });
+        console.log('✅ [System 0] NSFW Prompt 已写入');
 
-        // 发送给 AI 的用户消息（包含表格内容和状态栏）
-        messages.push({ role: 'user', content: `【待总结的表格数据】\n\n${finalContent}` });
+        // System 1: 表格数据（独立存储，避免 User 消息过长）
+        messages.push({
+            role: 'system',
+            content: `【待总结的表格数据】\n\n${finalContent}`
+        });
+        console.log('✅ [System 1] 表格数据已写入，避免 User 消息过长');
 
+        // User: 总结指令（精简，只包含任务要求）
         const summaryInstruction = `${targetPrompt}
 
 ⚡ 立即开始执行：请按照规则生成剧情总结。`;
 
-        // ✨ 智能合并：检查最后一条消息的角色
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg && lastMsg.role === 'user') {
-            // 最后一条是 User：追加到该 User 消息
-            lastMsg.content += '\n\n' + summaryInstruction;
-            console.log('✅ [智能合并] 已将总结指令追加到最后一条 User 消息');
-        } else {
-            // 最后一条是 Assistant 或其他：新增一条 User 消息
-            messages.push({ role: 'user', content: summaryInstruction });
-            console.log('✅ [智能合并] 已新增一条 User 消息包含总结指令');
-        }
+        messages.push({ role: 'user', content: summaryInstruction });
+        console.log('✅ [User 指令] 总结任务已写入');
+
 
         logMsg = '📝 表格总结';
     }
@@ -5585,16 +5584,25 @@ async function autoRunBackfill(start, end, isManual = false) {
         contextBlock += `\n【相关世界设定】\n${triggeredLore.join('\n')}`;
     }
 
-    // ✨✨✨ [重构] Step 2: 更新 System 消息 - 包含上下文 ✨✨✨
+    // ✨✨✨ [重构] Step 2: 更新 System 0 - 包含上下文 ✨✨✨
     messages[0].content = (PROMPTS.nsfwPrompt || NSFW_UNLOCK) + '\n\n' + contextBlock;
-    console.log('✅ [Context注入] 角色信息和世界观已写入 System 消息');
+    console.log('✅ [Context注入] 角色信息和世界观已写入 System 0');
+
+    // ✨✨✨ [重构] Step 2.5: 在聊天历史前插入 System 1 - 独立存储表格数据 ✨✨✨
+    // 将表格数据作为独立的 System 消息，避免 User 消息过长
+    // 注意：这里使用 splice 在 index=1 的位置插入，确保顺序为 System 0 -> System 1 -> 聊天历史
+    messages.splice(1, 0, {
+        role: 'system',
+        content: currentTableData
+    });
+    console.log('✅ [数据注入] 表格数据已写入 System 1（位于聊天历史之前），避免 User 消息过长');
 
     // ✨✨✨ [重构] Step 3: 构建 User 指令 - 只包含任务要求 ✨✨✨
     // 使用批量填表专用提示词
     let rulesContent = PROMPTS.backfillPrompt || DEFAULT_BACKFILL_PROMPT;
     rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
 
-    const finalInstruction = `${existingSummary ? '【前情提要】\n' + existingSummary + '\n\n' : ''}${currentTableData ? '【当前表格状态】\n' + currentTableData + '\n\n' : ''}【填表规则】\n${rulesContent}
+    const finalInstruction = `${existingSummary ? '【前情提要】\n' + existingSummary + '\n\n' : ''}【填表规则】\n${rulesContent}
 
 ⚡ 立即开始执行：请从头到尾分析上述所有剧情，按照规则更新表格，将结果输出在 <Memory> 标签中。`;
 
@@ -6706,7 +6714,7 @@ const h = `
         $o.on('click', e => { if (e.target === $o[0]) $o.remove(); });
     }
 
-// ✨✨✨ 修复：版本更新检查函数 (v1.1.11 图标终极兼容版) ✨✨✨
+// ✨✨✨ 修复：版本更新检查函数 (v1.1.12 图标终极兼容版) ✨✨✨
     async function checkForUpdates(currentVer) {
         // 1. 获取UI元素
         const $status = $('#update-status'); // 说明页里的状态文字
