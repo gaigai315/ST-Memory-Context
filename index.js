@@ -4809,9 +4809,9 @@ function shcf() {
             </div>
             
            <div style="background: rgba(40, 167, 69, 0.1); border: 1px solid rgba(40, 167, 69, 0.3); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 11px; color: #155724;">
-                <strong>🌟 推荐用法 (变量模式)：</strong><br>
-                在酒馆的【预设】、【世界书】或【角色卡】中随机一处插入变量调整发送的提示词、总结内容、表格的插入内容位置：<br>
-                • 实时填表插入变量(全部表单含总结)：<code style="background:rgba(255,255,255,0.5); color:#155724; padding:0 4px; border-radius:3px; font-weight:bold; user-select:text;">{{MEMORY}}</code> (跟随开关)<br>
+                <strong>🌟 变量模式：</strong><br>
+                与实时填表搭配使用,在酒馆的【预设】中随机一处插入变量调整填表提示词、总结内容、表格内容在上下文的位置：<br>
+                • 实时填表插入变量(全部表单含总结)：<code style="background:rgba(255,255,255,0.5); color:#155724; padding:0 4px; border-radius:3px; font-weight:bold; user-select:text;">{{MEMORY}}</code> (跟随实时填表开关)<br>
                 • 表格插入变量(不含总结表)：<code style="background:rgba(255,255,255,0.5); color:#155724; padding:0 4px; border-radius:3px; font-weight:bold; user-select:text;">{{MEMORY_TABLE}}</code> (强制发送表格内容)<br>
                 • 总结插入变量(不含其他表格)：<code style="background:rgba(255,255,255,0.5); color:#155724; padding:0 4px; border-radius:3px; font-weight:bold; user-select:text;">{{MEMORY_SUMMARY}}</code> (强制发生总结内容)<br>
                 • 填表规则插入变量：<code style="background:rgba(255,255,255,0.5); color:#155724; padding:0 4px; border-radius:3px; font-weight:bold; user-select:text;">{{MEMORY_PROMPT}}</code><br>
@@ -4908,7 +4908,7 @@ function shcf() {
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-                <div style="font-weight: 600;">🏷️ 标签内容过滤</div>
+                <div style="font-weight: 600;">🏷️ 标签过滤</div>
                 <div style="display:flex; gap:10px; font-size:11px;">
                     <label style="cursor:pointer;"><input type="radio" name="c-filter-mode" value="blacklist" ${C.filterMode !== 'whitelist' ? 'checked' : ''}> 🚫 黑名单(屏蔽)</label>
                     <label style="cursor:pointer;"><input type="radio" name="c-filter-mode" value="whitelist" ${C.filterMode === 'whitelist' ? 'checked' : ''}> ✅ 白名单(只留)</label>
@@ -4918,8 +4918,8 @@ function shcf() {
             <input type="text" id="c-filter-tags" value="${esc(C.filterTags || '')}" placeholder="标签名..." style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace;">
             <div style="font-size:10px; color:#d63031; margin-top:4px;" id="filter-tip">
                 ${C.filterMode === 'whitelist' ?
-                '⚠️ 白名单模式：仅提取 <tag> 内的文字，丢弃其他所有内容（若未找到标签则保留原文）。' :
-                '⚠️ 黑名单模式：删除 <tag> 及其内部的所有文字。'}
+                '⚠️ 白名单模式：仅提取标签内的文字，丢弃其他所有内容（若未找到标签则保留原文）。' :
+                '⚠️ 黑名单模式：删除标签及其内部的所有文字。'}
             </div>
         </div>
 
