@@ -515,18 +515,22 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 css: {
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     width: '100vw', height: '100vh',
-                    background: 'rgba(0,0,0,0.6)', zIndex: 10000000,
+                    background: 'transparent', // ✅ 变透明，不遮挡背景
+                    zIndex: 10000000,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '20px', margin: 0
+                    padding: '20px', margin: 0,
+                    pointerEvents: 'none' // ✅ 关键：鼠标穿透，允许操作底层页面
                 }
             });
 
             const $dialog = $('<div>', {
                 css: {
                     background: '#fff', borderRadius: '12px',
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    boxShadow: '0 5px 25px rgba(0,0,0,0.5)', // ✅ 增强阴影，因为没有黑色背景衬托
+                    border: '1px solid rgba(0,0,0,0.2)', // ✅ 增加边框，增强辨识度
                     maxWidth: '450px', width: '90%',
-                    maxHeight: '80vh', overflow: 'auto'
+                    maxHeight: '80vh', overflow: 'auto',
+                    pointerEvents: 'auto' // ✅ 关键：恢复弹窗可交互
                 }
             });
 
@@ -634,9 +638,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             $overlay.append($dialog);
             $('body').append($overlay);
 
-            $overlay.on('click', (e) => {
-                if (e.target === $overlay[0]) { $overlay.remove(); resolve({ action: 'cancel' }); }
-            });
+            // ✅ 移除点击遮罩关闭的逻辑，因为遮罩层现在是穿透的，点击空白处应该操作底层页面
 
             $(document).on('keydown.' + id, (e) => {
                 if (e.key === 'Escape') {
