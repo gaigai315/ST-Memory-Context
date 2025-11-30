@@ -4111,19 +4111,6 @@ function showSummaryPreview(summaryText, sourceTables, isTableMode, newIndex = n
             // 2. 同步到世界书（如果启用）
             await syncToWorldInfo(editedSummary);
 
-            // 3. 标记绿色行 (仅在明确的表格模式下)
-            // ✅ 只有明确是 table 模式，才标记表格
-            if (isTableMode && currentMode === 'table') {
-                sourceTables.forEach(table => {
-                    const ti = m.all().indexOf(table);
-                    if (ti !== -1) {
-                        for (let ri = 0; ri < table.r.length; ri++) {
-                            markAsSummarized(ti, ri);
-                        }
-                    }
-                });
-            }
-
             // ✅ 只有在用户确认保存时，才更新进度指针（仅聊天模式）
             if (!isTableMode && newIndex !== null) {
                 const currentLast = API_CONFIG.lastSummaryIndex || 0;
@@ -4134,34 +4121,88 @@ function showSummaryPreview(summaryText, sourceTables, isTableMode, newIndex = n
                 }
             }
 
-            // ✅ 关键修复：在更新进度后再保存，确保进度被写入元数据
+            // 保存基础数据
             m.save();
             updateCurrentSnapshot();
 
+            // 关闭编辑窗口
             $o.remove();
-            
-            // 3. 🎯 关键修复：根据传递进来的模式，决定是否询问清空
-            setTimeout(async () => {
-                if (!isTableMode) {
-                    // === 聊天模式：只提示成功，绝不废话，绝不删表 ===
-                    await customAlert('✅ 剧情总结已保存！\n(进度指针已自动更新)', '保存成功');
-                } else {
-                    // === 表格模式：只有它是表格模式，才询问是否删表 ===
-                    if (await customConfirm('总结已保存！\n\n是否清空已总结的原始表格数据？\n\n• 点击"确定"：清空已总结的数据，只保留总结\n• 点击"取消"：保留原始数据（已总结的行会显示为淡绿色背景）', '保存成功')) {
-                        clearSummarizedData();
-                        await customAlert('已清空已总结的数据', '完成');
-                    } else {
-                        await customAlert('已保留原始数据（已总结的行显示为淡绿色）', '完成');
+
+            // 3. ✨✨✨ 核心逻辑分流 ✨✨✨
+            if (!isTableMode) {
+                // === 聊天模式：直接完成 ===
+                await customAlert('✅ 剧情总结已保存！\n(进度指针已自动更新)', '保存成功');
+                if ($('#g-pop').length > 0) shw();
+            } else {
+                // === 表格模式：弹出三选一操作框 ===
+                const dialogId = 'summary-action-' + Date.now();
+                const $dOverlay = $('<div>', {
+                    id: dialogId,
+                    css: {
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        width: '100vw', height: '100vh',
+                        background: 'rgba(0,0,0,0.6)', zIndex: 10000020,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
                     }
+                });
+
+                const $dBox = $('<div>', {
+                    css: {
+                        background: '#fff', borderRadius: '12px', padding: '24px',
+                        boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '360px',
+                        display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'center'
+                    }
+                });
+
+                $dBox.append('<div style="font-size:18px; margin-bottom:8px;">🎉 总结已保存！</div>');
+                $dBox.append('<div style="font-size:13px; color:#666; margin-bottom:12px;">请选择如何处理<strong>原始表格数据</strong>：</div>');
+
+                const btnCss = "padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#fff; transition:0.2s;";
+
+                // 选项 1: 删除
+                const $btnDel = $('<button>', {
+                    html: '🗑️ 删除已总结内容<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(清空表格，防止重复)</span>',
+                    css: btnCss + "background:#dc3545;"
+                }).on('click', () => {
+                    sourceTables.forEach(t => t.clear()); // 清空参与总结的表格
+                    finish('✅ 原始数据已清空，总结已归档。');
+                });
+
+                // 选项 2: 隐藏 (变绿)
+                const $btnHide = $('<button>', {
+                    html: '🙈 仅隐藏 (变绿)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(保留内容但标记为已处理)</span>',
+                    css: btnCss + "background:#28a745;"
+                }).on('click', () => {
+                    // 遍历参与总结的表格，将其所有行标记为绿色
+                    sourceTables.forEach(table => {
+                        const ti = m.all().indexOf(table);
+                        if (ti !== -1) {
+                            for (let ri = 0; ri < table.r.length; ri++) markAsSummarized(ti, ri);
+                        }
+                    });
+                    finish('✅ 原始数据已标记为已总结（绿色）。');
+                });
+
+                // 选项 3: 保留 (不变)
+                const $btnKeep = $('<button>', {
+                    html: '👁️ 保留 (不变)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(不做任何修改，保持白色)</span>',
+                    css: btnCss + "background:#17a2b8;"
+                }).on('click', () => {
+                    finish('✅ 原始数据已保留（未做标记）。');
+                });
+
+                function finish(msg) {
+                    m.save(); // 保存变更
+                    $dOverlay.remove();
+                    if ($('#g-pop').length > 0) shw(); // 刷新主界面
+                    $('.g-t[data-i="8"]').click(); // 自动跳转到总结页
+                    if (typeof toastr !== 'undefined') toastr.success(msg);
                 }
-                
-                // 刷新界面
-                if ($('#g-pop').length > 0) {
-                    shw();
-                }
-                // 如果你想自动跳到总结页，保留这行；不想跳就删掉
-                $('.g-t[data-i="8"]').click();
-            }, 100);
+
+                $dBox.append($btnDel, $btnHide, $btnKeep);
+                $dOverlay.append($dBox);
+                $('body').append($dOverlay);
+            }
         });
         
         $o.on('keydown', async e => { 
