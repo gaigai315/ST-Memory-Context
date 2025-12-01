@@ -12,10 +12,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.1.15 启动');
+    console.log('🚀 记忆表格 v1.1.16 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.1.15';
+    const V = 'v1.1.16';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键
@@ -1112,28 +1112,50 @@ class SM {
             if (this.id !== id) { this.id = id; this.s = []; T.forEach(tb => this.s.push(new S(tb.n, tb.c))); this.sm = new SM(this); lastInternalSaveTime = 0; }
             let cloudData = null; let localData = null;
             if (C.cloudSync) { try { const ctx = this.ctx(); if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) cloudData = ctx.chatMetadata.gaigai; } catch (e) {} }
+
+            // 🛡️ [防串味修复] 检查云端数据是否属于当前角色
+            if (cloudData) {
+                if (cloudData.id !== id) {
+                    console.warn(`🔴 [数据隔离] 云端数据 ID 不匹配，已忽略。云端 ID: ${cloudData.id}，当前 ID: ${id}`);
+                    cloudData = null; // 丢弃错误的云端数据，防止串味
+                } else {
+                    console.log(`✅ [数据验证] 云端数据 ID 匹配: ${id}`);
+                }
+            }
+
             try { const sv = localStorage.getItem(`${SK}_${id}`); if (sv) localData = JSON.parse(sv); } catch (e) {}
+
+            // 🛡️ [防串味修复] 检查本地数据是否属于当前角色
+            if (localData) {
+                if (localData.id !== id) {
+                    console.warn(`🔴 [数据隔离] 本地数据 ID 不匹配，已忽略。本地 ID: ${localData.id}，当前 ID: ${id}`);
+                    localData = null; // 丢弃错误的本地数据，防止串味
+                } else {
+                    console.log(`✅ [数据验证] 本地数据 ID 匹配: ${id}`);
+                }
+            }
+
             let finalData = null;
             if (cloudData && localData) finalData = (cloudData.ts > localData.ts) ? cloudData : localData;
             else if (cloudData) finalData = cloudData;
             else if (localData) finalData = localData;
-            
+
             if (finalData && finalData.ts <= lastInternalSaveTime) return;
             if (finalData && finalData.v && finalData.d) {
                 finalData.d.forEach((sd, i) => { if (this.s[i]) this.s[i].from(sd); });
                 if (finalData.summarized) summarizedRows = finalData.summarized;
                 if (finalData.colWidths) userColWidths = finalData.colWidths;
                 if (finalData.rowHeights) userRowHeights = finalData.rowHeights;
-                
+
                 // ✅ 恢复进度指针 (关键修复)
                 if (finalData.meta) {
                     if (finalData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = finalData.meta.lastSum;
                     if (finalData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = finalData.meta.lastBf;
-                    
+
                     // 同步回全局配置，确保 shcf 显示正确
                     localStorage.setItem(AK, JSON.stringify(API_CONFIG));
                 }
-                
+
                 lastInternalSaveTime = finalData.ts;
             }
         }
@@ -1370,8 +1392,41 @@ function parseOpenAIModelsResponse(data) {
   const m = new M();
     
     // ✅✅✅ 新增：独立的配置加载函数（确保每次打开设置都能读到最新）
-    function loadConfig() {
+    async function loadConfig() {
         try {
+            // 🌐 [优先级1] 尝试从服务端加载配置 (支持跨设备同步)
+            try {
+                if (typeof SillyTavern !== 'undefined' && SillyTavern.loadExtensionSettings) {
+                    const serverSettings = await SillyTavern.loadExtensionSettings('st_memory_table');
+                    if (serverSettings && Object.keys(serverSettings).length > 0) {
+                        console.log('🌐 检测到服务端配置，优先使用 (跨设备同步)');
+
+                        // 从服务端恢复基础配置
+                        if (serverSettings.config) {
+                            Object.keys(serverSettings.config).forEach(k => {
+                                if (C.hasOwnProperty(k)) C[k] = serverSettings.config[k];
+                            });
+                            console.log('✅ 基础配置已从服务端同步');
+                        }
+
+                        // 从服务端恢复 API 配置
+                        if (serverSettings.api) {
+                            API_CONFIG = { ...API_CONFIG, ...serverSettings.api };
+                            console.log('✅ API 配置已从服务端同步');
+                        }
+
+                        // 同步到本地存储 (作为缓存)
+                        localStorage.setItem(CK, JSON.stringify(C));
+                        localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                        return; // 服务端加载成功，直接返回
+                    }
+                }
+            } catch (serverErr) {
+                console.warn('⚠️ 服务端配置加载失败，降级到本地存储:', serverErr.message);
+            }
+
+            // 🏠 [优先级2] 降级到本地存储 (localStorage)
             // 1. 加载基础配置 (C)
             const cv = localStorage.getItem(CK);
             if (cv) {
@@ -1380,16 +1435,16 @@ function parseOpenAIModelsResponse(data) {
                 Object.keys(savedC).forEach(k => {
                     if (C.hasOwnProperty(k)) C[k] = savedC[k];
                 });
-                console.log('⚙️ 配置已重新加载');
+                console.log('⚙️ 配置已从本地存储加载');
             }
-            
+
             // 2. 加载 API 配置 (AK)
-            const av = localStorage.getItem(AK); 
+            const av = localStorage.getItem(AK);
             if (av) {
                 const savedAPI = JSON.parse(av);
                 API_CONFIG = { ...API_CONFIG, ...savedAPI };
             }
-            
+
             // 3. 加载提示词 (PK) - 如果需要也可以放在这里，不过提示词有单独的加载逻辑
         } catch (e) {
             console.error('❌ 配置加载失败:', e);
@@ -3647,7 +3702,7 @@ function bnd() {
      * @param {boolean} isSilent - 是否静默模式（不弹窗直接保存）
      */
 async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false) {
-    loadConfig(); // 强制刷新配置
+    await loadConfig(); // 强制刷新配置
     
     const currentMode = forcedMode || API_CONFIG.summarySource;
     const isTableMode = currentMode !== 'chat'; 
@@ -4252,20 +4307,31 @@ async function callIndependentAPI(prompt) {
     }));
 
     // Bearer 前缀智能处理：避免重复添加
-    const authHeader = apiKey.startsWith('Bearer ') ? apiKey : ('Bearer ' + apiKey);
+    let authHeader = apiKey.startsWith('Bearer ') ? apiKey : ('Bearer ' + apiKey);
+
+    // 🔧 Gemini 鉴权兼容性修复：智能判断是否使用 Authorization Header
+    if (provider === 'gemini' && apiUrl.includes('googleapis.com')) {
+        // 官方 Gemini API 使用 URL 参数鉴权 (key=xxx)，不能发送 Authorization Header
+        // 否则会导致 401 错误
+        console.log('🔍 检测到 Gemini 官方域名，禁用 Authorization Header (使用 URL 参数鉴权)');
+        authHeader = undefined;
+    } else if (provider === 'gemini') {
+        // 自定义域名 (如 NewAPI/OneAPI 代理) 需要保留 Authorization Header
+        console.log('🔧 检测到 Gemini 自定义域名，保留 Authorization Header (代理兼容模式)');
+    }
 
     // ==========================================
-    // 阶段 1: 尝试走 SillyTavern 后端代理 (带 3s 超时)
+    // 阶段 1: 尝试走 SillyTavern 后端代理 (带 15s 超时)
     // ==========================================
     try {
-        console.log('📡 [通道1] 尝试后端代理 (超时限制: 3s)...');
+        console.log('📡 [通道1] 尝试后端代理 (超时限制: 15s)...');
 
         // ✅ 1. 设置超时控制器
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
             controller.abort();
-            console.log('⏱️ [通道1] 3秒超时，中止请求...');
-        }, 3000); // 3秒超时
+            console.log('⏱️ [通道1] 15秒超时，中止请求...');
+        }, 15000); // 15秒超时 (Docker/局域网环境优化)
 
         // 获取 CSRF Token
         let csrfToken = '';
@@ -4326,7 +4392,7 @@ async function callIndependentAPI(prompt) {
     } catch (e) {
         // ✅ 4. 捕获超时或网络错误
         if (e.name === 'AbortError') {
-            console.warn('⚠️ [通道1] 后端代理响应超时 (>3s)，自动切换到浏览器直连');
+            console.warn('⚠️ [通道1] 后端代理响应超时 (>15s)，自动切换到浏览器直连');
         } else {
             console.warn(`⚠️ [通道1] 请求失败: ${e.message}`);
         }
@@ -4392,13 +4458,31 @@ async function callIndependentAPI(prompt) {
             requestBody.max_tokens = maxTokens;
         }
 
+        // 🔧 [Gemini 官方直连修复] 如果是官方域名（无 Authorization Header），则将 API Key 添加到 URL 参数
+        if (provider === 'gemini' && authHeader === undefined) {
+            // 检查 URL 中是否已经包含 API Key 参数
+            if (!directUrl.includes('key=') && !directUrl.includes('goog_api_key=')) {
+                // 智能拼接：判断 URL 是否已有其他参数
+                directUrl += (directUrl.includes('?') ? '&' : '?') + 'key=' + apiKey;
+                console.log('🔑 [Gemini 官方] API Key 已添加到 URL 参数');
+            }
+        }
+
+        console.log(`📡 [最终请求 URL] ${directUrl.replace(apiKey, '***')}`); // 隐藏 API Key 仅显示星号
+
         // 发送直连请求
+        // 动态构建 headers：只有当 authHeader 存在时才添加 Authorization
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (authHeader !== undefined) {
+            headers['Authorization'] = authHeader;
+        }
+
         const directResponse = await fetch(directUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': authHeader
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         });
 
@@ -4646,8 +4730,8 @@ function shtm() {
     }, 100);
 }
     
-function shapi() {
-    loadConfig(); // ✅ 强制刷新配置，确保读取到最新的 Provider 设置
+async function shapi() {
+    await loadConfig(); // ✅ 强制刷新配置，确保读取到最新的 Provider 设置
     if (!API_CONFIG.summarySource) API_CONFIG.summarySource = 'chat';
 
     const h = `
@@ -4723,8 +4807,8 @@ function shapi() {
                 $('#api-url').val('https://api.deepseek.com/v1');
                 $('#api-model').val('deepseek-chat');
             } else if (provider === 'gemini') {
-                // Gemini 特殊处理：URL 必须包含 :generateContent 后缀
-                $('#api-url').val('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent');
+                // Gemini 使用纯净的 Base URL，插件会自动拼接 /models/{model}:generateContent
+                $('#api-url').val('https://generativelanguage.googleapis.com/v1beta');
                 $('#api-model').val('gemini-1.5-flash');
             } else if (provider === 'claude') {
                 $('#api-url').val('https://api.anthropic.com/v1/messages');
@@ -4754,7 +4838,15 @@ $('#fetch-models-btn').on('click', async function() {
             let models = [];
 
             // 构造鉴权头 (Bearer)
-            const authHeader = apiKey.startsWith('Bearer ') ? apiKey : ('Bearer ' + apiKey);
+            let authHeader = apiKey.startsWith('Bearer ') ? apiKey : ('Bearer ' + apiKey);
+
+            // 🔧 Gemini 鉴权兼容性修复：智能判断是否使用 Authorization Header
+            if (provider === 'gemini' && apiUrl.includes('googleapis.com')) {
+                console.log('🔍 检测到 Gemini 官方域名，禁用 Authorization Header (使用 URL 参数鉴权)');
+                authHeader = undefined;
+            } else if (provider === 'gemini') {
+                console.log('🔧 检测到 Gemini 自定义域名，保留 Authorization Header (代理兼容模式)');
+            }
 
             // ---------------------------------------------------------
             // Plan A: 尝试酒馆后端代理 (必须带上 custom_include_headers)
@@ -4826,7 +4918,10 @@ $('#fetch-models-btn').on('click', async function() {
                 } else {
                     // 智能拼接 /models
                     directUrl = apiUrl.endsWith('/models') ? apiUrl : `${apiUrl}/models`;
-                    headers['Authorization'] = authHeader;
+                    // 只有当 authHeader 存在时才添加 Authorization header
+                    if (authHeader !== undefined) {
+                        headers['Authorization'] = authHeader;
+                    }
                 }
 
                 console.log(`直连地址: ${directUrl}`);
@@ -4931,6 +5026,20 @@ $('#fetch-models-btn').on('click', async function() {
             API_CONFIG.temperature = 0.1;
             API_CONFIG.enableAI = true;
             try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
+
+            // 🌐 保存 API 配置到服务端 (支持跨设备同步)
+            try {
+                if (typeof SillyTavern !== 'undefined' && SillyTavern.saveExtensionSettings) {
+                    await SillyTavern.saveExtensionSettings('st_memory_table', {
+                        config: C,
+                        api: API_CONFIG
+                    });
+                    console.log('🌐 API 配置已同步到服务端 (支持 PC/手机全端同步)');
+                }
+            } catch (serverErr) {
+                console.warn('⚠️ 服务端 API 配置保存失败 (已保存到本地):', serverErr.message);
+            }
+
             await customAlert('✅ API配置已保存\n\n输出长度将根据模型自动优化', '成功');
         });
 
@@ -5249,8 +5358,41 @@ function shpmt() {
       }
 
 // ✅✅✅ [新增] 独立的配置加载函数 (粘贴在这里)
-function loadConfig() {
+async function loadConfig() {
     try {
+        // 🌐 [优先级1] 尝试从服务端加载配置 (支持跨设备同步)
+        try {
+            if (typeof SillyTavern !== 'undefined' && SillyTavern.loadExtensionSettings) {
+                const serverSettings = await SillyTavern.loadExtensionSettings('st_memory_table');
+                if (serverSettings && Object.keys(serverSettings).length > 0) {
+                    console.log('🌐 检测到服务端配置，优先使用 (跨设备同步)');
+
+                    // 从服务端恢复基础配置
+                    if (serverSettings.config) {
+                        Object.keys(serverSettings.config).forEach(k => {
+                            if (C.hasOwnProperty(k)) C[k] = serverSettings.config[k];
+                        });
+                        console.log('✅ 基础配置已从服务端同步');
+                    }
+
+                    // 从服务端恢复 API 配置
+                    if (serverSettings.api) {
+                        API_CONFIG = { ...API_CONFIG, ...serverSettings.api };
+                        console.log('✅ API 配置已从服务端同步');
+                    }
+
+                    // 同步到本地存储 (作为缓存)
+                    localStorage.setItem(CK, JSON.stringify(C));
+                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                    return; // 服务端加载成功，直接返回
+                }
+            }
+        } catch (serverErr) {
+            console.warn('⚠️ 服务端配置加载失败，降级到本地存储:', serverErr.message);
+        }
+
+        // 🏠 [优先级2] 降级到本地存储 (localStorage)
         // 1. 加载基础配置 (C)
         const cv = localStorage.getItem(CK);
         if (cv) {
@@ -5258,10 +5400,10 @@ function loadConfig() {
             Object.keys(savedC).forEach(k => {
                 if (C.hasOwnProperty(k)) C[k] = savedC[k];
             });
-            console.log('⚙️ 配置已重新加载');
+            console.log('⚙️ 配置已从本地存储加载');
         }
         // 2. 加载 API 配置 (AK)
-        const av = localStorage.getItem(AK); 
+        const av = localStorage.getItem(AK);
         if (av) {
             const savedAPI = JSON.parse(av);
             API_CONFIG = { ...API_CONFIG, ...savedAPI };
@@ -5269,8 +5411,8 @@ function loadConfig() {
     } catch (e) { console.error('❌ 配置加载失败:', e); }
 }
     
-function shcf() {
-    loadConfig();
+async function shcf() {
+    await loadConfig();
     const ctx = m.ctx();
     const totalCount = ctx && ctx.chat ? ctx.chat.length : 0;
     
@@ -5857,6 +5999,19 @@ function shcf() {
 
             try { localStorage.setItem(CK, JSON.stringify(C)); } catch (e) {}
 
+            // 🌐 保存配置到服务端 (支持跨设备同步)
+            try {
+                if (typeof SillyTavern !== 'undefined' && SillyTavern.saveExtensionSettings) {
+                    await SillyTavern.saveExtensionSettings('st_memory_table', {
+                        config: C,
+                        api: API_CONFIG
+                    });
+                    console.log('🌐 配置已同步到服务端 (支持 PC/手机全端同步)');
+                }
+            } catch (serverErr) {
+                console.warn('⚠️ 服务端配置保存失败 (已保存到本地):', serverErr.message);
+            }
+
             applyUiFold();
             
             if (C.autoBackfill && C.enabled) {
@@ -6136,7 +6291,7 @@ function omsg(id) {
  * @param {boolean} isManual - 是否为手动触发（默认false）
  */
 async function autoRunBackfill(start, end, isManual = false) {
-    loadConfig(); // ✅ 1. 强制刷新配置，确保开关状态最新
+    await loadConfig(); // ✅ 1. 强制刷新配置，确保开关状态最新
 
     // 2. ✅ 强制从 SillyTavern.getContext() 获取数据
     const ctx = window.SillyTavern.getContext(); 
@@ -6721,27 +6876,27 @@ function applyUiFold() {
      * 插件初始化函数
      * 等待依赖加载完成后，创建UI按钮，注册事件监听，启动插件
      */
-function ini() {
+async function ini() {
     // 1. 基础依赖检查
-    if (typeof $ === 'undefined' || typeof SillyTavern === 'undefined') { 
+    if (typeof $ === 'undefined' || typeof SillyTavern === 'undefined') {
         console.log('⏳ 等待依赖加载...');
-        setTimeout(ini, 500); 
-        return; 
+        setTimeout(ini, 500);
+        return;
     }
 
     // ✨✨✨ 核心修改：精准定位顶部工具栏 ✨✨✨
-    // 策略：找到“高级格式化(A)”按钮或者“AI配置”按钮，把我们的按钮插在它们后面
-    let $anchor = $('#advanced-formatting-button'); 
+    // 策略：找到"高级格式化(A)"按钮或者"AI配置"按钮，把我们的按钮插在它们后面
+    let $anchor = $('#advanced-formatting-button');
     if ($anchor.length === 0) $anchor = $('#ai-config-button');
-    
+
     // 如果还是找不到（极少数情况），回退到找扩展菜单
     if ($anchor.length === 0) $anchor = $('#extensionsMenu');
 
     console.log('✅ 工具栏定位点已找到:', $anchor.attr('id'));
 
-    // --- 加载设置 (保持不变) ---
+    // --- 加载设置 (异步加载配置以支持服务端同步) ---
     try { const sv = localStorage.getItem(UK); if (sv) UI = { ...UI, ...JSON.parse(sv) }; } catch (e) {}
-    loadConfig();
+    await loadConfig(); // 🌐 异步加载配置，支持服务端同步
     
     try { 
         const pv = localStorage.getItem(PK); 
