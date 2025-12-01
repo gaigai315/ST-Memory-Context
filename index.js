@@ -1117,7 +1117,9 @@ class SM {
                 this.sm = new SM(this);
                 lastInternalSaveTime = 0;
                 summarizedRows = {}; // ✅ 核心修复：清空"已总结行"状态，防止跨会话串味
-                console.log(`🔄 [会话切换] ID: ${id}，已重置所有状态 (包括已总结行)`);
+                userColWidths = {};   // ✅ 核心修复：清空列宽设置，防止跨会话串味
+                userRowHeights = {};  // ✅ 核心修复：清空行高设置，防止跨会话串味
+                console.log(`🔄 [会话切换] ID: ${id}，已重置所有状态 (包括已总结行、列宽、行高)`);
             }
             let cloudData = null; let localData = null;
             if (C.cloudSync) { try { const ctx = this.ctx(); if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) cloudData = ctx.chatMetadata.gaigai; } catch (e) {} }
@@ -1461,21 +1463,9 @@ function parseOpenAIModelsResponse(data) {
     }
     
     // 列宽管理
-    function saveColWidths() {
-        try {
-            localStorage.setItem(CWK, JSON.stringify(userColWidths));
-        } catch (e) {}
-    }
-    
-    function loadColWidths() {
-        try {
-            const saved = localStorage.getItem(CWK);
-            if (saved) {
-                userColWidths = JSON.parse(saved);
-            }
-        } catch (e) {}
-    }
-    
+    // ❌ saveColWidths() 和 loadColWidths() 已废弃：
+    // 列宽/行高现在通过 m.save()/m.load() 自动保存到会话存档中，确保多会话隔离
+
     function getColWidth(tableIndex, colName) {
         if (userColWidths[tableIndex] && userColWidths[tableIndex][colName]) {
             return userColWidths[tableIndex][colName];
@@ -1491,29 +1481,18 @@ function setColWidth(tableIndex, colName, width) {
             userColWidths[tableIndex] = {};
         }
         userColWidths[tableIndex][colName] = width;
-        
-        // 保存到本地
-        saveColWidths();
-        
-        // ✨✨✨ 关键修复：强制保存到聊天记录，这样平板才能同步 ✨✨✨
-        m.save(); 
+
+        // ✨✨✨ 关键修复：保存到当前会话存档，确保多会话隔离 ✨✨✨
+        m.save();
     }
     
 async function resetColWidths() {
         if (await customConfirm('确定重置所有列宽和行高？', '重置视图')) {
             userColWidths = {};
-            userRowHeights = {}; // ✨✨✨ 新增：强制清空记录的行高！
-            saveColWidths();
-            m.save(); // ✨✨✨ 这里也要加，确保重置操作同步到平板
-            await customAlert('视图已重置，请重新打开表格', '成功');
-
-            // 1. 清除本地
-            saveColWidths();
-
-            // ✨✨✨ 核心修复：同步清除聊天记录里的宽度 ✨✨✨
+            userRowHeights = {};
+            // ✨✨✨ 保存到当前会话存档，确保重置操作同步
             m.save();
-
-            await customAlert('列宽已重置，请重新打开表格', '成功');
+            await customAlert('视图已重置，请重新打开表格', '成功');
 
             // 自动刷新一下当前视图，不用手动重开
             if ($('#g-pop').length > 0) {
@@ -2761,9 +2740,13 @@ function gtb(s, ti) {
        s.r.forEach((rw, ri) => {
             const summarizedClass = isSummarized(ti, ri) ? ' g-summarized' : '';
             h += `<tr data-r="${ri}" data-ti="${ti}" class="g-row${summarizedClass}">`;
-            
+
+            // ✅ 读取当前行的保存高度
+            const rh = userRowHeights[ti] && userRowHeights[ti][ri];
+            const heightStyle = rh ? `height:${rh}px !important;` : '';
+
             // 1. 左侧行号列 (带行高拖拽)
-            h += `<td class="g-col-num" style="width:40px; min-width:40px; max-width:40px;">
+            h += `<td class="g-col-num" style="width:40px; min-width:40px; max-width:40px; ${heightStyle}">
                 <div class="g-n">
                     <input type="checkbox" class="g-row-select" data-r="${ri}">
                     <div>${ri + 1}</div>
@@ -2772,12 +2755,12 @@ function gtb(s, ti) {
             </td>`;
 
             // ✅ 数据列
-            s.c.forEach((c, ci) => { 
+            s.c.forEach((c, ci) => {
                 const val = rw[ci] || '';
-                const width = getColWidth(ti, c) || 100;
-                
+
 // ✨【恢复直接编辑功能】
-h += `<td style="width:${width}px;" data-ti="${ti}" data-col="${ci}">
+// ⚠️ 注意：<td> 不设置 width，只由 <th> 控制列宽，避免"拉长后无法缩回"的 Bug
+h += `<td style="${heightStyle}" data-ti="${ti}" data-col="${ci}">
     <div class="g-e" contenteditable="true" spellcheck="false" data-r="${ri}" data-c="${ci}">${esc(val)}</div>
     <div class="g-row-resizer" data-ti="${ti}" data-r="${ri}" title="拖拽调整行高"></div>
 </td>`;
@@ -7040,8 +7023,7 @@ async function ini() {
         }
     } catch (e) {}
 
-
-    loadColWidths();
+    // loadColWidths(); // ❌ 已废弃：不再从全局加载，列宽/行高通过 m.load() 从会话存档加载
     // loadSummarizedRows(); // ❌ 已废弃：不再从全局加载，改为通过 m.load() 从角色专属存档加载
     m.load();
     thm();
