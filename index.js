@@ -1534,18 +1534,22 @@ async function resetColWidths() {
             }
         });
 
-        // 2. 创建小窗口
+        // 2. 创建小窗口 (适配手机屏幕)
         const $box = $('<div>', {
             css: {
                 background: '#fff',
-                width: '320px',
+                width: '90vw',
+                maxWidth: '320px',
+                maxHeight: '85vh',
+                overflowY: 'auto',
                 padding: '20px',
                 borderRadius: '12px',
                 boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '15px',
-                position: 'relative'
+                position: 'relative',
+                margin: 'auto'
             }
         });
 
@@ -3267,65 +3271,122 @@ function bnd() {
         }
     });
 
-    // ✨✨✨ 新增：导入功能 (美化弹窗版) ✨✨✨
+    // ✨✨✨ 新增：导入功能 (支持 JSON/TXT + 智能识别 + 增强兼容性) ✨✨✨
     $('#g-im').off('click').on('click', function() {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.json';
-        
+        input.accept = '.json, .txt, application/json, text/plain'; // ✅ 增强兼容性
+        input.style.display = 'none';
+        document.body.appendChild(input); // ✅ 确保挂载到 DOM
+
         input.onchange = e => {
             const file = e.target.files[0];
-            if (!file) return;
-            
+            if (!file) {
+                // 用户取消选择，移除 input 元素
+                if (input.parentNode) {
+                    document.body.removeChild(input);
+                }
+                return;
+            }
+
             const reader = new FileReader();
-            
+
             // ✅ 必须保留 async，否则后面的 await 会报错
             reader.onload = async event => {
                 try {
                     const jsonStr = event.target.result;
                     const data = JSON.parse(jsonStr);
-                    
+
                     // 兼容 's' (导出文件) 和 'd' (内部存档) 两种格式
                     const sheetsData = data.s || data.d;
-                    
+
                     if (!sheetsData || !Array.isArray(sheetsData)) {
                         // 🎨 美化：使用自定义弹窗报错
                         await customAlert('❌ 错误：这不是有效的记忆表格备份文件！\n(找不到数据数组)', '导入失败');
                         return;
                     }
-                    
+
+                    // 🔍 智能识别数据结构
+                    const sheetCount = sheetsData.length;
+                    let importMode = 'full'; // 默认全量恢复
+                    let confirmMsg = '';
+
+                    if (sheetCount === 9) {
+                        // 包含 9 个表格（详情表 0-7 + 总结表 8）
+                        importMode = 'full';
+                        confirmMsg = '📦 检测到完整备份（9 个表格）\n\n将恢复所有详情表和总结表';
+                    } else if (sheetCount === 8) {
+                        // 仅包含详情表 (0-7)
+                        importMode = 'details';
+                        confirmMsg = '📊 检测到详情表备份（8 个表格）\n\n将仅恢复详情表，保留现有总结表';
+                    } else if (sheetCount === 1) {
+                        // 仅包含总结表
+                        importMode = 'summary';
+                        confirmMsg = '📝 检测到总结表备份（1 个表格）\n\n将仅恢复总结表，保留现有详情表';
+                    } else {
+                        await customAlert(`⚠️ 数据格式异常！\n\n表格数量: ${sheetCount}\n预期: 1、8 或 9 个表格`, '格式错误');
+                        return;
+                    }
+
                     const timeStr = data.ts ? new Date(data.ts).toLocaleString() : (data.t ? new Date(data.t).toLocaleString() : '未知时间');
-                    
+
                     // 🎨 美化：使用自定义确认框
-                    const confirmMsg = `⚠️ 确定要导入吗？\n\n这将用文件里的数据覆盖当前的表格！\n\n📅 备份时间: ${timeStr}`;
-                    if (!await customConfirm(confirmMsg, '确认导入')) return;
-                    
-                    // 开始恢复
-                    m.s.forEach((sheet, i) => {
-                        if (sheetsData[i]) sheet.from(sheetsData[i]);
-                    });
-                    
+                    const fullConfirmMsg = `⚠️ 确定要导入吗？\n\n${confirmMsg}\n\n📅 备份时间: ${timeStr}\n\n这将覆盖对应的表格内容！`;
+                    if (!await customConfirm(fullConfirmMsg, '确认导入')) return;
+
+                    // 开始恢复（根据模式智能恢复）
+                    if (importMode === 'full') {
+                        // 全量恢复：覆盖所有表格
+                        m.s.forEach((sheet, i) => {
+                            if (sheetsData[i]) sheet.from(sheetsData[i]);
+                        });
+                    } else if (importMode === 'details') {
+                        // 仅恢复详情表 (0-7)
+                        for (let i = 0; i < 8 && i < sheetsData.length; i++) {
+                            if (sheetsData[i]) m.s[i].from(sheetsData[i]);
+                        }
+                    } else if (importMode === 'summary') {
+                        // 仅恢复总结表 (8)
+                        if (sheetsData[0] && m.s[8]) {
+                            m.s[8].from(sheetsData[0]);
+                        }
+                    }
+
                     if (data.summarized) summarizedRows = data.summarized;
-                    
+
                     // 强制保存并刷新
                     lastManualEditTime = Date.now();
                     m.save();
-                    shw(); 
-                    
-                    // 🎨 美化：成功提示
-                    await customAlert('✅ 导入成功！数据已恢复。', '完成');
+                    shw();
+
+                    // 🎨 美化：成功提示（告知用户恢复了哪部分）
+                    let successMsg = '✅ 导入成功！\n\n';
+                    if (importMode === 'full') {
+                        successMsg += '已恢复：所有详情表 + 总结表';
+                    } else if (importMode === 'details') {
+                        successMsg += '已恢复：详情表 (0-7)\n保留：现有总结表';
+                    } else if (importMode === 'summary') {
+                        successMsg += '已恢复：总结表\n保留：现有详情表';
+                    }
+                    await customAlert(successMsg, '完成');
 
                     updateCurrentSnapshot();
-                    
+
                 } catch (err) {
                     // 🎨 美化：异常提示
                     await customAlert('❌ 读取文件失败: ' + err.message, '错误');
+                } finally {
+                    // ✅ 无论成功失败，都要移除 input 元素
+                    if (input.parentNode) {
+                        document.body.removeChild(input);
+                    }
                 }
             };
             reader.readAsText(file);
         };
-        
-        input.click(); 
+
+        input.value = ''; // ✅ 允许重复选择同一文件
+        input.click();
     });
     
     $('#g-sm').off('click').on('click', () => callAIForSummary(null, null, 'table'));
@@ -3394,6 +3455,44 @@ function bnd() {
             }
         });
 
+        // 4.5. 格式选择复选框 (TXT 方便手机传输)
+        const $formatContainer = $('<div>', {
+            css: {
+                background: '#f8f9fa',
+                padding: '10px',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                border: '1px solid #e0e0e0'
+            }
+        });
+
+        const $formatCheckbox = $('<input>', {
+            type: 'checkbox',
+            id: 'export-txt-format',
+            css: {
+                cursor: 'pointer',
+                width: '16px',
+                height: '16px'
+            }
+        });
+
+        const $formatLabel = $('<label>', {
+            for: 'export-txt-format',
+            html: '📄 保存为 TXT 格式 <span style="font-size:11px;color:#999;">(方便手机传输)</span>',
+            css: {
+                cursor: 'pointer',
+                fontSize: '13px',
+                color: '#555',
+                flex: 1,
+                userSelect: 'none'
+            }
+        });
+
+        $formatContainer.append($formatCheckbox, $formatLabel);
+
         // 5. 按钮样式模板
         const btnStyle = {
             width: '100%',
@@ -3408,15 +3507,21 @@ function bnd() {
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         };
 
-        // 6. 导出函数封装
-        function performExport(data, filename) {
+        // 6. 导出函数封装 (支持 JSON 和 TXT 格式)
+        function performExport(data, baseFilename, useTxtFormat = false) {
             const exportData = {
                 v: V,
                 t: new Date().toISOString(),
                 s: data.map(s => s.json())
             };
             const jsonStr = JSON.stringify(exportData, null, 2);
-            const blob = new Blob([jsonStr], { type: 'application/json' });
+
+            // 根据选择的格式设置文件扩展名和 MIME 类型
+            const extension = useTxtFormat ? '.txt' : '.json';
+            const mimeType = useTxtFormat ? 'text/plain' : 'application/json';
+            const filename = baseFilename.replace(/\.(json|txt)$/, '') + extension;
+
+            const blob = new Blob([jsonStr], { type: mimeType });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -3433,7 +3538,8 @@ function bnd() {
             html: '📦 全部导出 (含总结)',
             css: { ...btnStyle, background: UI.c }
         }).on('click', function() {
-            performExport(m.all(), `memory_table_all_${m.gid()}_${Date.now()}.json`);
+            const useTxt = $formatCheckbox.is(':checked');
+            performExport(m.all(), `memory_table_all_${m.gid()}_${Date.now()}`, useTxt);
         }).hover(
             function() { $(this).css('filter', 'brightness(0.9)'); },
             function() { $(this).css('filter', 'brightness(1)'); }
@@ -3449,7 +3555,8 @@ function bnd() {
                 customAlert('当前没有总结数据可导出', '提示');
                 return;
             }
-            performExport([summarySheet], `memory_table_summary_${m.gid()}_${Date.now()}.json`);
+            const useTxt = $formatCheckbox.is(':checked');
+            performExport([summarySheet], `memory_table_summary_${m.gid()}_${Date.now()}`, useTxt);
         }).hover(
             function() { $(this).css('filter', 'brightness(0.9)'); },
             function() { $(this).css('filter', 'brightness(1)'); }
@@ -3460,7 +3567,8 @@ function bnd() {
             html: '📊 仅导出详情 (不含总结)',
             css: { ...btnStyle, background: '#17a2b8' }
         }).on('click', function() {
-            performExport(m.all().slice(0, 8), `memory_table_details_${m.gid()}_${Date.now()}.json`);
+            const useTxt = $formatCheckbox.is(':checked');
+            performExport(m.all().slice(0, 8), `memory_table_details_${m.gid()}_${Date.now()}`, useTxt);
         }).hover(
             function() { $(this).css('filter', 'brightness(0.9)'); },
             function() { $(this).css('filter', 'brightness(1)'); }
@@ -3499,7 +3607,7 @@ function bnd() {
         });
 
         // 12. 组装窗口
-        $box.append($title, $desc, $btnAll, $btnSummary, $btnDetails, $btnCancel, $tip);
+        $box.append($title, $desc, $formatContainer, $btnAll, $btnSummary, $btnDetails, $btnCancel, $tip);
         $overlay.append($box);
         $('body').append($overlay);
 
