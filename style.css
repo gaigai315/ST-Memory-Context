@@ -1,4 +1,4 @@
-/* Gaigai v1.1.15 */
+/* Gaigai v1.2.0 */
 
 :root {
     --g-c: #888888;
@@ -365,18 +365,36 @@
     
     .g-w {
         width: 100vw !important;
+        max-width: 100vw !important; /* ✅ 防止因 padding 导致容器超宽 */
         height: 85vh !important;
-        max-width: none !important;
         border-radius: 12px 12px 0 0 !important;
         max-height: none !important;
         margin: 0 !important;
         border: none !important;
         position: absolute !important;
         bottom: 0 !important;
+
+        /* ✅ 防止左右晃动 */
+        overflow-x: hidden !important; /* 彻底禁止横向滚动 */
+        touch-action: pan-y !important; /* 告诉浏览器：手指滑动只触发垂直滚动，忽略水平动作 */
     }
 
     .g-bd {
         padding: 4px 6px !important;
+    }
+
+    /* ✅ 配置面板容器防抖动 */
+    .g-p {
+        overflow-x: hidden !important; /* 彻底禁止横向滚动 */
+        touch-action: pan-y !important; /* 只允许垂直滚动 */
+    }
+
+    /* ✅ 防止长按选中导致抖动 */
+    .g-p label,
+    .g-p h4,
+    .g-p legend,
+    .g-p div {
+        touch-action: pan-y !important;
     }
     
     /* 2. 标题栏变矮 */

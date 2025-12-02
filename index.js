@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.1.15
+// 记忆表格 v1.2.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function() {
@@ -12,10 +12,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.1.17 启动');
+    console.log('🚀 记忆表格 v1.2.0 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.1.17';
+    const V = 'v1.2.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键
@@ -55,7 +55,8 @@ const C = {
         hideTag: true,
         filterHistory: true,
         cloudSync: true,
-        syncWorldInfo: false           // 同步总结到世界书
+        syncWorldInfo: false,          // 同步总结到世界书
+        customTables: null             // 用户自定义表格结构（格式同 DEFAULT_TABLES）
     };
 
     // ==================== API配置对象 ====================
@@ -358,7 +359,8 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     const MEMORY_TAG_REGEX = /<(Memory|GaigaiMemory|memory|tableEdit|gaigaimemory|tableedit)>([\s\S]*?)<\/\1>/gi;
 
     // ----- 表格结构定义（9个表格） -----
-    const T = [
+    // ==================== 默认表格定义（出厂设置模板） ====================
+    const DEFAULT_TABLES = [
         { n: '主线剧情', c: ['日期', '开始时间', '完结时间', '事件概要', '状态'] },
         { n: '支线追踪', c: ['状态', '支线名', '开始时间', '完结时间', '事件追踪', '关键NPC'] },
         { n: '角色状态', c: ['角色名', '状态变化', '时间', '原因', '当前位置'] },
@@ -416,12 +418,12 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     function customAlert(message, title = '提示') {
         return new Promise((resolve) => {
             const id = 'custom-alert-' + Date.now();
-            const $overlay = $('<div>', { 
+            const $overlay = $('<div>', {
                 id: id,
                 css: {
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     width: '100vw', height: '100vh',
-                    background: 'rgba(0,0,0,0.6)', zIndex: 10000000,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 20000005,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px', margin: 0
                 }
@@ -838,12 +840,12 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     function customConfirm(message, title = '确认') {
         return new Promise((resolve) => {
             const id = 'custom-confirm-' + Date.now();
-            const $overlay = $('<div>', { 
+            const $overlay = $('<div>', {
                 id: id,
                 css: {
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     width: '100vw', height: '100vh',
-                    background: 'rgba(0,0,0,0.6)', zIndex: 10000000,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 20000005,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px', margin: 0
                 }
@@ -916,9 +918,244 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
             
             $(document).on('keydown.' + id, (e) => {
-                if (e.key === 'Escape') { $(document).off('keydown.' + id); $overlay.remove(); resolve(false); } 
+                if (e.key === 'Escape') { $(document).off('keydown.' + id); $overlay.remove(); resolve(false); }
                 else if (e.key === 'Enter') { $(document).off('keydown.' + id); $overlay.remove(); resolve(true); }
             });
+        });
+    }
+
+    // ✅✅✅ [新增] AI 生成失败重试弹窗
+    function customRetryAlert(message, title = '⚠️ 生成失败') {
+        return new Promise((resolve) => {
+            const id = 'custom-retry-' + Date.now();
+            const $overlay = $('<div>', {
+                id: id,
+                css: {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.6)', zIndex: 20000005,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px', margin: 0
+                }
+            });
+
+            const $dialog = $('<div>', {
+                css: {
+                    background: '#fff', borderRadius: '12px',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    maxWidth: '500px', width: '90%',
+                    maxHeight: '80vh', overflow: 'auto'
+                }
+            });
+
+            const $header = $('<div>', {
+                css: {
+                    background: '#dc3545', // 红色警告背景
+                    color: '#ffffff',
+                    padding: '16px 20px', borderRadius: '12px 12px 0 0',
+                    fontSize: '16px', fontWeight: '600'
+                },
+                text: title
+            });
+
+            const $body = $('<div>', {
+                css: {
+                    padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
+                    color: '#333', whiteSpace: 'pre-wrap'
+                },
+                text: message
+            });
+
+            const $footer = $('<div>', {
+                css: {
+                    padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right',
+                    display: 'flex', justifyContent: 'flex-end', gap: '10px'
+                }
+            });
+
+            const $cancelBtn = $('<button>', {
+                text: '🚫 放弃',
+                css: {
+                    background: '#6c757d', color: '#ffffff',
+                    border: 'none', padding: '8px 24px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
+                }
+            }).on('click', () => { $overlay.remove(); resolve(false); });
+
+            const $retryBtn = $('<button>', {
+                text: '🔄 重试',
+                css: {
+                    background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)', // 橙色醒目按钮
+                    color: '#ffffff',
+                    border: 'none', padding: '8px 24px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s',
+                    fontWeight: '600'
+                }
+            }).on('click', () => { $overlay.remove(); resolve(true); });
+
+            // 悬停效果
+            $cancelBtn.hover(function(){$(this).css('filter','brightness(0.9)')}, function(){$(this).css('filter','brightness(1)')});
+            $retryBtn.hover(function(){$(this).css('filter','brightness(1.1)')}, function(){$(this).css('filter','brightness(1)')});
+
+            $footer.append($cancelBtn, $retryBtn);
+            $dialog.append($header, $body, $footer);
+            $overlay.append($dialog);
+            $('body').append($overlay);
+
+            $overlay.on('click', (e) => {
+                if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
+            });
+
+            $(document).on('keydown.' + id, (e) => {
+                if (e.key === 'Escape') { $(document).off('keydown.' + id); $overlay.remove(); resolve(false); }
+                else if (e.key === 'Enter') { $(document).off('keydown.' + id); $overlay.remove(); resolve(true); }
+            });
+        });
+    }
+
+    // ✅✅✅ [新增] 分批总结配置弹窗
+    function showBatchConfigDialog(totalRange, defaultStep) {
+        return new Promise((resolve) => {
+            const id = 'batch-config-' + Date.now();
+            const batchCount = Math.ceil(totalRange / defaultStep);
+
+            const $overlay = $('<div>', {
+                id: id,
+                css: {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.6)', zIndex: 10000000,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px', margin: 0
+                }
+            });
+
+            const $dialog = $('<div>', {
+                css: {
+                    background: '#fff', borderRadius: '12px',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    maxWidth: '500px', width: '90%',
+                    maxHeight: '80vh', overflow: 'auto'
+                }
+            });
+
+            const $header = $('<div>', {
+                css: {
+                    background: UI.c,
+                    color: UI.tc,
+                    padding: '16px 20px', borderRadius: '12px 12px 0 0',
+                    fontSize: '16px', fontWeight: '600'
+                },
+                text: '📊 分批总结配置'
+            });
+
+            const $body = $('<div>', {
+                css: {
+                    padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
+                    color: '#333'
+                }
+            });
+
+            $body.html(`
+                <div style="margin-bottom: 16px;">
+                    <p style="margin: 0 0 12px 0; color: #666;">
+                        检测到总结范围较大 (<strong style="color: ${UI.c};">${totalRange} 层</strong>)。
+                        <br>建议分批执行以提高成功率。
+                    </p>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 8px;">
+                        每批层数 (Step)：
+                    </label>
+                    <input type="number" id="batch-step-input" value="${defaultStep}" min="10" max="${totalRange}"
+                        style="width: 100%; padding: 8px; border: 2px solid ${UI.c}; border-radius: 6px; font-size: 16px; text-align: center; font-weight: bold;">
+                    <div style="font-size: 11px; color: #666; margin-top: 6px;">
+                        建议范围：10 ~ ${totalRange} 层
+                    </div>
+                </div>
+                <div style="background: rgba(0,0,0,0.05); padding: 12px; border-radius: 6px; text-align: center; margin-bottom: 16px;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 4px;">预计分批数量</div>
+                    <div id="batch-count-display" style="font-size: 28px; font-weight: bold; color: ${UI.tc};">${batchCount} 批</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 6px;">
+                    <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="batch-silent-mode" checked style="margin-right: 8px; transform: scale(1.2);">
+                        <span style="font-size: 14px;">🤫 静默执行 (不弹窗确认每一批)</span>
+                    </label>
+                    <div style="font-size: 11px; color: #666; margin-top: 6px; margin-left: 24px;">
+                        取消勾选后，每批完成都会弹窗让您确认
+                    </div>
+                </div>
+            `);
+
+            const $footer = $('<div>', {
+                css: {
+                    padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right',
+                    display: 'flex', justifyContent: 'flex-end', gap: '10px'
+                }
+            });
+
+            const $cancelBtn = $('<button>', {
+                text: '取消',
+                css: {
+                    background: '#6c757d', color: '#ffffff',
+                    border: 'none', padding: '8px 24px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
+                }
+            }).on('click', () => { $overlay.remove(); resolve(null); });
+
+            const $startBtn = $('<button>', {
+                text: '🚀 开始执行',
+                css: {
+                    background: UI.c,
+                    color: UI.tc,
+                    border: 'none', padding: '8px 24px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s',
+                    fontWeight: '600'
+                }
+            }).on('click', () => {
+                const customStep = parseInt($('#batch-step-input').val());
+                if (isNaN(customStep) || customStep < 10 || customStep > totalRange) {
+                    alert('请输入有效的步长（10 ~ ' + totalRange + '）');
+                    return;
+                }
+                const silent = $('#batch-silent-mode').is(':checked');
+                $overlay.remove();
+                resolve({ step: customStep, silent: silent });
+            });
+
+            // 悬停效果
+            $cancelBtn.hover(function(){$(this).css('filter','brightness(0.9)')}, function(){$(this).css('filter','brightness(1)')});
+            $startBtn.hover(function(){$(this).css('filter','brightness(1.1)')}, function(){$(this).css('filter','brightness(1)')});
+
+            $footer.append($cancelBtn, $startBtn);
+            $dialog.append($header, $body, $footer);
+            $overlay.append($dialog);
+            $('body').append($overlay);
+
+            // 实时更新预计分批数量
+            $('#batch-step-input').on('input', function() {
+                const step = parseInt($(this).val());
+                if (!isNaN(step) && step > 0) {
+                    const count = Math.ceil(totalRange / step);
+                    $('#batch-count-display').text(count + ' 批');
+                }
+            });
+
+            $overlay.on('click', (e) => {
+                if (e.target === $overlay[0]) { $overlay.remove(); resolve(null); }
+            });
+
+            $(document).on('keydown.' + id, (e) => {
+                if (e.key === 'Escape') { $(document).off('keydown.' + id); $overlay.remove(); resolve(null); }
+                else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    $startBtn.click();
+                }
+            });
+
+            // 聚焦输入框
+            setTimeout(() => $('#batch-step-input').focus().select(), 100);
         });
     }
 
@@ -1005,9 +1242,52 @@ class SM {
         constructor(manager) { this.m = manager; }
         
         // ✅✅✅ 极简版保存逻辑：不合并，直接新增一行
-        save(summaryData) {
+        save(summaryData, note = "") {
             const sumSheet = this.m.get(8); // 获取第9个表格（索引8）即总结表
-            
+
+            // ✅ 【自动扩容】如果传入了备注，但总结表只有2列，自动添加第3列
+            if (note && sumSheet.c.length < 3) {
+                console.log('⚙️ [自动扩容] 检测到备注数据，但总结表只有2列，正在自动添加[备注]列...');
+
+                // 1. 为表格实例添加列
+                sumSheet.c.push("备注");
+
+                // 2. 同步到全局配置 C.customTables
+                // 如果 C.customTables 不存在或为空，先初始化它
+                if (!C.customTables || !Array.isArray(C.customTables) || C.customTables.length === 0) {
+                    // 基于当前 m.all() 的表格结构初始化 customTables
+                    C.customTables = this.m.all().map(sheet => ({
+                        n: sheet.n,
+                        c: [...sheet.c]  // 深拷贝列数组
+                    }));
+                    console.log('📋 [自动扩容] 已初始化 C.customTables');
+                }
+
+                // 确保索引8存在且更新列定义
+                if (C.customTables[8]) {
+                    C.customTables[8].c = [...sumSheet.c];  // 同步列定义
+                    console.log('✅ [自动扩容] C.customTables[8] 已更新为:', C.customTables[8].c);
+                }
+
+                // 3. 保存到 localStorage
+                try {
+                    localStorage.setItem(CK, JSON.stringify(C));
+                    console.log('💾 [自动扩容] 配置已保存到 localStorage');
+                } catch (e) {
+                    console.warn('⚠️ [自动扩容] localStorage 保存失败:', e);
+                }
+
+                // 4. 同步到云端
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [自动扩容] 云端同步失败:', err);
+                    });
+                    console.log('☁️ [自动扩容] 已触发云端同步');
+                }
+
+                console.log('✅ [自动扩容] 总结表已自动扩容至3列，备注功能已激活');
+            }
+
             // 1. 处理内容，确保是纯文本
             let content = '';
             if (typeof summaryData === 'string') {
@@ -1016,7 +1296,7 @@ class SM {
                 // 防御性编程：万一传进来是数组，转成字符串
                 content = summaryData.map(item => item.content || item).join('\n\n');
             }
-            
+
             if (!content) return;
 
             // 2. 自动生成类型名称 (例如: 剧情总结 1, 剧情总结 2)
@@ -1024,9 +1304,18 @@ class SM {
             const nextIndex = sumSheet.r.length + 1;
             const typeName = `剧情总结 ${nextIndex}`;
 
-            // 3. 直接插入新行 (0列=类型, 1列=内容)
-            sumSheet.ins({ 0: typeName, 1: content });
-            
+            // 3. ✅ 增强：检查总结表是否有第 3 列（索引 2），支持备注功能
+            const rowData = { 0: typeName, 1: content };
+
+            // 扩容后，sumSheet.c.length 已经是 3，可以直接写入备注
+            if (sumSheet.c.length > 2 && note) {
+                rowData[2] = note;
+                console.log(`📌 [总结保存] 自动填入备注: "${note}"`);
+            }
+
+            // 4. 插入新行
+            sumSheet.ins(rowData);
+
             this.m.save();
         }
 
@@ -1065,7 +1354,35 @@ class SM {
      * @property {SM} sm - 总结管理器实例
      */
     class M {
-        constructor() { this.s = []; this.id = null; T.forEach(tb => this.s.push(new S(tb.n, tb.c))); this.sm = new SM(this); }
+        constructor() {
+            this.s = [];
+            this.id = null;
+            this.initTables(DEFAULT_TABLES);
+        }
+
+        // 动态初始化表格结构（支持用户自定义）
+        initTables(tableDefinitions) {
+            if (!tableDefinitions || !Array.isArray(tableDefinitions) || tableDefinitions.length === 0) {
+                console.warn('⚠️ [initTables] 表格定义无效，使用默认结构');
+                tableDefinitions = DEFAULT_TABLES;
+            }
+
+            // 清空当前表格
+            this.s = [];
+
+            // 根据定义重新创建表格
+            tableDefinitions.forEach(tb => {
+                if (tb && tb.n && Array.isArray(tb.c)) {
+                    this.s.push(new S(tb.n, tb.c));
+                }
+            });
+
+            // 重新初始化总结管理器
+            this.sm = new SM(this);
+
+            console.log(`📋 [initTables] 已加载 ${this.s.length} 个表格:`, this.s.map(s => s.n).join(', '));
+        }
+
         get(i) { return this.s[i]; }
         all() { return this.s; }
         
@@ -1112,9 +1429,11 @@ class SM {
             if (this.id !== id) {
                 // 🔄 检测到会话/角色切换，重置所有状态
                 this.id = id;
-                this.s = [];
-                T.forEach(tb => this.s.push(new S(tb.n, tb.c)));
-                this.sm = new SM(this);
+                // 使用当前配置的表格结构（如有自定义则用自定义，否则用默认）
+                const tableDef = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
+                    ? C.customTables
+                    : DEFAULT_TABLES;
+                this.initTables(tableDef);
                 lastInternalSaveTime = 0;
                 summarizedRows = {}; // ✅ 核心修复：清空"已总结行"状态，防止跨会话串味
                 userColWidths = {};   // ✅ 核心修复：清空列宽设置，防止跨会话串味
@@ -1401,67 +1720,10 @@ function parseOpenAIModelsResponse(data) {
 }
 
   const m = new M();
-    
-    // ✅✅✅ 新增：独立的配置加载函数（确保每次打开设置都能读到最新）
-    async function loadConfig() {
-        try {
-            // 🌐 [优先级1] 尝试从服务端加载配置 (支持跨设备同步)
-            try {
-                if (typeof SillyTavern !== 'undefined' && SillyTavern.loadExtensionSettings) {
-                    const serverSettings = await SillyTavern.loadExtensionSettings('st_memory_table');
-                    if (serverSettings && Object.keys(serverSettings).length > 0) {
-                        console.log('🌐 检测到服务端配置，优先使用 (跨设备同步)');
 
-                        // 从服务端恢复基础配置
-                        if (serverSettings.config) {
-                            Object.keys(serverSettings.config).forEach(k => {
-                                if (C.hasOwnProperty(k)) C[k] = serverSettings.config[k];
-                            });
-                            console.log('✅ 基础配置已从服务端同步');
-                        }
+    // ✅✅✅ [已废弃] 旧版 loadConfig 函数已移除
+    // 新版 loadConfig 函数位于文件末尾，使用 window.extension_settings 而非虚构的 API
 
-                        // 从服务端恢复 API 配置
-                        if (serverSettings.api) {
-                            API_CONFIG = { ...API_CONFIG, ...serverSettings.api };
-                            console.log('✅ API 配置已从服务端同步');
-                        }
-
-                        // 同步到本地存储 (作为缓存)
-                        localStorage.setItem(CK, JSON.stringify(C));
-                        localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-
-                        return; // 服务端加载成功，直接返回
-                    }
-                }
-            } catch (serverErr) {
-                console.warn('⚠️ 服务端配置加载失败，降级到本地存储:', serverErr.message);
-            }
-
-            // 🏠 [优先级2] 降级到本地存储 (localStorage)
-            // 1. 加载基础配置 (C)
-            const cv = localStorage.getItem(CK);
-            if (cv) {
-                const savedC = JSON.parse(cv);
-                // 智能合并：只读取当前版本存在的配置项，保留新版本的默认值
-                Object.keys(savedC).forEach(k => {
-                    if (C.hasOwnProperty(k)) C[k] = savedC[k];
-                });
-                console.log('⚙️ 配置已从本地存储加载');
-            }
-
-            // 2. 加载 API 配置 (AK)
-            const av = localStorage.getItem(AK);
-            if (av) {
-                const savedAPI = JSON.parse(av);
-                API_CONFIG = { ...API_CONFIG, ...savedAPI };
-            }
-
-            // 3. 加载提示词 (PK) - 如果需要也可以放在这里，不过提示词有单独的加载逻辑
-        } catch (e) {
-            console.error('❌ 配置加载失败:', e);
-        }
-    }
-    
     // 列宽管理
     // ❌ saveColWidths() 和 loadColWidths() 已废弃：
     // 列宽/行高现在通过 m.save()/m.load() 自动保存到会话存档中，确保多会话隔离
@@ -2627,6 +2889,14 @@ function showBigEditor(ti, ri, ci, currentValue) {
      * 渲染所有表格的标签页和表格数据
      */
 function shw() {
+    // ✅ 【会话检查】防止在酒馆主页加载残留数据
+    const context = SillyTavern.getContext();
+    // 如果没有 chatId (说明在主页) 或者 chat 数组为空 (说明还没加载对话)
+    if (!context || !context.chatId || !context.chat) {
+        customAlert('⚠️ 请先进入一个聊天会话，然后再打开记忆表格。\n(当前处于主页或空闲状态)', '未检测到会话');
+        return;
+    }
+
     m.load();
     pageStack = [shw];
     
@@ -3674,7 +3944,11 @@ function bnd() {
         
         // 2. 重置总结进度
         API_CONFIG.lastSummaryIndex = 0;
+        API_CONFIG.lastBackfillIndex = 0;  // ✅ 修复：同时重置批量填表进度
         localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+        // 🌐 同步重置后的配置到云端
+        await saveAllSettingsToCloud();
         
         // ✨✨✨ 关键修改：传入 true，强制突破熔断保护 ✨✨✨
         m.save(true); 
@@ -3791,14 +4065,167 @@ function bnd() {
     // ========================================================================
 
     /**
+     * 分批总结执行函数
+     * 将大范围的总结任务切分成多个小批次顺序执行
+     * @param {number} start - 起始楼层
+     * @param {number} end - 结束楼层
+     * @param {number} step - 每批的层数
+     * @param {string} mode - 总结模式 'chat' 或 'table'
+     * @param {boolean} silent - 是否静默执行（不弹窗确认每批）
+     */
+    /**
+     * 分批总结执行函数 (真·静默修复版)
+     */
+    async function runBatchSummary(start, end, step, mode = 'chat', silent = false) {
+        const totalRange = end - start;
+        const batches = [];
+
+        // 切分任务
+        for (let i = start; i < end; i += step) {
+            const batchEnd = Math.min(i + step, end);
+            batches.push({ start: i, end: batchEnd });
+        }
+
+        console.log(`📊 [分批总结] 总范围: ${totalRange} 层，分为 ${batches.length} 批执行，静默模式: ${silent}`);
+
+        // ✅ [修复] 只有非静默模式才创建全屏遮罩
+        let $progressOverlay = null;
+        if (!silent) {
+            const progressId = 'batch-progress-' + Date.now();
+            $progressOverlay = $('<div>', {
+                id: progressId,
+                css: {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.8)', zIndex: 10000000,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }
+            });
+
+            const $progressBox = $('<div>', {
+                css: {
+                    background: '#fff', borderRadius: '12px', padding: '24px',
+                    maxWidth: '500px', width: '90%', textAlign: 'center'
+                }
+            });
+
+            $progressBox.html(`
+                <h3 style="margin: 0 0 16px 0; color: #333;">📊 分批总结进行中</h3>
+                <div id="batch-progress-text" style="font-size: 14px; color: #666; margin-bottom: 12px;">
+                    准备执行...
+                </div>
+                <div style="background: #f0f0f0; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
+                    <div id="batch-progress-bar" style="background: linear-gradient(90deg, #28a745, #20c997); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div id="batch-progress-detail" style="font-size: 12px; color: #999;">
+                    0 / ${batches.length} 批已完成
+                </div>
+            `);
+
+            $progressOverlay.append($progressBox);
+            $('body').append($progressOverlay);
+        } else {
+            // ✅ 静默模式：使用轻提示
+            if (typeof toastr !== 'undefined') toastr.info(`开始执行分批总结 (共 ${batches.length} 批)`, '任务启动');
+        }
+
+        let successCount = 0;
+        let failedBatches = [];
+
+        // 依次执行每一批
+        for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i];
+            const batchNum = i + 1;
+
+            // 更新进度 UI
+            if (!silent && $progressOverlay) {
+                $('#batch-progress-text').text(`正在执行 (任务 ${batchNum} / ${batches.length}) - 范围: ${batch.start}-${batch.end} 层`);
+                $('#batch-progress-bar').css('width', ((i / batches.length) * 100) + '%');
+            } else if (silent) {
+                // 静默模式不发每一步的 toastr，避免刷屏，只在成功/失败时反馈
+            }
+
+            try {
+                console.log(`🔄 [分批 ${batchNum}/${batches.length}] 开始: ${batch.start}-${batch.end}`);
+
+                // 调用核心函数 (isBatch=true 确保内部不弹窗)
+                const result = await callAIForSummary(batch.start, batch.end, mode, silent, true);
+
+                if (result && result.success) {
+                    successCount++;
+                    console.log(`✅ [分批 ${batchNum}/${batches.length}] 成功`);
+
+                    if (!silent && $progressOverlay) {
+                        $('#batch-progress-detail').text(`${successCount} / ${batches.length} 批已完成`);
+                        $('#batch-progress-bar').css('width', (((i + 1) / batches.length) * 100) + '%');
+                    } else if (silent && typeof toastr !== 'undefined') {
+                        // ✅ 静默模式：每完成一批弹一个绿色提示
+                        toastr.success(`第 ${batchNum} 批 (${batch.start}-${batch.end}) 已保存`, '进度更新');
+                    }
+
+                } else if (result && result.success === false) {
+                    console.log(`🚫 [分批 ${batchNum}/${batches.length}] 用户取消`);
+                    // 用户取消属于主动行为，这里暂不视为报错
+                    if (silent && typeof toastr !== 'undefined') toastr.warning(`第 ${batchNum} 批已跳过`, '用户取消');
+                } else {
+                    throw new Error(result ? result.error : '未知错误');
+                }
+
+            } catch (error) {
+                console.error(`❌ [分批 ${batchNum}/${batches.length}] 失败:`, error);
+                failedBatches.push({ batch: batchNum, range: `${batch.start}-${batch.end}`, error: error.message });
+
+                // ⚠️ 异常情况：打破静默，必须询问用户
+                if ($progressOverlay) $progressOverlay.hide();
+
+                const shouldContinue = await customConfirm(
+                    `第 ${batchNum} 批 (${batch.start}-${batch.end}) 失败：\n${error.message}\n\n是否继续执行剩余批次？`,
+                    '⚠️ 批次失败'
+                );
+
+                if ($progressOverlay) $progressOverlay.show();
+
+                if (!shouldContinue) {
+                    console.log('🛑 [分批总结] 用户中止');
+                    break;
+                }
+            }
+        }
+
+        // 移除进度弹窗
+        if ($progressOverlay) $progressOverlay.remove();
+
+        // 结果汇报
+        if (failedBatches.length === 0) {
+            // 全部成功
+            API_CONFIG.lastSummaryIndex = end;
+            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            m.save();
+            console.log(`✅ [分批总结] 全部完成，进度更新至: ${end}`);
+
+            if (!silent) {
+                await customAlert(`✅ 分批总结全部完成！\n共 ${successCount} 批已保存。`, '完成');
+            } else if (typeof toastr !== 'undefined') {
+                toastr.success(`✅ 所有批次执行完毕`, '总结完成');
+            }
+        } else {
+            // 有失败
+            let reportMsg = `⚠️ 分批总结结束\n\n✅ 成功: ${successCount}\n❌ 失败: ${failedBatches.length}`;
+            // 有失败时，即使是静默模式也建议弹窗告知详情
+            await customAlert(reportMsg, '部分完成');
+        }
+    }
+
+    /**
      * AI总结核心函数（支持静默模式和史官防屏蔽）
      * 调用AI对表格数据或聊天历史进行总结，支持手动和自动触发
      * @param {number} forceStart - 强制指定起始楼层（可选）
      * @param {number} forceEnd - 强制指定结束楼层（可选）
      * @param {string} forcedMode - 强制指定总结模式 'table'|'chat'（可选）
      * @param {boolean} isSilent - 是否静默模式（不弹窗直接保存）
+     * @param {boolean} isBatch - 是否分批执行模式（避免阻塞式弹窗）
      */
-async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false) {
+async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false) {
     await loadConfig(); // 强制刷新配置
     
     const currentMode = forcedMode || API_CONFIG.summarySource;
@@ -3823,7 +4250,7 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
                 // 静默/自动模式：直接终止，不报错，不弹窗
                 console.log('🛑 [自动总结] 表格内容为空（或全已归档），跳过。');
             }
-            return; // ⛔️ 强制结束
+            return { success: false, error: '表格内容为空或全部已归档' }; // ✅ 修复：返回明确的失败对象
         }
     }
 
@@ -3842,7 +4269,9 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
 
     // UI 交互逻辑（表格模式下的确认）
     if (isTableMode && !isSilent) {
-        if (!await customConfirm(`即将总结 ${tables.length} 个表格`, '确认')) return;
+        if (!await customConfirm(`即将总结 ${tables.length} 个表格`, '确认')) {
+            return { success: false, error: '用户取消操作' }; // ✅ 修复：返回明确的失败对象
+        }
     } 
     
     const activeBtn = forceStart !== null ? manualBtn : btn;
@@ -3859,7 +4288,7 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
         if (!ctx || !ctx.chat || ctx.chat.length === 0) {
             if (!isSilent) await customAlert('聊天记录为空', '错误');
             if (activeBtn.length) activeBtn.text(originalText).prop('disabled', false);
-            return;
+            return { success: false, error: '聊天记录为空' }; // ✅ 修复：返回明确的失败对象
         }
 
         endIndex = (forceEnd !== null) ? parseInt(forceEnd) : ctx.chat.length;
@@ -3868,7 +4297,7 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
         if (startIndex >= endIndex) {
              if (!isSilent) await customAlert(`范围无效`, '提示');
              if (activeBtn.length) activeBtn.text(originalText).prop('disabled', false);
-             return;
+             return { success: false, error: '范围无效' }; // ✅ 修复：返回明确的失败对象
         }
 
         // (Msg 1) System Prompt（完全由用户配置决定）
@@ -3948,7 +4377,7 @@ ${currentTableData ? currentTableData : "（表格为空）"}
         if (validMsgCount === 0) {
              if (!isSilent) await customAlert('范围内无有效内容', '提示');
              if (activeBtn.length) activeBtn.text(originalText).prop('disabled', false);
-             return;
+             return { success: false, error: '范围内无有效内容' }; // ✅ 修复：返回明确的失败对象
         }
 
         // ✨ 智能合并：检查最后一条消息的角色
@@ -4023,6 +4452,12 @@ ${currentTableData ? currentTableData : "（表格为空）"}
     console.log('✅ [Instruction-Last] 总结任务已采用后置指令模式');
     console.log(logMsg);
 
+    // ✅ 计算楼层范围字符串（用于备注列）
+    const currentRangeStr = (!isTableMode && startIndex !== undefined && endIndex !== undefined)
+        ? `${startIndex}-${endIndex}`
+        : "";
+    console.log(`📌 [范围计算] 当前范围: "${currentRangeStr}"`);
+
     // ============================================================
     // ✨✨✨【终极清洗】API请求前最后一道防线 ✨✨✨
     // ============================================================
@@ -4070,7 +4505,10 @@ ${currentTableData ? currentTableData : "（表格为空）"}
         if (activeBtn.length) activeBtn.text(originalText).prop('disabled', false);
         
         if (result.success) {
-            if (!result.summary || !result.summary.trim()) { if(!isSilent) await customAlert('AI返回空', '警告'); return; }
+            if (!result.summary || !result.summary.trim()) {
+                if(!isSilent) await customAlert('AI返回空', '警告');
+                return { success: false, error: 'AI 返回空内容' }; // ✅ 修复：返回明确的失败对象
+            }
 
             let cleanSummary = result.summary;
 
@@ -4112,7 +4550,7 @@ ${currentTableData ? currentTableData : "（表格为空）"}
 
             if (!cleanSummary || cleanSummary.length < 10) {
                 if (!isSilent) await customAlert('总结内容过短或无效', '警告');
-                return;
+                return { success: false, error: '总结内容过短或无效' }; // ✅ 修复：返回明确的失败对象
             }
 
             if (!isTableMode) {
@@ -4128,7 +4566,7 @@ ${currentTableData ? currentTableData : "（表格为空）"}
             }
             
             if (isSilent) {
-                m.sm.save(cleanSummary);
+                m.sm.save(cleanSummary, currentRangeStr); // ✅ 静默模式：自动保存范围
                 await syncToWorldInfo(cleanSummary); // 同步到世界书
                 // ✅ 只有明确是 table 模式，且不是自动触发的聊天总结，才标记表格
                 if (isTableMode && currentMode === 'table') {
@@ -4141,230 +4579,305 @@ ${currentTableData ? currentTableData : "（表格为空）"}
                 }
                 m.save();
                 updateCurrentSnapshot();
-                
+
                 if (typeof toastr !== 'undefined') {
                     toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
                 } else {
                     console.log('✅ 自动总结已静默完成');
                 }
+                return { success: true }; // ✅ 静默模式也返回成功结果
             } else {
                 // 传递重新生成所需的参数
                 const regenParams = { forceStart, forceEnd, forcedMode, isSilent };
-                showSummaryPreview(cleanSummary, tables, isTableMode, endIndex, regenParams);
+                const result = await showSummaryPreview(cleanSummary, tables, isTableMode, endIndex, regenParams, currentRangeStr, isBatch); // ✅ 传递范围字符串和分批标记
+                return result; // ✅ 返回用户操作结果（保存/放弃）
             }
             
         } else {
-            if (!isSilent) await customAlert('生成失败：' + result.error, '错误');
+            // ⚠️ API 返回失败，打破静默，弹出重试弹窗
+            const errorMsg = `生成失败：${result.error}\n\n是否重新尝试？`;
+            const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
+
+            if (shouldRetry) {
+                // 用户选择重试，递归调用，传入相同参数
+                console.log('🔄 [用户重试] 正在重新调用 AI 生成...');
+                return callAIForSummary(forceStart, forceEnd, forcedMode, isSilent);
+            } else {
+                // ✅ 修复：用户选择不重试，返回明确的失败对象
+                console.log('🚫 [用户放弃] 用户选择不重试');
+                return { success: false, error: result.error || 'API 生成失败，用户取消重试' };
+            }
         }
     } catch (e) {
         if (activeBtn.length) activeBtn.text(originalText).prop('disabled', false);
-        if (!isSilent) await customAlert('错误：' + e.message, '错误');
+
+        // ⚠️ 发生异常，打破静默，弹出重试弹窗
+        const errorMsg = `错误：${e.message}\n\n是否重新尝试？`;
+        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
+
+        if (shouldRetry) {
+            // 用户选择重试，递归调用，传入相同参数
+            console.log('🔄 [用户重试] 正在重新调用 AI 生成...');
+            return callAIForSummary(forceStart, forceEnd, forcedMode, isSilent);
+        } else {
+            // ✅ 修复：用户选择不重试，返回明确的失败对象
+            console.log('🚫 [用户放弃] 用户选择不重试');
+            return { success: false, error: e.message || '生成异常，用户取消重试' };
+        }
     }
 }
     
 // ✅✅✅ 修正版：接收模式参数，精准控制弹窗逻辑 (修复黑色背景看不清问题)
-function showSummaryPreview(summaryText, sourceTables, isTableMode, newIndex = null, regenParams = null) {
-    const h = `
-        <div class="g-p">
-            <h4>📝 记忆总结预览</h4>
-            <p style="color:#666; font-size:11px; margin-bottom:10px;">
-                ✅ 已生成总结建议<br>
-                💡 您可以直接编辑润色内容，满意后点击保存
-            </p>
-            <!-- ✨ 核心修复：强制指定白色背景和黑色文字，防止被酒馆深色主题同化 -->
-            <textarea id="summary-editor" style="width:100%; height:350px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.8; background-color: #ffffff !important; color: #333333 !important;">${esc(summaryText)}</textarea>
-            <div style="margin-top:12px; display: flex; gap: 10px;">
-                <button id="cancel-summary" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃</button>
-                ${regenParams ? '<button id="regen-summary" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
-                <button id="save-summary" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">✅ 保存总结</button>
+function showSummaryPreview(summaryText, sourceTables, isTableMode, newIndex = null, regenParams = null, rangeStr = "", isBatch = false) {
+    return new Promise((resolve) => {
+        const h = `
+            <div class="g-p" style="display: flex; flex-direction: column; height: 100%;">
+                <h4 style="margin: 0 0 8px 0;">📝 记忆总结预览</h4>
+                <p style="color:#666; font-size:11px; margin: 0 0 10px 0;">
+                    ✅ 已生成总结建议<br>
+                    💡 您可以直接编辑润色内容，满意后点击保存
+                </p>
+                <!-- ✨ 核心修复：强制指定白色背景和黑色文字，防止被酒馆深色主题同化 -->
+                <textarea id="summary-editor" style="flex: 1; width:100%; min-height: 0; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize: none; line-height:1.8; background-color: #ffffff !important; color: #333333 !important; margin-bottom: 10px;">${esc(summaryText)}</textarea>
+
+                <!-- ✅ 新增：备注/范围输入框 -->
+                <div style="margin-bottom:12px; flex-shrink: 0;">
+                    <label for="summary-note" style="display:block; font-size:12px; color:#666; margin-bottom:4px;">📌 备注/范围：</label>
+                    <input type="text"
+                           id="summary-note"
+                           value="${esc(rangeStr)}"
+                           placeholder="例如：0-50、第1章、主线任务等"
+                           style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; font-size:12px; background-color: #ffffff !important; color: #333333 !important;">
+                    <div style="font-size:10px; color:#999; margin-top:4px;">💡 提示：此备注会自动保存到总结表第3列（如果该列存在）</div>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-shrink: 0;">
+                    <button id="cancel-summary" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃</button>
+                    ${regenParams ? '<button id="regen-summary" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
+                    <button id="save-summary" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">✅ 保存总结</button>
+                </div>
             </div>
-        </div>
-    `;
+        `;
 
-    $('#g-summary-pop').remove();
-    const $o = $('<div>', { id: 'g-summary-pop', class: 'g-ov', css: { 'z-index': '10000001' } });
-    const $p = $('<div>', { class: 'g-w', css: { width: '700px', maxWidth: '92vw', height: 'auto' } });
-    const $hd = $('<div>', { class: 'g-hd' });
-    $hd.append('<h3 style="color:#fff; flex:1;">📝 记忆总结</h3>');
+        $('#g-summary-pop').remove();
+        const $o = $('<div>', { id: 'g-summary-pop', class: 'g-ov', css: { 'z-index': '10000010' } });
+        const $p = $('<div>', { class: 'g-w', css: { width: '700px', maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' } });
+        const $hd = $('<div>', { class: 'g-hd', css: { flexShrink: '0' } });
+        $hd.append('<h3 style="color:#fff; flex:1;">📝 记忆总结</h3>');
 
-    const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '22px' } }).on('click', () => $o.remove());
-    $hd.append($x);
-
-    const $bd = $('<div>', { class: 'g-bd', html: h });
-    $p.append($hd, $bd);
-    $o.append($p);
-    $('body').append($o);
-
-    setTimeout(() => {
-        $('#summary-editor').focus();
-
-        // ✅ 取消按钮 - 不保存数据，不更新进度
-        $('#cancel-summary').on('click', () => {
+        const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '22px' } }).on('click', () => {
             $o.remove();
+            resolve({ success: false });
         });
+        $hd.append($x);
 
-        // ✅ 重新生成按钮
-        if (regenParams) {
-            $('#regen-summary').on('click', async function() {
-                const $btn = $(this);
-                const originalText = $btn.text();
+        const $bd = $('<div>', { class: 'g-bd', html: h, css: { flex: '1', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '10px' } });
+        $p.append($hd, $bd);
+        $o.append($p);
+        $('body').append($o);
 
-                // 禁用所有按钮
-                $('#cancel-summary, #regen-summary, #save-summary').prop('disabled', true);
-                $btn.text('生成中...');
+        setTimeout(() => {
+            $('#summary-editor').focus();
 
-                try {
-                    console.log('🔄 [重新生成] 正在重新调用 callAIForSummary...');
+            // ✅ 取消按钮 - 不保存数据，不更新进度
+            $('#cancel-summary').on('click', () => {
+                $o.remove();
+                resolve({ success: false });
+            });
 
-                    // 临时标记：避免弹出新窗口
-                    window._isRegeneratingInPopup = true;
+            // ✅ 重新生成按钮
+            if (regenParams) {
+                $('#regen-summary').on('click', async function() {
+                    const $btn = $(this);
+                    const originalText = $btn.text();
 
-                    // 重新调用 API
-                    await callAIForSummary(
-                        regenParams.forceStart,
-                        regenParams.forceEnd,
-                        regenParams.forcedMode,
-                        true  // 强制静默模式，不弹新窗口
-                    );
+                    // 禁用所有按钮
+                    $('#cancel-summary, #regen-summary, #save-summary').prop('disabled', true);
+                    $btn.text('生成中...');
 
-                    // 加载新生成的总结
-                    const newSummary = m.sm.load();
-                    if (newSummary && newSummary.trim()) {
-                        $('#summary-editor').val(newSummary);
+                    try {
+                        console.log('🔄 [重新生成] 正在重新调用 callAIForSummary...');
+
+                        // 临时标记：避免弹出新窗口
+                        window._isRegeneratingInPopup = true;
+
+                        // 重新调用 API
+                        await callAIForSummary(
+                            regenParams.forceStart,
+                            regenParams.forceEnd,
+                            regenParams.forcedMode,
+                            true  // 强制静默模式，不弹新窗口
+                        );
+
+                        // 加载新生成的总结
+                        const newSummary = m.sm.load();
+                        if (newSummary && newSummary.trim()) {
+                            $('#summary-editor').val(newSummary);
+                            if (typeof toastr !== 'undefined') {
+                                toastr.success('内容已刷新', '重新生成', { timeOut: 1000, preventDuplicates: true });
+                            }
+                        }
+
+                    } catch (error) {
+                        console.error('❌ [重新生成失败]', error);
+
+                        // ⚠️ 使用重试弹窗
+                        const errorMsg = `重新生成失败：${error.message}\n\n是否重新尝试？`;
+                        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成失败');
+
+                        if (shouldRetry) {
+                            // 用户选择重试，关闭当前弹窗，重新调用 callAIForSummary
+                            console.log('🔄 [用户重试] 关闭弹窗并重新调用总结...');
+                            $o.remove();  // 关闭当前弹窗
+                            resolve({ success: false });
+                            await callAIForSummary(
+                                regenParams.forceStart,
+                                regenParams.forceEnd,
+                                regenParams.forcedMode,
+                                false  // 非静默模式，让用户看到新弹窗
+                            );
+                            return;  // 退出当前函数
+                        }
+                    } finally {
+                        window._isRegeneratingInPopup = false;
+                        // 恢复按钮状态
+                        $('#cancel-summary, #regen-summary, #save-summary').prop('disabled', false);
+                        $btn.text(originalText);
+                    }
+                });
+            }
+
+            // ✅ 保存按钮 - 保存数据并更新进度
+            $('#save-summary').on('click', async function() {
+                const editedSummary = $('#summary-editor').val();
+                const noteValue = $('#summary-note').val().trim(); // ✅ 获取备注值
+
+                if (!editedSummary.trim()) {
+                    await customAlert('总结内容不能为空', '提示');
+                    return;
+                }
+
+                // 1. 保存到总结表 (表8)，同时传入备注
+                m.sm.save(editedSummary, noteValue);
+
+                // 2. 同步到世界书（如果启用）
+                await syncToWorldInfo(editedSummary);
+
+                // ✅ 只有在用户确认保存时，才更新进度指针（仅聊天模式）
+                if (!isTableMode && newIndex !== null) {
+                    const currentLast = API_CONFIG.lastSummaryIndex || 0;
+                    if (newIndex > currentLast) {
+                        API_CONFIG.lastSummaryIndex = newIndex;
+                        try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
+                        console.log(`✅ [进度更新] 总结进度已更新至: ${newIndex}`);
+                    }
+                }
+
+                // 保存基础数据
+                m.save();
+                updateCurrentSnapshot();
+
+                // 关闭编辑窗口
+                $o.remove();
+
+                // 3. ✨✨✨ 核心逻辑分流 ✨✨✨
+                if (!isTableMode) {
+                    // === 聊天模式：直接完成 ===
+                    // ✅ 核心修复：如果是分批模式，跳过阻塞式弹窗，使用 toastr 或直接通过
+                    if (!isBatch) {
+                        await customAlert('✅ 剧情总结已保存！\n(进度指针已自动更新)', '保存成功');
+                    } else {
+                        // 分批模式下仅轻提示，保持流式体验
                         if (typeof toastr !== 'undefined') {
-                            toastr.success('内容已刷新', '重新生成', { timeOut: 1000, preventDuplicates: true });
+                            toastr.success('本批次已保存', '进度更新', { timeOut: 1500 });
                         }
                     }
 
-                } catch (error) {
-                    console.error('❌ [重新生成失败]', error);
-                    await customAlert('重新生成失败：' + error.message, '错误');
-                } finally {
-                    window._isRegeneratingInPopup = false;
-                    // 恢复按钮状态
-                    $('#cancel-summary, #regen-summary, #save-summary').prop('disabled', false);
-                    $btn.text(originalText);
-                }
-            });
-        }
-
-        // ✅ 保存按钮 - 保存数据并更新进度
-        $('#save-summary').on('click', async function() {
-            const editedSummary = $('#summary-editor').val();
-
-            if (!editedSummary.trim()) {
-                await customAlert('总结内容不能为空', '提示');
-                return;
-            }
-
-            // 1. 保存到总结表 (表8)
-            m.sm.save(editedSummary);
-
-            // 2. 同步到世界书（如果启用）
-            await syncToWorldInfo(editedSummary);
-
-            // ✅ 只有在用户确认保存时，才更新进度指针（仅聊天模式）
-            if (!isTableMode && newIndex !== null) {
-                const currentLast = API_CONFIG.lastSummaryIndex || 0;
-                if (newIndex > currentLast) {
-                    API_CONFIG.lastSummaryIndex = newIndex;
-                    try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
-                    console.log(`✅ [进度更新] 总结进度已更新至: ${newIndex}`);
-                }
-            }
-
-            // 保存基础数据
-            m.save();
-            updateCurrentSnapshot();
-
-            // 关闭编辑窗口
-            $o.remove();
-
-            // 3. ✨✨✨ 核心逻辑分流 ✨✨✨
-            if (!isTableMode) {
-                // === 聊天模式：直接完成 ===
-                await customAlert('✅ 剧情总结已保存！\n(进度指针已自动更新)', '保存成功');
-                if ($('#g-pop').length > 0) shw();
-            } else {
-                // === 表格模式：弹出三选一操作框 ===
-                const dialogId = 'summary-action-' + Date.now();
-                const $dOverlay = $('<div>', {
-                    id: dialogId,
-                    css: {
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        width: '100vw', height: '100vh',
-                        background: 'rgba(0,0,0,0.6)', zIndex: 10000020,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }
-                });
-
-                const $dBox = $('<div>', {
-                    css: {
-                        background: '#fff', borderRadius: '12px', padding: '24px',
-                        boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '360px',
-                        display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'center'
-                    }
-                });
-
-                $dBox.append('<div style="font-size:18px; margin-bottom:8px;">🎉 总结已保存！</div>');
-                $dBox.append('<div style="font-size:13px; color:#666; margin-bottom:12px;">请选择如何处理<strong>原始表格数据</strong>：</div>');
-
-                const btnCss = "padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#fff; transition:0.2s;";
-
-                // 选项 1: 删除
-                const $btnDel = $('<button>', {
-                    html: '🗑️ 删除已总结内容<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(清空表格，防止重复)</span>',
-                    css: btnCss + "background:#dc3545;"
-                }).on('click', () => {
-                    sourceTables.forEach(t => t.clear()); // 清空参与总结的表格
-                    finish('✅ 原始数据已清空，总结已归档。');
-                });
-
-                // 选项 2: 隐藏 (变绿)
-                const $btnHide = $('<button>', {
-                    html: '🙈 仅隐藏 (变绿)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(保留内容但标记为已处理)</span>',
-                    css: btnCss + "background:#28a745;"
-                }).on('click', () => {
-                    // 遍历参与总结的表格，将其所有行标记为绿色
-                    sourceTables.forEach(table => {
-                        const ti = m.all().indexOf(table);
-                        if (ti !== -1) {
-                            for (let ri = 0; ri < table.r.length; ri++) markAsSummarized(ti, ri);
+                    if ($('#g-pop').length > 0) shw();
+                    resolve({ success: true });
+                } else {
+                    // === 表格模式：弹出三选一操作框 ===
+                    const dialogId = 'summary-action-' + Date.now();
+                    const $dOverlay = $('<div>', {
+                        id: dialogId,
+                        css: {
+                            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                            width: '100vw', height: '100vh',
+                            background: 'rgba(0,0,0,0.6)', zIndex: 10000020,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                         }
                     });
-                    finish('✅ 原始数据已标记为已总结（绿色）。');
-                });
 
-                // 选项 3: 保留 (不变)
-                const $btnKeep = $('<button>', {
-                    html: '👁️ 保留 (不变)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(不做任何修改，保持白色)</span>',
-                    css: btnCss + "background:#17a2b8;"
-                }).on('click', () => {
-                    finish('✅ 原始数据已保留（未做标记）。');
-                });
+                    const $dBox = $('<div>', {
+                        css: {
+                            background: '#fff', borderRadius: '12px', padding: '24px',
+                            boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '360px',
+                            display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'center'
+                        }
+                    });
 
-                function finish(msg) {
-                    m.save(); // 保存变更
-                    $dOverlay.remove();
-                    if ($('#g-pop').length > 0) shw(); // 刷新主界面
-                    $('.g-t[data-i="8"]').click(); // 自动跳转到总结页
-                    if (typeof toastr !== 'undefined') toastr.success(msg);
+                    $dBox.append('<div style="font-size:18px; margin-bottom:8px;">🎉 总结已保存！</div>');
+                    $dBox.append('<div style="font-size:13px; color:#666; margin-bottom:12px;">请选择如何处理<strong>原始表格数据</strong>：</div>');
+
+                    const btnCss = "padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#fff; transition:0.2s;";
+
+                    // 选项 1: 删除
+                    const $btnDel = $('<button>', {
+                        html: '🗑️ 删除已总结内容<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(清空表格，防止重复)</span>',
+                        css: btnCss + "background:#dc3545;"
+                    }).on('click', () => {
+                        sourceTables.forEach(t => t.clear()); // 清空参与总结的表格
+                        finish('✅ 原始数据已清空，总结已归档。');
+                    });
+
+                    // 选项 2: 隐藏 (变绿)
+                    const $btnHide = $('<button>', {
+                        html: '🙈 仅隐藏 (变绿)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(保留内容但标记为已处理)</span>',
+                        css: btnCss + "background:#28a745;"
+                    }).on('click', () => {
+                        // 遍历参与总结的表格，将其所有行标记为绿色
+                        sourceTables.forEach(table => {
+                            const ti = m.all().indexOf(table);
+                            if (ti !== -1) {
+                                for (let ri = 0; ri < table.r.length; ri++) markAsSummarized(ti, ri);
+                            }
+                        });
+                        finish('✅ 原始数据已标记为已总结（绿色）。');
+                    });
+
+                    // 选项 3: 保留 (不变)
+                    const $btnKeep = $('<button>', {
+                        html: '👁️ 保留 (不变)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(不做任何修改，保持白色)</span>',
+                        css: btnCss + "background:#17a2b8;"
+                    }).on('click', () => {
+                        finish('✅ 原始数据已保留（未做标记）。');
+                    });
+
+                    function finish(msg) {
+                        m.save(); // 保存变更
+                        $dOverlay.remove();
+                        if ($('#g-pop').length > 0) shw(); // 刷新主界面
+                        $('.g-t[data-i="8"]').click(); // 自动跳转到总结页
+                        if (typeof toastr !== 'undefined') toastr.success(msg);
+                        resolve({ success: true });
+                    }
+
+                    $dBox.append($btnDel, $btnHide, $btnKeep);
+                    $dOverlay.append($dBox);
+                    $('body').append($dOverlay);
                 }
+            });
 
-                $dBox.append($btnDel, $btnHide, $btnKeep);
-                $dOverlay.append($dBox);
-                $('body').append($dOverlay);
-            }
-        });
-        
-        $o.on('keydown', async e => { 
-            if (e.key === 'Escape') {
-                if (await customConfirm('确定取消？当前总结内容将丢失。', '确认')) {
-                    $o.remove();
+            $o.on('keydown', async e => {
+                if (e.key === 'Escape') {
+                    if (await customConfirm('确定取消？当前总结内容将丢失。', '确认')) {
+                        $o.remove();
+                        resolve({ success: false });
+                    }
                 }
-            }
-        });
-    }, 100);
+            });
+        }, 100);
+    });
 }
     
     function clearSummarizedData() {
@@ -4418,17 +4931,10 @@ async function callIndependentAPI(prompt) {
     }
 
     // ==========================================
-    // 阶段 1: 尝试走 SillyTavern 后端代理 (带 15s 超时)
+    // 阶段 1: 尝试走 SillyTavern 后端代理 (无超时限制，自然等待)
     // ==========================================
     try {
-        console.log('📡 [通道1] 尝试后端代理 (超时限制: 15s)...');
-
-        // ✅ 1. 设置超时控制器
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-            controller.abort();
-            console.log('⏱️ [通道1] 15秒超时，中止请求...');
-        }, 15000); // 15秒超时 (Docker/局域网环境优化)
+        console.log('📡 [通道1] 尝试后端代理 (无限等待模式)...');
 
         // 获取 CSRF Token
         let csrfToken = '';
@@ -4441,7 +4947,7 @@ async function callIndependentAPI(prompt) {
             reverse_proxy: apiUrl,
             proxy_password: apiKey,
 
-            // 显式传递 Authorization Header
+            // ✅ [移动端优化] 显式传递 Authorization Header，防止平板端代理转发时丢失 Key
             custom_include_headers: {
                 "Content-Type": "application/json"
             },
@@ -4457,6 +4963,12 @@ async function callIndependentAPI(prompt) {
             instruction_mode: 'chat'
         };
 
+        // ✅ [移动端优化] 如果有 Authorization Header（非 Gemini 官方模式），添加到 headers 中
+        if (authHeader !== undefined) {
+            proxyPayload.custom_include_headers["Authorization"] = authHeader;
+            console.log('🔑 [后端代理] Authorization Header 已添加到 custom_include_headers');
+        }
+
         console.log(`🌐 [后端代理] 目标: ${apiUrl} | 模型: ${model}`);
 
         const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
@@ -4465,14 +4977,10 @@ async function callIndependentAPI(prompt) {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': csrfToken
             },
-            body: JSON.stringify(proxyPayload),
-            signal: controller.signal // ✅ 2. 绑定中止信号
+            body: JSON.stringify(proxyPayload)
         });
 
-        // ✅ 3. 请求成功，清除超时定时器
-        clearTimeout(timeoutId);
-
-        // 如果后端成功，直接解析返回
+        // 检查 HTTP 状态码
         if (proxyResponse.ok) {
             const data = await proxyResponse.json();
             const result = parseApiResponse(data);
@@ -4480,19 +4988,18 @@ async function callIndependentAPI(prompt) {
                 console.log('✅ [后端代理] 成功');
                 return result;
             }
+            // ✅ [修复] 如果解析失败，抛出错误而不是再次读取 body
+            throw new Error('后端返回数据无法解析');
         }
 
-        // 记录后端失败原因
+        // 只有当 HTTP 状态码不是 2xx 时才读取错误信息
         const errText = await proxyResponse.text();
         console.warn(`⚠️ [后端代理失败] ${proxyResponse.status}: ${errText.substring(0, 200)}`);
+        throw new Error(`后端返回 ${proxyResponse.status}`);
 
     } catch (e) {
-        // ✅ 4. 捕获超时或网络错误
-        if (e.name === 'AbortError') {
-            console.warn('⚠️ [通道1] 后端代理响应超时 (>15s)，自动切换到浏览器直连');
-        } else {
-            console.warn(`⚠️ [通道1] 请求失败: ${e.message}`);
-        }
+        // ✅ 只有真正的错误才会到这里：网络错误、后端报错、解析失败等
+        console.warn(`⚠️ [通道1] 后端代理失败: ${e.message}`);
     }
 
     // ==========================================
@@ -4567,7 +5074,7 @@ async function callIndependentAPI(prompt) {
 
         console.log(`📡 [最终请求 URL] ${directUrl.replace(apiKey, '***')}`); // 隐藏 API Key 仅显示星号
 
-        // 发送直连请求
+        // 发送直连请求（无超时限制，等待 API 自然返回）
         // 动态构建 headers：只有当 authHeader 存在时才添加 Authorization
         const headers = {
             'Content-Type': 'application/json'
@@ -4601,15 +5108,23 @@ async function callIndependentAPI(prompt) {
     } catch (e) {
         console.error('❌ [浏览器直连失败]', e);
 
+        // ✅ [移动端优化] 检测网络错误，提供移动端友好提示
+        let errorMsg = e.message;
+        if (e.message.includes('Failed to fetch') ||
+            e.message.includes('NetworkError') ||
+            e.message.includes('fetch')) {
+            errorMsg += '\n\n📱 移动端请检查：\n1. API 地址末尾是否有空格（请删除）\n2. 尝试切换到"酒馆 API"模式以绕过浏览器 CORS 限制';
+        }
+
         // CORS 错误友好提示
-        if (e.message.includes('CORS') || e.message.includes('fetch')) {
+        if (e.message.includes('CORS')) {
             return {
                 success: false,
-                error: `浏览器直连失败（CORS 限制）: ${e.message}\n\n建议：\n1. 检查 API 提供商是否支持跨域请求\n2. 使用酒馆的反向代理功能\n3. 联系 API 提供商开启 CORS`
+                error: `浏览器直连失败（CORS 限制）: ${errorMsg}\n\n建议：\n1. 检查 API 提供商是否支持跨域请求\n2. 使用酒馆的反向代理功能\n3. 联系 API 提供商开启 CORS`
             };
         }
 
-        return { success: false, error: `所有通道均失败: ${e.message}` };
+        return { success: false, error: `所有通道均失败: ${errorMsg}` };
     }
 }
 
@@ -4802,15 +5317,19 @@ function shtm() {
             document.body.style.setProperty('--g-fs', val + 'px');
         });
 
-        $('#ts').off('click').on('click', async function() { 
-            UI.c = $('#tc').val(); 
-            UI.tc = $('#ttc').val(); 
-            UI.fs = parseInt($('#tfs').val()); 
-            
-            try { localStorage.setItem(UK, JSON.stringify(UI)); } catch (e) {} 
+        $('#ts').off('click').on('click', async function() {
+            UI.c = $('#tc').val();
+            UI.tc = $('#ttc').val();
+            UI.fs = parseInt($('#tfs').val());
+
+            try { localStorage.setItem(UK, JSON.stringify(UI)); } catch (e) {}
             m.save();
             thm(); // 重新加载样式
-            await customAlert('主题与字体设置已保存', '成功'); 
+
+            // 🌐 使用统一函数保存全量配置到服务端
+            await saveAllSettingsToCloud();
+
+            await customAlert('主题与字体设置已保存', '成功');
         });
         
         $('#tr').off('click').on('click', async function() {
@@ -4958,11 +5477,17 @@ $('#fetch-models-btn').on('click', async function() {
                     reverse_proxy: apiUrl,
                     proxy_password: apiKey,
 
-                    // 🔥🔥🔥 核心修复：必须加上这个，否则报 401 🔥🔥🔥
+                    // ✅ [移动端优化] 显式传递 Authorization Header，防止平板端代理转发时丢失 Key
                     custom_include_headers: {
                         "Content-Type": "application/json"
                     }
                 };
+
+                // ✅ [移动端优化] 如果有 Authorization Header（非 Gemini 官方模式），添加到 headers 中
+                if (authHeader !== undefined) {
+                    proxyPayload.custom_include_headers["Authorization"] = authHeader;
+                    console.log('🔑 [Plan A] Authorization Header 已添加到 custom_include_headers');
+                }
 
                 if (provider === 'gemini') {
                     delete proxyPayload.custom_url;
@@ -5043,6 +5568,13 @@ $('#fetch-models-btn').on('click', async function() {
 
             } catch (e) {
                 console.error(`❌ [Plan B] 失败:`, e);
+
+                // ✅ [移动端优化] 检测网络错误，记录日志供后续使用
+                if (e.message.includes('Failed to fetch') ||
+                    e.message.includes('NetworkError') ||
+                    e.message.includes('fetch')) {
+                    console.warn('📱 移动端网络错误提示：请检查 API 地址是否有空格，或尝试切换到"酒馆 API"模式');
+                }
             }
 
             // ---------------------------------------------------------
@@ -5050,7 +5582,7 @@ $('#fetch-models-btn').on('click', async function() {
             // ---------------------------------------------------------
             console.log('⚠️ 全部失败，切换手动');
             displayModelSelect([]);
-            toastrOrAlert('无法自动获取模型列表 (网络或鉴权限制)\n已切换为手动输入模式', '提示', 'warning');
+            toastrOrAlert('无法自动获取模型列表 (网络或鉴权限制)\n已切换为手动输入模式\n\n📱 移动端提示：检查 API 地址末尾是否有空格', '提示', 'warning');
             btn.text(originalText).prop('disabled', false);
 
 
@@ -5124,38 +5656,63 @@ $('#fetch-models-btn').on('click', async function() {
             API_CONFIG.enableAI = true;
             try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
 
-            // 🌐 保存 API 配置到服务端 (支持跨设备同步)
-            try {
-                if (typeof SillyTavern !== 'undefined' && SillyTavern.saveExtensionSettings) {
-                    await SillyTavern.saveExtensionSettings('st_memory_table', {
-                        config: C,
-                        api: API_CONFIG
-                    });
-                    console.log('🌐 API 配置已同步到服务端 (支持 PC/手机全端同步)');
-                }
-            } catch (serverErr) {
-                console.warn('⚠️ 服务端 API 配置保存失败 (已保存到本地):', serverErr.message);
-            }
+            // 🌐 使用统一函数保存全量配置到服务端 (支持跨设备同步)
+            await saveAllSettingsToCloud();
 
             await customAlert('✅ API配置已保存\n\n输出长度将根据模型自动优化', '成功');
         });
 
         $('#test-api').on('click', async function() {
-            const btn = $(this); const originalText = btn.text();
-            const testModel = $('#api-model').val().trim();
-            if (!testModel) { await customAlert('请先填写模型名称！', '提示'); return; }
-            $('#save-api').click();
-            btn.text('测试中...').prop('disabled', true);
-            try {
-                const testPrompt = "请简短回复：API连接测试是否成功？";
-                const result = await callIndependentAPI(testPrompt); 
-                if (result.success) {
-                    let alertMsg = `✅ API连接成功！`;
-                    if (result.summary) alertMsg += `\n\nAI回复预览:\n${result.summary.slice(0, 100)}...`;
-                    await customAlert(alertMsg, '成功');
-                } else await customAlert('❌ 连接失败\n\n' + result.error, '失败');
-            } catch (e) { await customAlert('❌ 错误：' + e.message, '错误'); }
-            btn.text(originalText).prop('disabled', false);
+            const testAPIWithRetry = async () => {
+                const btn = $(this);
+                const originalText = btn.text();
+                const testModel = $('#api-model').val().trim();
+
+                if (!testModel) {
+                    await customAlert('请先填写模型名称！', '提示');
+                    return;
+                }
+
+                $('#save-api').click();
+                btn.text('测试中...').prop('disabled', true);
+
+                try {
+                    const testPrompt = "请简短回复：API连接测试是否成功？";
+                    const result = await callIndependentAPI(testPrompt);
+
+                    if (result.success) {
+                        let alertMsg = `✅ API连接成功！`;
+                        if (result.summary) alertMsg += `\n\nAI回复预览:\n${result.summary.slice(0, 100)}...`;
+                        await customAlert(alertMsg, '成功');
+                    } else {
+                        // API 返回失败，弹出重试弹窗
+                        const errorMsg = `❌ 连接失败\n\n${result.error}\n\n是否重新尝试？`;
+                        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ API 测试失败');
+
+                        if (shouldRetry) {
+                            console.log('🔄 [用户重试] 正在重新测试 API...');
+                            btn.text(originalText).prop('disabled', false);
+                            await testAPIWithRetry();  // 递归重试
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    // 发生异常，弹出重试弹窗
+                    const errorMsg = `❌ 错误：${e.message}\n\n是否重新尝试？`;
+                    const shouldRetry = await customRetryAlert(errorMsg, '⚠️ API 测试异常');
+
+                    if (shouldRetry) {
+                        console.log('🔄 [用户重试] 正在重新测试 API...');
+                        btn.text(originalText).prop('disabled', false);
+                        await testAPIWithRetry();  // 递归重试
+                        return;
+                    }
+                } finally {
+                    btn.text(originalText).prop('disabled', false);
+                }
+            };
+
+            await testAPIWithRetry.call(this);
         });
     }, 100);
 }
@@ -5324,6 +5881,10 @@ function shpmt() {
             PROMPTS.promptVersion = PROMPT_VERSION;
 
             try { localStorage.setItem(PK, JSON.stringify(PROMPTS)); } catch (e) {}
+
+            // 🌐 使用统一函数保存全量配置到服务端
+            await saveAllSettingsToCloud();
+
             await customAlert('提示词配置已保存', '成功');
         });
 
@@ -5457,39 +6018,54 @@ function shpmt() {
 // ✅✅✅ [新增] 独立的配置加载函数 (粘贴在这里)
 async function loadConfig() {
     try {
-        // 🌐 [优先级1] 尝试从服务端加载配置 (支持跨设备同步)
-        try {
-            if (typeof SillyTavern !== 'undefined' && SillyTavern.loadExtensionSettings) {
-                const serverSettings = await SillyTavern.loadExtensionSettings('st_memory_table');
-                if (serverSettings && Object.keys(serverSettings).length > 0) {
-                    console.log('🌐 检测到服务端配置，优先使用 (跨设备同步)');
+        // 🌐 [优先级1] 从 SillyTavern 原生 extension_settings 加载配置
+        if (window.extension_settings && window.extension_settings.st_memory_table) {
+            const savedSettings = window.extension_settings.st_memory_table;
+            console.log('🌐 从 extension_settings 加载配置...');
 
-                    // 从服务端恢复基础配置
-                    if (serverSettings.config) {
-                        Object.keys(serverSettings.config).forEach(k => {
-                            if (C.hasOwnProperty(k)) C[k] = serverSettings.config[k];
-                        });
-                        console.log('✅ 基础配置已从服务端同步');
-                    }
+            // 从 extension_settings 恢复基础配置
+            if (savedSettings.config) {
+                Object.keys(savedSettings.config).forEach(k => {
+                    if (C.hasOwnProperty(k)) C[k] = savedSettings.config[k];
+                });
+                console.log('✅ 基础配置已加载');
+            }
 
-                    // 从服务端恢复 API 配置
-                    if (serverSettings.api) {
-                        API_CONFIG = { ...API_CONFIG, ...serverSettings.api };
-                        console.log('✅ API 配置已从服务端同步');
-                    }
+            // 从 extension_settings 恢复 API 配置
+            if (savedSettings.api) {
+                API_CONFIG = { ...API_CONFIG, ...savedSettings.api };
+                console.log('✅ API 配置已加载');
+            }
 
-                    // 同步到本地存储 (作为缓存)
-                    localStorage.setItem(CK, JSON.stringify(C));
-                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            // 从 extension_settings 恢复 UI 主题配置
+            if (savedSettings.ui) {
+                UI = { ...UI, ...savedSettings.ui };
+                console.log('✅ UI 主题已加载');
+            }
 
-                    return; // 服务端加载成功，直接返回
+            // 从 extension_settings 恢复提示词配置
+            if (savedSettings.prompts) {
+                // 保留版本兼容性逻辑
+                if (!savedSettings.prompts.promptVersion || savedSettings.prompts.promptVersion < PROMPT_VERSION) {
+                    console.log('⚠️ 检测到旧版本提示词，跳过同步（使用本地默认）');
+                } else {
+                    PROMPTS = { ...PROMPTS, ...savedSettings.prompts };
+                    console.log('✅ 提示词配置已加载');
                 }
             }
-        } catch (serverErr) {
-            console.warn('⚠️ 服务端配置加载失败，降级到本地存储:', serverErr.message);
+
+            // 同步到本地存储 (作为备份缓存)
+            localStorage.setItem(CK, JSON.stringify(C));
+            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            localStorage.setItem(UK, JSON.stringify(UI));
+            localStorage.setItem(PK, JSON.stringify(PROMPTS));
+
+            return; // extension_settings 加载成功，直接返回
         }
 
         // 🏠 [优先级2] 降级到本地存储 (localStorage)
+        console.log('📦 从 localStorage 加载配置...');
+
         // 1. 加载基础配置 (C)
         const cv = localStorage.getItem(CK);
         if (cv) {
@@ -5505,9 +6081,71 @@ async function loadConfig() {
             const savedAPI = JSON.parse(av);
             API_CONFIG = { ...API_CONFIG, ...savedAPI };
         }
+        // 3. 加载 UI 主题配置 (UK)
+        const uv = localStorage.getItem(UK);
+        if (uv) {
+            const savedUI = JSON.parse(uv);
+            UI = { ...UI, ...savedUI };
+        }
+        // 4. 加载提示词配置 (PK)
+        const pv = localStorage.getItem(PK);
+        if (pv) {
+            const savedPrompts = JSON.parse(pv);
+            // 兼容性检查
+            if (!savedPrompts.promptVersion || savedPrompts.promptVersion < PROMPT_VERSION) {
+                console.log('⚠️ 检测到旧版本提示词，跳过加载（使用内置默认）');
+            } else {
+                Object.keys(savedPrompts).forEach(k => {
+                    if (PROMPTS.hasOwnProperty(k)) PROMPTS[k] = savedPrompts[k];
+                });
+            }
+        }
+
     } catch (e) { console.error('❌ 配置加载失败:', e); }
 }
-    
+
+// ✅✅✅ [新增] 统一的全量配置保存函数（使用 SillyTavern 原生方式）
+async function saveAllSettingsToCloud() {
+    try {
+        console.log('💾 保存配置到 extension_settings...');
+
+        // 1. 收集所有四类配置：基础配置、API配置、UI主题、提示词
+        const allSettings = {
+            config: C,
+            api: API_CONFIG,
+            ui: UI,
+            prompts: PROMPTS
+        };
+
+        // 2. 更新 SillyTavern 的全局 extension_settings 对象
+        if (!window.extension_settings) {
+            window.extension_settings = {};
+        }
+        window.extension_settings.st_memory_table = allSettings;
+
+        // 3. 触发 SillyTavern 原生保存函数（这是关键！）
+        if (typeof saveSettingsDebounced === 'function') {
+            saveSettingsDebounced();
+            console.log('✅ 配置已保存到 settings.json');
+        } else {
+            console.warn('⚠️ saveSettingsDebounced 不可用，配置仅保存到内存');
+        }
+
+        // 4. 同时备份到本地存储 (localStorage)
+        localStorage.setItem(CK, JSON.stringify(C));
+        localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+        localStorage.setItem(UK, JSON.stringify(UI));
+        localStorage.setItem(PK, JSON.stringify(PROMPTS));
+
+        console.log('   - 基础配置 (C):', Object.keys(C).length, '项');
+        console.log('   - API 配置 (API_CONFIG):', Object.keys(API_CONFIG).length, '项');
+        console.log('   - UI 主题 (UI):', Object.keys(UI).length, '项');
+        console.log('   - 提示词 (PROMPTS):', Object.keys(PROMPTS).length, '项');
+    } catch (error) {
+        console.error('❌ 配置保存失败:', error);
+    }
+}
+
 async function shcf() {
     await loadConfig();
     const ctx = m.ctx();
@@ -5613,6 +6251,19 @@ async function shcf() {
                 <i class="fa-solid fa-circle-info" style="color: #17a2b8;"></i> <strong>默认策略：</strong><br>
                 表格内容将作为 <strong>系统 (System)</strong> 消息，自动插入到 <strong>聊天记录 (Chat History)</strong> 的最上方（紧挨在 [Start a new Chat] 之前）。
             </div>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.92); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.4);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-weight: 600;">✏️ 自定义表格结构</label>
+            </div>
+            <div style="font-size: 11px; color: #666; margin-bottom: 8px; line-height: 1.5;">
+                自定义表格名称和列名（索引0-7可编辑，索引8总结表锁定）。<br>
+                <strong>⚠️ 修改表格结构后，需要手动更新提示词中的表格定义！</strong>
+            </div>
+            <button id="show-table-editor-btn" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                📝 打开表格结构编辑器
+            </button>
         </div>
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
@@ -5824,33 +6475,49 @@ async function shcf() {
             }
         });
         
-        $('#manual-sum-btn').on('click', async function() {
+        $('#manual-sum-btn').off('click').on('click', async function() {
             const start = parseInt($('#man-start').val());
             const end = parseInt($('#man-end').val());
             if (isNaN(start) || isNaN(end)) { await customAlert('请输入有效的数字', '错误'); return; }
+            if (start >= end) { await customAlert('起始楼层必须小于结束楼层', '错误'); return; }
 
-            // ✅ 强制使用 'chat' 模式，无视上面的单选框
-            const btn = $(this); const oldText = btn.text(); btn.text('⏳').prop('disabled', true);
+            const totalRange = end - start;
+            const defaultStep = C.autoSummaryFloor || 50;
 
-            // 稍微延迟执行以显示 loading
-            setTimeout(async () => {
-                const result = await callAIForSummary(start, end, 'chat');
+            // ✅ [修复] 检查是否开启了静默模式
+            const isSilentMode = $('#c-auto-sum-silent').is(':checked'); // 或者直接用 C.autoSummarySilent
 
-                // ✅ 修复：只有总结成功时，才更新进度指针
-                if (result && result.success) {
-                    API_CONFIG.lastSummaryIndex = end;
-                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            // 1. 如果范围大，且【不是】静默模式 -> 弹窗询问分批
+            if (totalRange > defaultStep && !isSilentMode) {
+                console.log(`📊 [手动总结] 范围较大且非静默，弹出配置`);
+                const config = await showBatchConfigDialog(totalRange, defaultStep);
+                if (config === null) return; // 用户取消
+                await runBatchSummary(start, end, config.step, 'chat', config.silent);
+            }
+            // 2. 如果范围大，且是【静默模式】-> 直接按默认步长跑，不弹窗
+            else if (totalRange > defaultStep && isSilentMode) {
+                console.log(`🚀 [手动总结] 静默模式自动分批执行 (步长: ${defaultStep})`);
+                await runBatchSummary(start, end, defaultStep, 'chat', true);
+            }
+            // 3. 范围小 -> 直接跑
+            else {
+                const btn = $(this);
+                const oldText = btn.text();
+                btn.text('⏳').prop('disabled', true);
 
-                    // ✅ 关键修复：同步到当前聊天的元数据 (确保跨角色隔离)
-                    m.save();
+                setTimeout(async () => {
+                    const result = await callAIForSummary(start, end, 'chat', isSilentMode); // 传入静默参数
 
-                    // ✅ 更新界面显示
-                    $('#man-start').val(end);
-                    $('#edit-last-sum').val(end);
-                }
-
-                btn.text(oldText).prop('disabled', false);
-            }, 200);
+                    if (result && result.success) {
+                        API_CONFIG.lastSummaryIndex = end;
+                        localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                        m.save();
+                        $('#man-start').val(end);
+                        $('#edit-last-sum').val(end);
+                    }
+                    btn.text(oldText).prop('disabled', false);
+                }, 200);
+            }
         });
 
         // ✨✨✨ 自动总结开关的 UI 联动 ✨✨✨
@@ -5871,106 +6538,83 @@ async function shcf() {
         });
 
         // ✨✨✨ 新增：强制读取服务端数据（解决多端同步问题）
-        $('#force-cloud-load').on('click', async function() {
+        // ✨✨✨ [修复版] 强制读取服务端数据（解决多端同步问题）
+        $('#force-cloud-load').off('click').on('click', async function() {
             const btn = $(this);
             const originalText = btn.text();
-            btn.text('正在读取...').prop('disabled', true);
+            btn.text('正在从 extension_settings 同步...').prop('disabled', true);
 
             try {
+                console.log('🔄 [强制同步] 开始从 extension_settings 拉取最新配置和数据...');
+
+                // ✅ 直接从 window.extension_settings 读取
+                if (!window.extension_settings || !window.extension_settings.st_memory_table) {
+                    await customAlert('⚠️ extension_settings 中暂无配置数据\n\n请先在电脑端点击【保存配置】。', '无配置');
+                    btn.text(originalText).prop('disabled', false);
+                    return;
+                }
+
+                const serverConfig = window.extension_settings.st_memory_table;
+
+                if (!serverConfig || Object.keys(serverConfig).length === 0) {
+                    await customAlert('⚠️ 配置数据为空\n\n请先在电脑端点击【保存配置】。', '无配置');
+                    btn.text(originalText).prop('disabled', false);
+                    return;
+                }
+
+                console.log('✅ [强制同步] 成功获取 extension_settings 数据');
+
+                // ✅ 3. 暴力覆盖本地变量
+                if (serverConfig.config) Object.assign(C, serverConfig.config);
+                if (serverConfig.api) Object.assign(API_CONFIG, serverConfig.api);
+                if (serverConfig.ui) Object.assign(UI, serverConfig.ui);
+                if (serverConfig.prompts) Object.assign(PROMPTS, serverConfig.prompts);
+
+                // ✅ 4. 暴力刷新 UI
+                console.log('🎨 [强制同步] 刷新 UI...');
+                // 更新复选框
+                $('#c-enabled').prop('checked', C.enabled);
+                $('#c-auto-bf').prop('checked', C.autoBackfill);
+                $('#c-auto-sum').prop('checked', C.autoSummary);
+                // 更新输入框
+                $('#c-limit-count').val(C.contextLimitCount);
+                $('#c-uifold-count').val(C.uiFoldCount);
+                // 触发联动
+                $('#c-auto-bf').trigger('change');
+                $('#c-auto-sum').trigger('change');
+
+                // ✅ 5. 写入本地缓存 (localStorage)
+                localStorage.setItem('gg_config', JSON.stringify(C));
+                localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                localStorage.setItem('gg_ui', JSON.stringify(UI));
+                localStorage.setItem('gg_prompts', JSON.stringify(PROMPTS));
+
+                // ✅ 6. 同步表格数据 (尝试读取 chatMetadata)
                 const ctx = m.ctx();
-                if (!ctx || !ctx.chatMetadata) {
-                    await customAlert('❌ 无法访问聊天元数据\n\n请确保当前在正常的对话窗口中。', '错误');
-                    btn.text(originalText).prop('disabled', false);
-                    return;
+                if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) {
+                     const serverData = ctx.chatMetadata.gaigai;
+                     // 恢复表格内容
+                     m.s.forEach((sheet, i) => {
+                         if (serverData.d[i]) sheet.from(serverData.d[i]);
+                     });
+                     // 恢复进度指针
+                     if (serverData.meta) {
+                        if (serverData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = serverData.meta.lastSum;
+                        if (serverData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = serverData.meta.lastBf;
+                     }
+                     m.save(); // 保存到本地
                 }
-
-                // 1. 获取服务端数据
-                const serverData = ctx.chatMetadata.gaigai;
-
-                if (!serverData || !serverData.d) {
-                    await customAlert('☁️ 服务端暂无该角色的表格存档\n\n可能原因：\n• 这是新对话，尚未保存过数据\n• 服务端数据已被清空', '无数据');
-                    btn.text(originalText).prop('disabled', false);
-                    return;
-                }
-
-                // 2. 获取本地数据
-                const currentId = m.gid();
-                const localKey = `${SK}_${currentId}`;
-                const localRaw = localStorage.getItem(localKey);
-                let localData = null;
-                if (localRaw) {
-                    try { localData = JSON.parse(localRaw); } catch(e) {}
-                }
-
-                // 3. 比较时间戳
-                const serverTime = serverData.ts || 0;
-                const localTime = localData ? (localData.ts || 0) : 0;
-                const serverDate = serverTime ? new Date(serverTime).toLocaleString() : '未知';
-                const localDate = localTime ? new Date(localTime).toLocaleString() : '未知';
-
-                // 4. 计算数据量
-                const serverRows = serverData.d ? serverData.d.reduce((sum, sheet) => sum + (sheet.r ? sheet.r.length : 0), 0) : 0;
-                const localRows = m.all().reduce((sum, s) => sum + s.r.length, 0);
-
-                // 5. 显示确认框
-                const timeDiff = serverTime - localTime;
-                let timeWarning = '';
-                if (timeDiff > 0) {
-                    timeWarning = '\n✅ 服务端数据更新 (推荐同步)';
-                } else if (timeDiff < 0) {
-                    timeWarning = '\n⚠️ 当前设备数据更新 (谨慎操作)';
-                } else {
-                    timeWarning = '\n🟰 时间戳相同';
-                }
-
-                const confirmMsg = `☁️ 服务端数据对比\n\n` +
-                    `📅 服务端时间：${serverDate}\n` +
-                    `📅 当前设备时间：${localDate}${timeWarning}\n\n` +
-                    `📊 服务端数据量：${serverRows} 行\n` +
-                    `📊 当前设备数据量：${localRows} 行\n\n` +
-                    `是否强制使用服务端数据覆盖当前显示？`;
-
-                if (!await customConfirm(confirmMsg, '同步确认')) {
-                    btn.text(originalText).prop('disabled', false);
-                    return;
-                }
-
-                // 6. 执行覆盖
-                btn.text('正在同步...');
-
-                // 覆盖表格数据
-                m.s.forEach((sheet, i) => {
-                    if (serverData.d[i]) {
-                        sheet.from(serverData.d[i]);
-                    }
-                });
-
-                // 覆盖状态数据
-                if (serverData.summarized) summarizedRows = serverData.summarized;
-                if (serverData.colWidths) userColWidths = serverData.colWidths;
-                if (serverData.rowHeights) userRowHeights = serverData.rowHeights;
-
-                // 恢复进度指针
-                if (serverData.meta) {
-                    if (serverData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = serverData.meta.lastSum;
-                    if (serverData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = serverData.meta.lastBf;
-                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-                }
-
-                // 强制保存到本地存储（更新设备的 localStorage）
-                lastManualEditTime = Date.now();
-                updateCurrentSnapshot();
-                m.save();
 
                 // 刷新界面
                 $('#g-pop').remove();
                 shw();
 
-                await customAlert('✅ 已同步服务端最新数据！\n\n当前设备的本地存储已更新。', '同步成功');
+                await customAlert('✅ 同步成功！\n\n手机端配置已更新为最新状态。', '同步完成');
 
             } catch (error) {
-                console.error('❌ 同步失败:', error);
-                await customAlert(`❌ 同步失败：${error.message}\n\n请检查控制台获取详细信息。`, '错误');
+                console.error('❌ 强制同步失败:', error);
+                await customAlert(`❌ 同步失败：${error.message}`, '错误');
+            } finally {
                 btn.text(originalText).prop('disabled', false);
             }
         });
@@ -6096,18 +6740,8 @@ async function shcf() {
 
             try { localStorage.setItem(CK, JSON.stringify(C)); } catch (e) {}
 
-            // 🌐 保存配置到服务端 (支持跨设备同步)
-            try {
-                if (typeof SillyTavern !== 'undefined' && SillyTavern.saveExtensionSettings) {
-                    await SillyTavern.saveExtensionSettings('st_memory_table', {
-                        config: C,
-                        api: API_CONFIG
-                    });
-                    console.log('🌐 配置已同步到服务端 (支持 PC/手机全端同步)');
-                }
-            } catch (serverErr) {
-                console.warn('⚠️ 服务端配置保存失败 (已保存到本地):', serverErr.message);
-            }
+            // 🌐 使用统一函数保存全量配置到服务端 (支持跨设备同步)
+            await saveAllSettingsToCloud();
 
             applyUiFold();
             
@@ -6122,6 +6756,7 @@ async function shcf() {
         
         $('#open-api').on('click', () => navTo('AI总结配置', shapi));
         $('#open-pmt').on('click', () => navTo('提示词管理', shpmt));
+        $('#show-table-editor-btn').on('click', () => navTo('表格结构编辑器', showTableEditor));
 
         // ✨ 动态更新过滤模式提示文字
         $('input[name="c-filter-mode"]').on('change', function() {
@@ -6133,7 +6768,221 @@ async function shcf() {
         });
     }, 100);
 }
-    
+
+// ==================== 表格结构编辑器 ====================
+function showTableEditor() {
+    // 获取当前表格结构（如果有自定义则用自定义，否则用默认）
+    const currentTables = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
+        ? C.customTables
+        : DEFAULT_TABLES;
+
+    // 构建编辑器HTML
+    let editorRows = '';
+    currentTables.forEach((tb, idx) => {
+        const isSummaryTable = (idx === 8); // 索引8是总结表
+        const lockIcon = isSummaryTable ? '🔓📌' : '📝'; // 半锁定状态：表名锁定，列名可编辑
+        const nameDisabled = isSummaryTable ? 'disabled' : ''; // ✅ 表名锁定
+        const colsDisabled = ''; // ✅ 列名全部解锁（包括总结表）
+        const nameOpacity = isSummaryTable ? 'opacity: 0.6;' : '';
+
+        editorRows += `
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                <span style="font-weight: bold; min-width: 60px; color: ${UI.tc};">[${idx}] ${lockIcon}</span>
+                <input type="text"
+                       class="tbl-name"
+                       data-index="${idx}"
+                       value="${esc(tb.n)}"
+                       placeholder="表名"
+                       ${nameDisabled}
+                       style="flex: 1 1 120px; padding: 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px; background: ${isSummaryTable ? '#f0f0f0' : '#fff'}; ${nameOpacity}">
+                <span style="color: ${UI.tc};">|</span>
+                <input type="text"
+                       class="tbl-cols"
+                       data-index="${idx}"
+                       value="${esc(tb.c.join(', '))}"
+                       placeholder="列名（逗号分隔）"
+                       ${colsDisabled}
+                       style="flex: 1 1 200px; min-width: 200px; padding: 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px; background: #fff;">
+            </div>
+        `;
+    });
+
+    const h = `
+        <div class="g-p" style="display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+            <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0; margin-bottom: 12px;">
+                <h4 style="margin: 0 0 8px 0; color: ${UI.tc};">✏️ 表格结构编辑器</h4>
+                <div style="font-size: 11px; color: #666; line-height: 1.5; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                    <strong>⚠️ 重要提示：</strong><br>
+                    • 索引 <strong>0-7</strong>：可自由编辑表名和列名<br>
+                    • 索引 <strong>8 (总结表)</strong>：🔓📌 表名锁定，<strong>列名可编辑</strong>（支持新增备注列）<br>
+                    • 修改后需<strong>手动更新提示词</strong>中的表格定义！
+                </div>
+            </div>
+
+            <div style="flex: 1; overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: rgba(0,0,0,0.05); border-radius: 8px; padding: 12px; border: 1px solid rgba(0,0,0,0.1);">
+                ${editorRows}
+            </div>
+
+            <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); margin-top: 12px; flex-shrink: 0;">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <button id="save-table-structure-btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                        💾 保存结构
+                    </button>
+                    <button id="reset-table-structure-btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                        🔄 恢复默认
+                    </button>
+                </div>
+                <button id="copy-table-definition-btn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                    📋 复制表格定义到剪贴板
+                </button>
+                <div style="font-size: 10px; color: #666; margin-top: 8px; text-align: center;">
+                    复制后可粘贴到"提示词管理"中手动更新表格定义
+                </div>
+            </div>
+        </div>
+    `;
+
+    pop('✏️ 表格结构编辑器', h, true);
+
+    setTimeout(() => {
+        // 保存结构按钮
+        $('#save-table-structure-btn').on('click', async function() {
+            const newTables = [];
+            let hasError = false;
+
+            // 收集所有表格的数据
+            for (let i = 0; i < currentTables.length; i++) {
+                const nameInput = $(`.tbl-name[data-index="${i}"]`);
+                const colsInput = $(`.tbl-cols[data-index="${i}"]`);
+
+                const tableName = nameInput.val().trim();
+                const colsText = colsInput.val().trim();
+
+                if (!tableName) {
+                    await customAlert(`索引 ${i} 的表名不能为空！`, '验证失败');
+                    hasError = true;
+                    break;
+                }
+
+                const cols = colsText.split(',').map(c => c.trim()).filter(c => c.length > 0);
+                if (cols.length === 0) {
+                    await customAlert(`索引 ${i} 至少需要一个列名！`, '验证失败');
+                    hasError = true;
+                    break;
+                }
+
+                newTables.push({ n: tableName, c: cols });
+            }
+
+            if (hasError) return;
+
+            // 保存到配置
+            C.customTables = newTables;
+            localStorage.setItem(CK, JSON.stringify(C));
+
+            // 🌐 使用统一函数保存全量配置到服务端
+            await saveAllSettingsToCloud();
+
+            // 重新初始化表格
+            m.initTables(newTables);
+            m.save(true); // 强制保存到当前会话
+
+            // 刷新主界面
+            shw();
+
+            await customAlert('✅ 表格结构已保存并应用！\n\n⚠️ 请记得前往"提示词管理"更新提示词中的表格定义。', '保存成功');
+        });
+
+        // 恢复默认按钮
+        $('#reset-table-structure-btn').on('click', async function() {
+            const confirmed = confirm('确定要恢复默认表格结构吗？\n\n这将清除所有自定义设置！');
+            if (!confirmed) return;
+
+            // 清除自定义配置
+            C.customTables = null;
+            localStorage.setItem(CK, JSON.stringify(C));
+
+            // 🌐 使用统一函数保存全量配置到服务端
+            await saveAllSettingsToCloud();
+
+            // 恢复默认表格
+            m.initTables(DEFAULT_TABLES);
+            m.save(true);
+
+            // 刷新主界面和编辑器
+            shw();
+            showTableEditor(); // 重新打开编辑器显示默认值
+
+            await customAlert('✅ 已恢复默认表格结构！', '成功');
+        });
+
+        // 复制定义按钮
+        $('#copy-table-definition-btn').on('click', function() {
+            let definition = '📋 表格定义（请复制到提示词中）\n\n';
+
+            for (let i = 0; i < currentTables.length; i++) {
+                const nameInput = $(`.tbl-name[data-index="${i}"]`);
+                const colsInput = $(`.tbl-cols[data-index="${i}"]`);
+
+                const tableName = nameInput.val().trim();
+                const colsText = colsInput.val().trim();
+                const cols = colsText.split(',').map(c => c.trim()).filter(c => c.length > 0);
+
+                definition += `Index ${i}: ${tableName} (${cols.join(', ')})\n`;
+            }
+
+            // ✅ 添加操作格式指南
+            const usageGuide = `
+====================
+【操作格式指南】
+
+1. 必须使用标签：<Memory><!-- --></Memory>
+
+2. 指令语法：
+   - 新增行：insertRow(表格索引, {列索引: "内容", ...})
+   - 更新行：updateRow(表格索引, 行索引, {列索引: "内容", ...})
+
+3. 正确格式示例：
+
+新增行:
+<Memory><!-- insertRow(0, {0: "2024年3月15日", 1: "上午(08:30)", 2: "", 3: "在村庄接受长老委托，前往迷雾森林寻找失落宝石", 4: "进行中"}) --></Memory>
+
+更新行:
+<Memory><!-- updateRow(0, 0, {3: "在迷雾森林遭遇神秘商人艾莉娅，获得线索：宝石在古神殿深处"}) --></Memory>
+
+完结行+新增行:
+<Memory><!-- updateRow(0, 0, {2: "深夜(23:50)", 4: "已完成"})
+insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿继续探索，寻找宝石线索", 4: "进行中"}) --></Memory>
+
+4. 重要注意事项：
+   ⚠️ 严禁使用 Markdown 代码块（\`\`\`）
+   ⚠️ 必须使用数字索引（表格索引、列索引、行索引）
+   ⚠️ 内容中的引号请使用双引号 ""
+   ⚠️ 多条指令可以在同一个标签内换行书写
+`;
+
+            // ✅ 拼接表格定义和操作指南
+            const fullContent = definition + usageGuide;
+
+            // 复制到剪贴板
+            navigator.clipboard.writeText(fullContent).then(() => {
+                customAlert('✅ 表格定义和操作指南已复制到剪贴板！\n\n请前往"提示词管理"粘贴并更新。', '复制成功');
+            }).catch(err => {
+                console.error('复制失败:', err);
+                // 降级方案：显示在弹窗中
+                const fallbackHtml = `
+                    <div style="padding: 10px;">
+                        <h4>表格定义</h4>
+                        <textarea readonly style="width: 100%; height: 300px; font-family: monospace; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">${esc(fullContent)}</textarea>
+                        <div style="margin-top: 8px; font-size: 11px; color: #666;">请手动复制上方内容</div>
+                    </div>
+                `;
+                pop('表格定义', fallbackHtml, true);
+            });
+        });
+    }, 100);
+}
+
 function esc(t) { const mp = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }; return String(t).replace(/[&<>"']/g, c => mp[c]); }
     
     // ✅ 新增：反转义函数，专门处理 AI 吐出来的 &lt;Memory&gt;
@@ -6560,6 +7409,16 @@ async function autoRunBackfill(start, end, isManual = false) {
         }
     } catch (e) {
         console.error('请求失败', e);
+
+        // ⚠️ 发生异常，打破静默，弹出重试弹窗
+        const errorMsg = `批量填表失败：${e.message}\n\n是否重新尝试？`;
+        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
+
+        if (shouldRetry) {
+            // 用户选择重试，递归调用，传入相同参数
+            console.log('🔄 [用户重试] 正在重新调用批量填表...');
+            return autoRunBackfill(start, end, isManual);
+        }
         return;
     } finally {
         // ✨【核心修复】标记结束：恢复正常状态
@@ -6635,6 +7494,16 @@ async function autoRunBackfill(start, end, isManual = false) {
                      }
                  }, 500);
             }
+        }
+    } else if (result) {
+        // ⚠️ API 返回失败，打破静默，弹出重试弹窗
+        const errorMsg = `批量填表失败：${result.error || '未知错误'}\n\n是否重新尝试？`;
+        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
+
+        if (shouldRetry) {
+            // 用户选择重试，递归调用，传入相同参数
+            console.log('🔄 [用户重试] 正在重新调用批量填表...');
+            return autoRunBackfill(start, end, isManual);
         }
     }
 }
@@ -7436,7 +8305,18 @@ function showBackfillEditPopup(content, newIndex = null, regenParams = null) {
 
                 } catch (error) {
                     console.error('❌ [重新生成失败]', error);
-                    await customAlert('重新生成失败：' + error.message, '错误');
+
+                    // ⚠️ 使用重试弹窗
+                    const errorMsg = `重新生成失败：${error.message}\n\n是否重新尝试？`;
+                    const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成失败');
+
+                    if (shouldRetry) {
+                        // 用户选择重试，关闭当前弹窗，调用 autoRunBackfill
+                        console.log('🔄 [用户重试] 关闭弹窗并重新调用批量填表...');
+                        $o.remove();  // 关闭当前弹窗
+                        await autoRunBackfill(regenParams.start, regenParams.end, regenParams.isManual);
+                        return;  // 退出当前函数
+                    }
                 } finally {
                     window._isRegeneratingBackfill = false;
                     // 恢复按钮状态
