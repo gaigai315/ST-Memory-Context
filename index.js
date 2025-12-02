@@ -4134,6 +4134,19 @@ function bnd() {
 
         // 依次执行每一批
         for (let i = 0; i < batches.length; i++) {
+            // ⏳ [稳定性改进] 在批次之间添加冷却时间，防止 API 限流和服务器过载
+            if (i > 0) {
+                const delayTime = 5000; // 5 seconds delay
+                console.log(`⏳ [稳定性冷却] 等待 ${delayTime/1000} 秒以防止 API 限流...`);
+
+                // Update UI text if running in foreground
+                if (!silent && $progressOverlay) {
+                    $('#batch-progress-text').text(`⏳ 正在冷却 (等待 ${delayTime/1000}s)...`);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, delayTime));
+            }
+
             const batch = batches[i];
             const batchNum = i + 1;
 
