@@ -6463,6 +6463,9 @@ async function shcf() {
             // ✅ 关键步骤：同步到聊天记录元数据
             m.save();
 
+            // ✅ 同步到云端服务器 (确保多设备一致性)
+            await saveAllSettingsToCloud();
+
             // 更新界面
             $('#man-start').val(newValue);
 
@@ -6502,6 +6505,9 @@ async function shcf() {
 
             // ✅ 关键步骤：同步到聊天记录元数据
             m.save();
+
+            // ✅ 同步到云端服务器 (确保多设备一致性)
+            await saveAllSettingsToCloud();
 
             // 成功提示
             if (typeof toastr !== 'undefined') {
