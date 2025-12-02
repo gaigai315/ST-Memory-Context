@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.2.1
+// 记忆表格 v1.2.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function() {
@@ -12,10 +12,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.2.1 启动');
+    console.log('🚀 记忆表格 v1.2.2 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.2.1';
+    const V = 'v1.2.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键
@@ -6017,99 +6017,103 @@ function shpmt() {
 
 // ✅✅✅ [新增] 独立的配置加载函数 (粘贴在这里)
 async function loadConfig() {
+    console.log('🔄 [配置加载] 开始初始化...');
+    let serverData = null;
+    let localData = {};
+    let needMigration = false;
+
+    // 1. 尝试获取服务端数据 (优先)
     try {
-        // 🌐 [优先级1] 从 SillyTavern 原生 extension_settings 加载配置
+        // 尝试从全局变量获取 (SillyTavern 启动时加载的)
         if (window.extension_settings && window.extension_settings.st_memory_table) {
-            const savedSettings = window.extension_settings.st_memory_table;
-            console.log('🌐 从 extension_settings 加载配置...');
-
-            // 从 extension_settings 恢复基础配置
-            if (savedSettings.config) {
-                Object.keys(savedSettings.config).forEach(k => {
-                    if (C.hasOwnProperty(k)) C[k] = savedSettings.config[k];
-                });
-                console.log('✅ 基础配置已加载');
-            }
-
-            // 从 extension_settings 恢复 API 配置
-            if (savedSettings.api) {
-                API_CONFIG = { ...API_CONFIG, ...savedSettings.api };
-                console.log('✅ API 配置已加载');
-            }
-
-            // 从 extension_settings 恢复 UI 主题配置
-            if (savedSettings.ui) {
-                UI = { ...UI, ...savedSettings.ui };
-                console.log('✅ UI 主题已加载');
-            }
-
-            // 从 extension_settings 恢复提示词配置
-            if (savedSettings.prompts) {
-                // 保留版本兼容性逻辑
-                if (!savedSettings.prompts.promptVersion || savedSettings.prompts.promptVersion < PROMPT_VERSION) {
-                    console.log('⚠️ 检测到旧版本提示词，跳过同步（使用本地默认）');
-                } else {
-                    PROMPTS = { ...PROMPTS, ...savedSettings.prompts };
-                    console.log('✅ 提示词配置已加载');
-                }
-            }
-
-            // 同步到本地存储 (作为备份缓存)
-            localStorage.setItem(CK, JSON.stringify(C));
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-            localStorage.setItem(UK, JSON.stringify(UI));
-            localStorage.setItem(PK, JSON.stringify(PROMPTS));
-
-            return; // extension_settings 加载成功，直接返回
+            serverData = window.extension_settings.st_memory_table;
+            console.log('🌐 [配置] 检测到全局 extension_settings');
         }
-
-        // 🏠 [优先级2] 降级到本地存储 (localStorage)
-        console.log('📦 从 localStorage 加载配置...');
-
-        // 1. 加载基础配置 (C)
-        const cv = localStorage.getItem(CK);
-        if (cv) {
-            const savedC = JSON.parse(cv);
-            Object.keys(savedC).forEach(k => {
-                if (C.hasOwnProperty(k)) C[k] = savedC[k];
+        // 也可以尝试 API 获取 (更保险)
+        else {
+            const csrf = await getCsrfToken();
+            const res = await fetch('/api/settings/get', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+                body: JSON.stringify({})
             });
-            console.log('⚙️ 配置已从本地存储加载');
-        }
-        // 2. 加载 API 配置 (AK)
-        const av = localStorage.getItem(AK);
-        if (av) {
-            const savedAPI = JSON.parse(av);
-            API_CONFIG = { ...API_CONFIG, ...savedAPI };
-        }
-        // 3. 加载 UI 主题配置 (UK)
-        const uv = localStorage.getItem(UK);
-        if (uv) {
-            const savedUI = JSON.parse(uv);
-            UI = { ...UI, ...savedUI };
-        }
-        // 4. 加载提示词配置 (PK)
-        const pv = localStorage.getItem(PK);
-        if (pv) {
-            const savedPrompts = JSON.parse(pv);
-            // 兼容性检查
-            if (!savedPrompts.promptVersion || savedPrompts.promptVersion < PROMPT_VERSION) {
-                console.log('⚠️ 检测到旧版本提示词，跳过加载（使用内置默认）');
-            } else {
-                Object.keys(savedPrompts).forEach(k => {
-                    if (PROMPTS.hasOwnProperty(k)) PROMPTS[k] = savedPrompts[k];
-                });
+            if (res.ok) {
+                const raw = await res.json();
+                // 使用之前的智能解包函数
+                const parsed = parseServerSettings(raw);
+                serverData = parsed?.extension_settings?.st_memory_table;
             }
         }
+    } catch (e) { console.warn('服务端配置读取失败', e); }
 
-    } catch (e) { console.error('❌ 配置加载失败:', e); }
+    // 2. 获取本地缓存数据 (作为兜底)
+    try {
+        if (localStorage.getItem(CK)) localData.config = JSON.parse(localStorage.getItem(CK));
+        if (localStorage.getItem(AK)) localData.api = JSON.parse(localStorage.getItem(AK));
+        if (localStorage.getItem(UK)) localData.ui = JSON.parse(localStorage.getItem(UK));
+        if (localStorage.getItem(PK)) localData.prompts = JSON.parse(localStorage.getItem(PK));
+    } catch (e) { console.warn('本地缓存读取失败', e); }
+
+    // 3. 核心合并逻辑
+    // 场景 A: 服务端有数据 -> 使用服务端数据 (覆盖默认值)
+    if (serverData && Object.keys(serverData).length > 0) {
+        console.log('✅ [配置] 使用云端数据');
+        if (serverData.config) Object.assign(C, serverData.config);
+        if (serverData.api) Object.assign(API_CONFIG, serverData.api);
+        if (serverData.ui) Object.assign(UI, serverData.ui);
+        if (serverData.prompts) Object.assign(PROMPTS, serverData.prompts);
+
+        // 同时刷新一下本地缓存，保持一致
+        localStorage.setItem(CK, JSON.stringify(C));
+        localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+        localStorage.setItem(UK, JSON.stringify(UI));
+        localStorage.setItem(PK, JSON.stringify(PROMPTS));
+    }
+    // 场景 B: 服务端没数据，但本地有 -> 使用本地数据，并标记需要上传
+    else if (localData.api || localData.config) {
+        console.log('⚠️ [配置] 云端为空，使用本地缓存 (准备自动同步)');
+        if (localData.config) Object.assign(C, localData.config);
+        if (localData.api) Object.assign(API_CONFIG, localData.api);
+        if (localData.ui) Object.assign(UI, localData.ui);
+        if (localData.prompts) Object.assign(PROMPTS, localData.prompts);
+
+        needMigration = true;
+    }
+    // 场景 C: 啥都没有 -> 使用默认值 (新用户)
+    else {
+        console.log('🆕 [配置] 新用户，使用默认设置');
+    }
+
+    // 4. 如果是从本地恢复的，立刻触发一次上传，完成迁移
+    if (needMigration) {
+        console.log('🚀 [自动迁移] 正在将本地旧配置上传至服务器...');
+        // 不等待它完成，后台执行即可
+        saveAllSettingsToCloud();
+    }
+}
+
+// ✅✅✅ [新增] 智能解析服务器设置数据（兼容不同版本的酒馆后端）
+function parseServerSettings(rawData) {
+    // 如果数据被包裹在 settings 字符串中，进行解包
+    if (rawData && typeof rawData.settings === 'string') {
+        try {
+            console.log('🔧 [解析] 检测到字符串包裹的配置，正在解包...');
+            return JSON.parse(rawData.settings);
+        } catch(e) {
+            console.error('❌ [解析] 解包失败:', e);
+            return rawData;
+        }
+    }
+    console.log('✅ [解析] 配置格式正常，无需解包');
+    return rawData;
 }
 
 // ✅✅✅ [新增] 统一的全量配置保存函数（使用 SillyTavern 原生方式）
 async function saveAllSettingsToCloud() {
     try {
-        console.log('💾 保存配置到 extension_settings...');
+        console.log('💾 [API] 开始保存配置到服务器...');
 
-        // 1. 收集所有四类配置：基础配置、API配置、UI主题、提示词
+        // 1. Gather Data
         const allSettings = {
             config: C,
             api: API_CONFIG,
@@ -6117,32 +6121,51 @@ async function saveAllSettingsToCloud() {
             prompts: PROMPTS
         };
 
-        // 2. 更新 SillyTavern 的全局 extension_settings 对象
-        if (!window.extension_settings) {
-            window.extension_settings = {};
+        // 2. Get CSRF
+        let csrfToken = '';
+        try { csrfToken = await getCsrfToken(); } catch (e) { }
+
+        // 3. READ: Get current server settings strictly
+        const getResponse = await fetch('/api/settings/get', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify({})
+        });
+
+        if (!getResponse.ok) throw new Error('无法读取服务器配置');
+        const rawResponse = await getResponse.json();
+        const currentSettings = parseServerSettings(rawResponse);
+
+        // 4. MODIFY: Inject plugin data safely
+        if (!currentSettings.extension_settings) {
+            currentSettings.extension_settings = {};
         }
+        currentSettings.extension_settings.st_memory_table = allSettings;
+
+        // 5. WRITE: Force save to disk immediately
+        const saveResponse = await fetch('/api/settings/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            body: JSON.stringify(currentSettings)
+        });
+
+        if (!saveResponse.ok) throw new Error('无法写入服务器配置');
+
+        // 6. BACKUP: Update local state
+        if (!window.extension_settings) window.extension_settings = {};
         window.extension_settings.st_memory_table = allSettings;
-
-        // 3. 触发 SillyTavern 原生保存函数（这是关键！）
-        if (typeof saveSettingsDebounced === 'function') {
-            saveSettingsDebounced();
-            console.log('✅ 配置已保存到 settings.json');
-        } else {
-            console.warn('⚠️ saveSettingsDebounced 不可用，配置仅保存到内存');
-        }
-
-        // 4. 同时备份到本地存储 (localStorage)
         localStorage.setItem(CK, JSON.stringify(C));
         localStorage.setItem(AK, JSON.stringify(API_CONFIG));
         localStorage.setItem(UK, JSON.stringify(UI));
         localStorage.setItem(PK, JSON.stringify(PROMPTS));
 
-        console.log('   - 基础配置 (C):', Object.keys(C).length, '项');
-        console.log('   - API 配置 (API_CONFIG):', Object.keys(API_CONFIG).length, '项');
-        console.log('   - UI 主题 (UI):', Object.keys(UI).length, '项');
-        console.log('   - 提示词 (PROMPTS):', Object.keys(PROMPTS).length, '项');
+        console.log('✅ [API] 配置已强制写入 settings.json (Size:', JSON.stringify(allSettings).length, ')');
+        // ✅ UX Improvement: Silent background sync (no toastr popup)
+        // User gets feedback from manual button clicks, not from auto-save
+
     } catch (error) {
-        console.error('❌ 配置保存失败:', error);
+        console.error('❌ [API] 保存失败:', error);
+        if (typeof toastr !== 'undefined') toastr.error(`保存失败: ${error.message}`, '错误');
     }
 }
 
@@ -6545,80 +6568,81 @@ async function shcf() {
             btn.text('正在从服务器同步...').prop('disabled', true);
 
             try {
-                console.log('🔄 [强制同步] 开始从服务器 API 获取最新配置...');
+                console.log('🔄 [API] 开始强制读取 settings.json...');
+                const csrfToken = await getCsrfToken();
 
-                // ✅ 1. 调用 SillyTavern API 获取最新的 settings.json
-                const response = await fetch('/api/settings/get', {
+                // Added timestamp to prevent caching
+                const response = await fetch('/api/settings/get?t=' + Date.now(), {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
                     },
-                    body: '{}'
+                    body: JSON.stringify({})
                 });
 
-                if (!response.ok) {
-                    throw new Error(`API 请求失败: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
 
                 const data = await response.json();
 
-                // ✅ 2. 提取插件配置数据
-                const serverConfig = data?.extension_settings?.st_memory_table;
+                // DEBUG LOG: Show exactly what the server returned (BEFORE parsing)
+                console.log('📥 [API Debug] 服务器返回的原始数据:', data);
+
+                // ✅ 智能解析服务器配置（兼容字符串包裹格式）
+                const parsedData = parseServerSettings(data);
+
+                // DEBUG LOG: Show parsed data structure
+                console.log('📦 [API Debug] 解析后的数据结构:', parsedData);
+
+                const serverConfig = parsedData?.extension_settings?.st_memory_table;
 
                 if (!serverConfig || Object.keys(serverConfig).length === 0) {
-                    await customAlert('⚠️ 服务器上暂无此插件的配置数据\n\n请先在电脑端点击【保存配置】。', '无配置');
+                    console.warn('⚠️ extension_settings found:', parsedData?.extension_settings);
+                    await customAlert('⚠️ 服务器上暂无此插件的配置数据\n\n请在控制台查看 [API Debug] 日志确认数据结构。\n请先点击【💾 保存配置】强制写入一次。', '无配置');
                     btn.text(originalText).prop('disabled', false);
                     return;
                 }
 
-                console.log('✅ [强制同步] 成功从服务器获取最新配置');
+                console.log('✅ [API] 成功获取配置，正在覆盖本地...');
 
-                // ✅ 3. 暴力覆盖本地变量
+                // Apply Config
                 if (serverConfig.config) Object.assign(C, serverConfig.config);
                 if (serverConfig.api) Object.assign(API_CONFIG, serverConfig.api);
                 if (serverConfig.ui) Object.assign(UI, serverConfig.ui);
                 if (serverConfig.prompts) Object.assign(PROMPTS, serverConfig.prompts);
 
-                // ✅ 4. 暴力刷新 UI
-                console.log('🎨 [强制同步] 刷新 UI...');
-                // 更新复选框
+                // Update UI
                 $('#c-enabled').prop('checked', C.enabled);
                 $('#c-auto-bf').prop('checked', C.autoBackfill);
                 $('#c-auto-sum').prop('checked', C.autoSummary);
-                // 更新输入框
                 $('#c-limit-count').val(C.contextLimitCount);
                 $('#c-uifold-count').val(C.uiFoldCount);
-                // 触发联动
                 $('#c-auto-bf').trigger('change');
                 $('#c-auto-sum').trigger('change');
 
-                // ✅ 5. 写入本地缓存 (localStorage)
+                // Update LocalStorage
                 localStorage.setItem('gg_config', JSON.stringify(C));
                 localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
                 localStorage.setItem('gg_ui', JSON.stringify(UI));
                 localStorage.setItem('gg_prompts', JSON.stringify(PROMPTS));
 
-                // ✅ 6. 同步表格数据 (尝试读取 chatMetadata)
+                // Restore Table Data logic (kept as is)
                 const ctx = m.ctx();
                 if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) {
                      const serverData = ctx.chatMetadata.gaigai;
-                     // 恢复表格内容
                      m.s.forEach((sheet, i) => {
                          if (serverData.d[i]) sheet.from(serverData.d[i]);
                      });
-                     // 恢复进度指针
                      if (serverData.meta) {
                         if (serverData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = serverData.meta.lastSum;
                         if (serverData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = serverData.meta.lastBf;
                      }
-                     m.save(); // 保存到本地
+                     m.save();
                 }
 
-                // 刷新界面
                 $('#g-pop').remove();
                 shw();
-
-                await customAlert('✅ 同步成功！\n\n手机端配置已更新为最新状态。', '同步完成');
+                await customAlert('✅ 同步成功！\n\n本地配置已更新为服务器最新状态。', '同步完成');
 
             } catch (error) {
                 console.error('❌ 强制同步失败:', error);
