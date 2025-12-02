@@ -69,7 +69,7 @@ let API_CONFIG = {
         apiKey: '',
         model: 'gemini-2.5-pro',
         temperature: 0.7,
-        maxTokens: 0, // 👈 修改这里！改成了 0 (表示不限制/最大)
+        maxTokens: 8192, // ✅ 修改为 8192，确保独立API模式有足够的输出空间
         summarySource: 'chat', // ✅ 默认改为聊天历史，符合大多数用户直觉
         lastSummaryIndex: 0,
         lastBackfillIndex: 0
@@ -4572,8 +4572,9 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
                 // 匹配：收到，以下是总结...
                 .replace(/^(好的|收到|明白|了解).*?(总结|分析|如下|内容|查看)[^：:\n]*[：:\n]/i, '')
 
-                // 3. 移除强特征的 AI 开场白 (仅保留剧情中极少使用的词)
-                .replace(/^[\s\S]*?(以下是|让我|我将|基于|根据|综上)[^：:\n]*[：:\n]/i, '')
+                // 🛑 [已禁用] 3. 移除强特征的 AI 开场白 (这是导致"内容只有一半"的元凶)
+                // 问题：如果AI在分批总结的中间说了"综上所述"，会导致前面的所有剧情内容被误删
+                // .replace(/^[\s\S]*?(以下是|让我|我将|基于|根据|综上)[^：:\n]*[：:\n]/i, '')
 
                 // 4. 移除分析说明和提示文本
                 .replace(/^(注意|提示|说明|备注)[：:][^\n]*\n*/gim, '')
@@ -5369,9 +5370,12 @@ async function callTavernAPI(prompt) {
                     include_world_info: false,
                     include_jailbreak: false,
                     include_character_card: false,
-                    include_names: false
+                    include_names: false,
 
-                    // ✅ Token 设置已移除，自动跟随 SillyTavern 主界面的 Response Length 设置
+                    // ✅ 强制指定最大输出长度 (8192 token 足够写出极长的总结)
+                    // 如果不加，它会默认只输出 200-300 字，受限于酒馆主界面的短回复设置
+                    max_tokens: 8192,
+                    length: 8192
                 });
                 console.log('✅ [直连] 调用成功');
             } catch (err) {
