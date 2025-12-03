@@ -201,43 +201,46 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     const DEFAULT_SUM_CHAT = `--------------------------------------
 🛑 [对话历史结束]
 --------------------------------------
-👉 现在，请停止角色扮演，切换为客观记录者身份。
+👉 现在，请停止角色扮演，切换为【绝对客观的历史记录者】身份。
 
-📝 你的任务是：根据上述对话历史，生成结构化的剧情总结。
+📝 你的任务是：基于上方已有的记忆总结，识别后续产生的"新增剧情"，将其转化为结构化的、带有"状态锚定"性质的剧情档案。
 
-【强制时间线处理】
-🛑 严禁只总结最近的剧情！
-🛑 严禁遗漏开头的背景铺垫！
-🛑 严禁遗漏中间转折或高潮剧情！
-🛑 仅对未总结记录的剧情内容,进行从头到尾的梳理总结,严禁重复已经总结的内容和剧情!
+【核心指令：动态融合策略】
+为了防止长期记忆混乱，你必须将"设定变更"与"剧情事件"融合，严禁将身份变化单独隔离。
+1. 身份变更锚定：当角色的社会身份、职业、头衔发生变化时，必须在剧情描述中显式指出（例如："xx毕业并正式接管xx集团，身份由学生转变为总裁"）。
+2. 资产与资源流转：当获得/失去关键物品、道具、公司、房产或人际关系（如情感维系/确立盟友/仇敌）时，必须记录在发生的时间点上。
+3. 状态覆盖原则：叙述必须体现"新状态覆盖旧状态"的逻辑，使用如"从此开始"、"不再是"等定性词汇。
+4. 关键变动追踪：必须重点记录角色状态的突变（如怀孕/流产、残疾/康复、死亡/复活、失忆/恢复）及关系的根本性逆转（如结盟/决裂）。
 
-【核心原则】
-1. 绝对客观：严禁使用主观、情绪化或动机定性的词汇（如"温柔"、"恶意"、"诱骗"），仅记录可观察的事实与结果。
-2. 过去式表达：所有记录必须使用过去式（如"已经商议了"、"完成了"），确保叙事的时间定性。
-3. 逻辑连贯：确保故事线清晰，不得凭空捏造或扭曲真实剧情。
-4. 请勿使用*、-、#等多余符号。
+【基础原则】
+1. 绝对客观：严禁使用主观、情绪化或心理描写的词汇，仅记录事实、行为与结果。
+2. 过去式表达：所有记录必须使用过去式（如"达成了"、"接管了"、"导致了"）。
+3. 有效信息筛选：
+   - 忽略无剧情推动作用的流水账（如单纯的菜单描述、普通起居）。
+   - 强制保留：若在交互中达成了【口头承诺】、【交易约定】或设定了【具体条件】（即使发生在吃饭/闲聊场景），必须完整记录约定的具体内容（如"答应了xx换取xx"）。
+   - 强制保留：关键冲突、重要决策或剧烈的情感波动。
+4. 纯文本格式：严禁使用 Markdown 列表符（如 -、*、#），严禁使用加粗。每条记录之间仅用换行分隔。
 
-【总结内容要求】
+【总结内容分类】
 1. 主线剧情：
-   - 仅记录 {{char}} 与 {{user}} 的关键互动、承诺约定及重要事件。
-   - 忽略日常闲聊（如吃饭、发呆），只保留推动剧情的节点。
-   - 同一天的剧情请合并为一段描述。
-   - 格式为：x年x月x日·HH:mm某角色人物名称在某地点发生了什么事件造成了什么结果/正在处于什么节点
+   - 仅记录 {{char}} 与 {{user}} 的直接交互核心。
+   - 格式：\`x年x月x日·HH:mm [地点] 角色名 事件描述（必须包含事件导致的状态/关系变更结果）。\`
+   - 示例：2838年02月15日·09:00 [张氏大厦] 张三与李四达成和解，张三承诺"永远不再踏入赌坊"作为交换条件，双方关系由"敌对"转为"暂时盟友"。
 
 2. 支线剧情：
-   - 记录 NPC 的独立行动轨迹、或 NPC 与主角的交互。
-   - 明确区分不同势力的行动线，不要混淆。
-   - 格式为：x年x月x日·HH:mm某角色人物名称在某地点发生了什么事件造成了什么结果/正在处于什么节点
+   - 记录 {{char}}/{{user}}和NPC 互动剧情或NPC的独立行动。
+   - 记录主角视角之外的关键信息（如某人暗中销毁了证据）。
+   - 格式：\`x年x月x日·HH:mm [地点] 角色名 行动描述。\`
 
-3. 主线或支线中发生的关键变动（如有）：
-   - 角色状态变化（如受伤、死亡、失忆、囚禁）。
-   - 确定的关系/情感逆转（如结盟、决裂、爱上、背叛）。
+【输出格式】
+主线剧情：
+（在此处输出内容...）
 
-【总结输出格式】
-   主线剧情：
-   支线剧情：
+支线剧情：
+（在此处输出内容...）
 
-请按照输出格式输出总结内容，严禁包含任何角色扮演的剧情描写、开场白、结束语或非剧情相关的交互性对话（如"收到"、"好的"）：`;
+新增设定/世界观更新：
+（在此处输出内容，若无新设定则留空...）`;
 
     // ----- 4. 批量/追溯填表提示词 -----
     const DEFAULT_BACKFILL_PROMPT = `🔴🔴🔴 历史记录填表指南 🔴🔴🔴
@@ -6335,6 +6338,12 @@ function shpmt() {
 // ✅✅✅ [新增] 独立的配置加载函数 (粘贴在这里)
 async function loadConfig() {
     console.log('🔄 [配置加载] 开始初始化...');
+
+    // ✅ [进度保护] 暂存当前运行时的角色专属进度
+    const runtimeSummaryIndex = API_CONFIG.lastSummaryIndex;
+    const runtimeBackfillIndex = API_CONFIG.lastBackfillIndex;
+    console.log(`🔒 [进度保护] 暂存当前进度: 总结=${runtimeSummaryIndex}, 填表=${runtimeBackfillIndex}`);
+
     let serverData = null;
     let localData = {};
     let needMigration = false;
@@ -6401,6 +6410,15 @@ async function loadConfig() {
         console.log('🆕 [配置] 新用户，使用默认设置');
     }
 
+    // ✅ [进度恢复] 强制恢复运行时进度，防止被云端数据覆盖
+    if (runtimeSummaryIndex !== undefined) {
+        API_CONFIG.lastSummaryIndex = runtimeSummaryIndex;
+    }
+    if (runtimeBackfillIndex !== undefined) {
+        API_CONFIG.lastBackfillIndex = runtimeBackfillIndex;
+    }
+    console.log(`🔓 [进度恢复] 已恢复运行时进度: 总结=${API_CONFIG.lastSummaryIndex}, 填表=${API_CONFIG.lastBackfillIndex}`);
+
     // 4. 如果是从本地恢复的，立刻触发一次上传，完成迁移
     if (needMigration) {
         console.log('🚀 [自动迁移] 正在将本地旧配置上传至服务器...');
@@ -6430,13 +6448,19 @@ async function saveAllSettingsToCloud() {
     try {
         console.log('💾 [API] 开始保存配置到服务器...');
 
-        // 1. Gather Data
+        // 1. Gather Data - ✅ 深拷贝并清理角色专属进度
+        const cleanedApiConfig = JSON.parse(JSON.stringify(API_CONFIG));
+        delete cleanedApiConfig.lastSummaryIndex;  // ✅ 移除总结进度
+        delete cleanedApiConfig.lastBackfillIndex; // ✅ 移除填表进度
+
         const allSettings = {
             config: C,
-            api: API_CONFIG,
+            api: cleanedApiConfig,  // ✅ 使用清理后的配置
             ui: UI,
             prompts: PROMPTS
         };
+
+        console.log('🔒 [进度隔离] 已移除角色专属进度，仅保存通用配置');
 
         // 2. Get CSRF
         let csrfToken = '';
@@ -6487,7 +6511,7 @@ async function saveAllSettingsToCloud() {
 }
 
 async function shcf() {
-    await loadConfig();
+    // ⚡ [优化] 移除 loadConfig，使用 ochat 中预加载的数据，实现秒开
     const ctx = m.ctx();
     const totalCount = ctx && ctx.chat ? ctx.chat.length : 0;
     
@@ -6904,87 +6928,64 @@ async function shcf() {
         $('#force-cloud-load').off('click').on('click', async function() {
             const btn = $(this);
             const originalText = btn.text();
-            btn.text('正在从服务器同步...').prop('disabled', true);
+            btn.text('正在全量同步...').prop('disabled', true);
 
             try {
-                console.log('🔄 [API] 开始强制读取 settings.json...');
+                // 第一步：同步全局配置 (Settings)
+                console.log('🔄 [Step 1] 同步全局配置...');
                 const csrfToken = await getCsrfToken();
 
-                // Added timestamp to prevent caching
                 const response = await fetch('/api/settings/get?t=' + Date.now(), {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfToken
-                    },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({})
                 });
 
-                if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
+                if (!response.ok) throw new Error(`配置同步失败: ${response.status}`);
 
                 const data = await response.json();
-
-                // DEBUG LOG: Show exactly what the server returned (BEFORE parsing)
-                console.log('📥 [API Debug] 服务器返回的原始数据:', data);
-
-                // ✅ 智能解析服务器配置（兼容字符串包裹格式）
                 const parsedData = parseServerSettings(data);
-
-                // DEBUG LOG: Show parsed data structure
-                console.log('📦 [API Debug] 解析后的数据结构:', parsedData);
-
                 const serverConfig = parsedData?.extension_settings?.st_memory_table;
 
-                if (!serverConfig || Object.keys(serverConfig).length === 0) {
-                    console.warn('⚠️ extension_settings found:', parsedData?.extension_settings);
-                    await customAlert('⚠️ 服务器上暂无此插件的配置数据\n\n请在控制台查看 [API Debug] 日志确认数据结构。\n请先点击【💾 保存配置】强制写入一次。', '无配置');
-                    btn.text(originalText).prop('disabled', false);
-                    return;
+                if (serverConfig) {
+                    if (serverConfig.config) Object.assign(C, serverConfig.config);
+                    if (serverConfig.api) Object.assign(API_CONFIG, serverConfig.api);
+                    if (serverConfig.ui) Object.assign(UI, serverConfig.ui);
+                    if (serverConfig.prompts) Object.assign(PROMPTS, serverConfig.prompts);
+
+                    localStorage.setItem('gg_config', JSON.stringify(C));
+                    localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                    localStorage.setItem('gg_ui', JSON.stringify(UI));
+                    localStorage.setItem('gg_prompts', JSON.stringify(PROMPTS));
+
+                    $('#c-enabled').prop('checked', C.enabled);
+                    $('#c-auto-bf').prop('checked', C.autoBackfill);
+                    $('#c-auto-sum').prop('checked', C.autoSummary);
                 }
 
-                console.log('✅ [API] 成功获取配置，正在覆盖本地...');
+                // 第二步：同步记忆表格与进度 (Chat Metadata)
+                console.log('🔄 [Step 2] 同步表格数据与进度...');
 
-                // Apply Config
-                if (serverConfig.config) Object.assign(C, serverConfig.config);
-                if (serverConfig.api) Object.assign(API_CONFIG, serverConfig.api);
-                if (serverConfig.ui) Object.assign(UI, serverConfig.ui);
-                if (serverConfig.prompts) Object.assign(PROMPTS, serverConfig.prompts);
+                const context = SillyTavern.getContext();
+                if (context && context.chatId) {
+                    await SillyTavern.loadChat(context.chatId);
 
-                // Update UI
-                $('#c-enabled').prop('checked', C.enabled);
-                $('#c-auto-bf').prop('checked', C.autoBackfill);
-                $('#c-auto-sum').prop('checked', C.autoSummary);
-                $('#c-limit-count').val(C.contextLimitCount);
-                $('#c-uifold-count').val(C.uiFoldCount);
-                $('#c-auto-bf').trigger('change');
-                $('#c-auto-sum').trigger('change');
+                    setTimeout(() => {
+                        m.load();
+                        shw();
 
-                // Update LocalStorage
-                localStorage.setItem('gg_config', JSON.stringify(C));
-                localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
-                localStorage.setItem('gg_ui', JSON.stringify(UI));
-                localStorage.setItem('gg_prompts', JSON.stringify(PROMPTS));
+                        const totalCount = SillyTavern.getContext().chat.length;
+                        $('#edit-last-sum').val(API_CONFIG.lastSummaryIndex || 0);
+                        $('#man-start').val(API_CONFIG.lastSummaryIndex || 0);
 
-                // Restore Table Data logic (kept as is)
-                const ctx = m.ctx();
-                if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) {
-                     const serverData = ctx.chatMetadata.gaigai;
-                     m.s.forEach((sheet, i) => {
-                         if (serverData.d[i]) sheet.from(serverData.d[i]);
-                     });
-                     if (serverData.meta) {
-                        if (serverData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = serverData.meta.lastSum;
-                        if (serverData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = serverData.meta.lastBf;
-                     }
-                     m.save();
+                        customAlert('✅ 全量同步成功！\n\n1. 全局配置已更新\n2. 表格内容已更新\n3. 进度指针已更新', '同步完成');
+                    }, 1500);
+                } else {
+                    await customAlert('✅ 配置已同步，但未检测到活跃聊天，跳过数据同步。', '部分完成');
                 }
-
-                $('#g-pop').remove();
-                shw();
-                await customAlert('✅ 同步成功！\n\n本地配置已更新为服务器最新状态。', '同步完成');
 
             } catch (error) {
-                console.error('❌ 强制同步失败:', error);
+                console.error('❌ 同步失败:', error);
                 await customAlert(`❌ 同步失败：${error.message}`, '错误');
             } finally {
                 btn.text(originalText).prop('disabled', false);
@@ -7939,6 +7940,9 @@ async function autoRunBackfill(start, end, isManual = false) {
     // 1. 聊天状态变更监听 (修复删楼后的快照链断裂)
     // ============================================================
     function ochat() {
+        // ⚡ [Pre-loading] 后台预加载配置，无需等待，让用户点配置按钮时秒开
+        loadConfig().catch(e => console.error('⚠️ [配置预加载] 失败:', e));
+
         // ✅ 清空探针数据，防止跨会话泄漏
         window.Gaigai.lastRequestData = null;
 
