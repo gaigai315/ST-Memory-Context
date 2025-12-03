@@ -4702,8 +4702,20 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
                 m.save();
                 updateCurrentSnapshot();
 
+                // ✨✨✨【核心修复】检测并刷新当前UI ✨✨✨
+                // 如果表格窗口正开着，就刷新它，让用户看到实时变化的数字
+                if ($('#g-pop').length > 0) {
+                    shw(); // 调用无感刷新
+                    console.log('🔄 [自动总结] UI 已实时刷新');
+                }
+
                 if (typeof toastr !== 'undefined') {
-                    toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
+                    // 分批模式下提示稍微淡一点，避免刷屏
+                    if (isBatch) {
+                        // console.log 只在控制台输出，或者用非常短的 toast
+                    } else {
+                        toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
+                    }
                 } else {
                     console.log('✅ 自动总结已静默完成');
                 }
