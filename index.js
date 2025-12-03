@@ -5108,13 +5108,43 @@ async function callIndependentAPI(prompt) {
                 generationConfig: {
                     temperature: temperature,
                     maxOutputTokens: maxTokens
-                }
+                },
+                // ✅✅✅ 强制禁用所有安全过滤，防止因安全检查导致内容截断
+                safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                ]
             };
             // Gemini 不支持标准流式，强制改回非流式
             delete requestBody.stream;
         } else {
             // 其他 Provider 添加 max_tokens
             requestBody.max_tokens = maxTokens;
+        }
+
+        // ✅✅✅ 针对 Gemini 代理/兼容模式的特殊处理：即使 provider 不是 'gemini'，
+        // 只要模型名包含 'gemini'，也需要注入安全设置（OpenAI 格式和 Gemini 格式都加上）
+        const modelLower = (model || '').toLowerCase();
+        if (provider !== 'gemini' && modelLower.includes('gemini')) {
+            console.log('🔧 [Gemini 代理模式] 检测到模型名包含 gemini，强制注入安全设置');
+
+            // OpenAI 格式的安全设置（部分代理可能支持）
+            requestBody.safety_settings = [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+            ];
+
+            // Gemini 原生格式的安全设置（备用）
+            requestBody.safetySettings = [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+            ];
         }
 
         // 🔧 [Gemini 官方直连修复] 如果是官方域名（无 Authorization Header），则将 API Key 添加到 URL 参数
