@@ -69,7 +69,7 @@ let API_CONFIG = {
         apiKey: '',
         model: 'gemini-2.5-pro',
         temperature: 0.7,
-        maxTokens: 8192, // ✅ 修改为 8192，确保独立API模式有足够的输出空间
+        maxTokens: 65536,
         summarySource: 'chat', // ✅ 默认改为聊天历史，符合大多数用户直觉
         lastSummaryIndex: 0,
         lastBackfillIndex: 0
@@ -224,20 +224,18 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
    - 同一天的剧情请合并为一段描述。
    - 格式为：x年x月x日·HH:mm某角色人物名称在某地点发生了什么事件造成了什么结果/正在处于什么节点
 
-2. 支线追踪：
+2. 支线剧情：
    - 记录 NPC 的独立行动轨迹、或 NPC 与主角的交互。
    - 明确区分不同势力的行动线，不要混淆。
    - 格式为：x年x月x日·HH:mm某角色人物名称在某地点发生了什么事件造成了什么结果/正在处于什么节点
 
-3. 关键变动（如有）：
+3. 主线或支线中发生的关键变动（如有）：
    - 角色状态变化（如受伤、死亡、失忆、囚禁）。
    - 确定的关系/情感逆转（如结盟、决裂、爱上、背叛）。
 
 【总结输出格式】
    主线剧情：
    支线剧情：
-   角色状态：
-   角色情感：
 
 请按照输出格式输出总结内容，严禁包含任何角色扮演的剧情描写、开场白、结束语或非剧情相关的交互性对话（如"收到"、"好的"）：`;
 
@@ -4225,14 +4223,20 @@ function bnd() {
 
             if (!silent) {
                 await customAlert(`✅ 分批总结全部完成！\n共 ${successCount} 批已保存。`, '完成');
+                // ✅ 修复：刷新主界面，确保楼层数据更新
+                if ($('#g-pop').length > 0) shw();
             } else if (typeof toastr !== 'undefined') {
                 toastr.success(`✅ 所有批次执行完毕`, '总结完成');
+                // ✅ 修复：静默模式也要刷新界面
+                if ($('#g-pop').length > 0) shw();
             }
         } else {
             // 有失败
             let reportMsg = `⚠️ 分批总结结束\n\n✅ 成功: ${successCount}\n❌ 失败: ${failedBatches.length}`;
             // 有失败时，即使是静默模式也建议弹窗告知详情
             await customAlert(reportMsg, '部分完成');
+            // ✅ 修复：即使部分失败，也要刷新界面显示已完成的部分
+            if ($('#g-pop').length > 0) shw();
         }
     }
 
@@ -4955,7 +4959,7 @@ async function callIndependentAPI(prompt) {
     const model = API_CONFIG.model || 'gpt-3.5-turbo';
     const apiUrl = API_CONFIG.apiUrl.trim().replace(/\/+$/, ''); // 去除末尾斜杠
     const apiKey = API_CONFIG.apiKey.trim();
-    const maxTokens = (API_CONFIG.maxTokens && API_CONFIG.maxTokens > 0) ? API_CONFIG.maxTokens : 8192;
+    const maxTokens = 65536;
     const temperature = API_CONFIG.temperature || 0.5;
     const provider = API_CONFIG.provider || 'openai';
 
@@ -5503,10 +5507,9 @@ async function callTavernAPI(prompt) {
                     include_character_card: false,
                     include_names: false,
 
-                    // ✅ 强制指定最大输出长度 (8192 token 足够写出极长的总结)
-                    // 如果不加，它会默认只输出 200-300 字，受限于酒馆主界面的短回复设置
-                    max_tokens: 8192,
-                    length: 8192,
+                    // ✅ 强制指定最大输出长度 ( 65536 token 足够写出极长的总结)
+                    max_tokens:  65536,
+                    length:  65536,
 
                     // ✅✅✅ 清空停止符，防止遇到人名就截断
                     stop: [],
