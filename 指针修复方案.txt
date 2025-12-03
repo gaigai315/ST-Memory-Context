@@ -1,0 +1,607 @@
+虽然代码中更新了 API_CONFIG.lastBackfillIndex（本地变量），也更新了 localStorage 和 chatMetadata（m.save()），但是 没有同步到云端/服务端配置 (settings.json)。
+而在 autoRunBackfill 函数的第一行，你调用了 await loadConfig()。
+loadConfig() 的逻辑是：如果服务端有配置，优先使用服务端的配置覆盖本地。
+这就导致了一个死循环：
+填表成功，本地指针变成 124。
+但是服务端配置里的指针还是 122。
+下次触发填表时，loadConfig() 运行，发现服务端是 122，于是把本地的 124 覆盖回 122。
+结果就是指针永远卡在 122，无法前进。
+此外，**静默模式（Silent Mode）**的代码逻辑顺序也有问题：它先保存了元数据 (m.save())，然后再更新指针变量，导致保存到聊天记录里的元数据也是旧的。
+🛠️ 修复方案
+我将修复 autoRunBackfill（自动填表逻辑）和 showBackfillEditPopup（弹窗确认逻辑），确保在更新指针后：
+立即同步到云端 (saveAllSettingsToCloud())，防止被 loadConfig() 覆盖。
+修正静默模式的保存顺序，确保 m.save() 写入的是新指针。
+请替换以下两个函数：
+1. 修复 autoRunBackfill 函数
+(大约在 2330 行附近)
+code
+JavaScript
+/**
+ * 自动追溯填表核心函数
+ * 读取指定范围的聊天历史，调用AI填写记忆表格
+ * @param {number} start - 起始楼层索引
+ * @param {number} end - 结束楼层索引
+ * @param {boolean} isManual - 是否为手动触发（默认false）
+ */
+async function autoRunBackfill(start, end, isManual = false) {
+    await loadConfig(); // ✅ 1. 强制刷新配置，确保开关状态最新
+
+    // 2. ✅ 强制从 SillyTavern.getContext() 获取数据
+    const ctx = window.SillyTavern.getContext(); 
+    if (!ctx || !ctx.chat) return;
+
+    console.log(`🔍 [追溯] 正在读取数据源，全量总楼层: ${ctx.chat.length}`);
+
+    // ✨ 强制刷新数据，防止读到空的
+    m.load();
+
+    let userName = (ctx.name1) ? ctx.name1 : 'User';
+    let charName = (ctx.name2) ? ctx.name2 : 'Character';
+
+    // 2. ✨ Instruction-Last 模式：System Prompt 完全由用户配置决定
+    const messages = [];
+    messages.push({
+        role: 'system',
+        content: (PROMPTS.nsfwPrompt || NSFW_UNLOCK)
+    });
+
+    // 3. 🗣️ 构建聊天历史
+    const chatSlice = ctx.chat.slice(start, end);
+    console.log(`📊 [追溯] 计划提取 ${start} 到 ${end} 层，实际切片得到 ${chatSlice.length} 条`);
+
+    let validCount = 0;
+
+    chatSlice.forEach(msg => {
+        if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
+
+        let content = msg.mes || msg.content || '';
+        content = cleanMemoryTags(content);
+
+        // 标签过滤
+        content = filterContentByTags(content);
+
+        if (content && content.trim()) {
+            const isUser = msg.is_user || msg.role === 'user';
+            const role = isUser ? 'user' : 'assistant';
+            const name = isUser ? userName : (msg.name || charName);
+
+            messages.push({
+                role: role,
+                content: `${name}: ${content}`
+            });
+            validCount++;
+        }
+    });
+
+    if (validCount === 0) {
+        if (!C.autoBackfillSilent) await customAlert(`选定范围 (${start}-${end}) 内没有有效的聊天内容`, '提示');
+        return;
+    }
+
+    // 4. 📋 Instruction-Last：将所有规则和任务放在最后
+
+    // ✨✨✨ 修复：手动构建包含状态栏的完整表格数据 ✨✨✨
+    const tableTextRaw = m.getTableText();
+    let statusStr = '\n=== 📋 当前表格状态 ===\n';
+    m.s.slice(0, 8).forEach((s, i) => {
+        const displayName = i === 1 ? '支线追踪' : s.n;
+        const nextIndex = s.r.length;
+        statusStr += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
+    });
+    statusStr += '=== 状态结束 ===\n';
+
+    const currentTableData = tableTextRaw ? (tableTextRaw + statusStr) : statusStr;
+
+    // ✨✨✨ [重构] Step 1: 准备上下文 (Context) ✨✨✨
+    let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
+
+    // 1️⃣ 角色卡信息：description, personality, scenario
+    if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
+        const char = ctx.characters[ctx.characterId];
+        if (char.description) contextBlock += `\n[人物简介]\n${char.description}\n`;
+        if (char.personality) contextBlock += `\n[性格/设定]\n${char.personality}\n`;
+        if (char.scenario) contextBlock += `\n[场景/背景]\n${char.scenario}\n`;
+    }
+
+    // 2️⃣ 世界书扫描：检测关键词触发的相关设定
+    let scanTextForWorldInfo = '';
+    chatSlice.forEach(msg => scanTextForWorldInfo += (msg.mes || msg.content || '') + '\n');
+
+    let triggeredLore = [];
+    let worldInfoList = [];
+    try {
+        if (ctx.worldInfo && Array.isArray(ctx.worldInfo)) worldInfoList = ctx.worldInfo;
+        else if (window.world_info && Array.isArray(window.world_info)) worldInfoList = window.world_info;
+    } catch(e) {}
+
+    if (worldInfoList.length > 0 && scanTextForWorldInfo) {
+        const lowerText = scanTextForWorldInfo.toLowerCase();
+        worldInfoList.forEach(entry => {
+            const keysStr = entry.keys || entry.key || '';
+            if (!keysStr) return;
+            const keys = String(keysStr).split(',').map(k => k.trim().toLowerCase()).filter(k => k);
+            if (keys.some(k => lowerText.includes(k))) {
+                const content = entry.content || entry.entry || '';
+                if (content) triggeredLore.push(`[相关设定: ${keys[0]}] ${content}`);
+            }
+        });
+    }
+
+    if (triggeredLore.length > 0) {
+        contextBlock += `\n【相关世界设定】\n${triggeredLore.join('\n')}`;
+    }
+
+    // ✨✨✨ [重构] Step 2: 更新 System 0 - 包含上下文 ✨✨✨
+    messages[0].content = (PROMPTS.nsfwPrompt || NSFW_UNLOCK) + '\n\n' + contextBlock;
+    console.log('✅ [Context注入] 角色信息和世界观已写入 System 0');
+
+    // ✨✨✨ [化整为零策略] 拆分历史总结为多条独立 System 消息 ✨✨✨
+    // Step 2.5: 在聊天历史前插入多条 System - 存储前情提要 + 表格数据
+    // 注意：这里使用 splice 在 index=1 的位置插入，确保顺序为 System 0 -> System 1~N -> 聊天历史
+    let insertIndex = 1; // 从索引 1 开始插入（在 System 0 之后）
+
+    // 第一步：拆分插入历史总结（每条作为独立 System 消息）
+    if (m.sm.has()) {
+        const summaryArray = m.sm.loadArray();
+        const recentSummaries = summaryArray.slice(-15); // 取最近 15 条
+
+        recentSummaries.forEach((item) => {
+            messages.splice(insertIndex, 0, {
+                role: 'system',
+                content: `【前情提要 - ${item.type || '历史'}】\n${item.content}`
+            });
+            insertIndex++; // 每次插入后，下一个插入位置后移
+        });
+        console.log(`✅ [消息拆分] 已插入 ${recentSummaries.length} 条独立历史总结`);
+    } else {
+        // 如果没有历史总结，插入一条说明
+        messages.splice(insertIndex, 0, {
+            role: 'system',
+            content: '【前情提要】\n（暂无历史总结）'
+        });
+        insertIndex++;
+        console.log('✅ [消息拆分] 无历史总结，已插入空提示');
+    }
+
+    // 第二步：插入当前表格状态（独立消息）
+    messages.splice(insertIndex, 0, {
+        role: 'system',
+        content: `【当前表格状态】\n${currentTableData}`
+    });
+    insertIndex++;
+    console.log('✅ [数据注入] 表格数据已作为独立 System 消息插入（位于聊天历史之前），避免 User 消息过长');
+
+    // ✨✨✨ [重构] Step 3: 构建 User 指令 - 只包含任务要求 ✨✨✨
+    // 使用批量填表专用提示词
+    let rulesContent = PROMPTS.backfillPrompt || DEFAULT_BACKFILL_PROMPT;
+    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
+
+    const finalInstruction = `【填表规则】\n${rulesContent}
+
+⚡ 立即开始执行：请从头到尾分析上述所有剧情，按照规则更新表格，将结果输出在 <Memory> 标签中。`;
+
+    // ✨ 智能合并：检查最后一条消息的角色
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'user') {
+        // 最后一条是 User：追加到该 User 消息
+        lastMsg.content += '\n\n' + finalInstruction;
+        console.log('✅ [智能合并] 已将填表指令追加到最后一条 User 消息');
+    } else {
+        // 最后一条是 Assistant 或其他：新增一条 User 消息
+        messages.push({ role: 'user', content: finalInstruction });
+        console.log('✅ [智能合并] 已新增一条 User 消息包含填表指令');
+    }
+
+    console.log('✅ [Instruction-Last] System负责身份设定，User负责填表指令');
+
+    console.log(`⚡ [追溯] 构建完成，准备发送 ${messages.length} 条消息`);
+
+    // 4. 探针
+    window.Gaigai.lastRequestData = {
+        chat: JSON.parse(JSON.stringify(messages)),
+        timestamp: Date.now(),
+        model: API_CONFIG.useIndependentAPI ? API_CONFIG.model : 'Tavern(Direct)'
+    };
+
+    // 5. 发送
+    let result;
+    
+    // ✨【核心修复】标记开始：告诉 opmt 别动我的数据！
+    isSummarizing = true; 
+    
+    try {
+        if (API_CONFIG.useIndependentAPI) {
+            result = await callIndependentAPI(messages);
+        } else {
+            console.log('🚀 [直连模式] 正在以原生多楼层数组格式发送...');
+            result = await callTavernAPI(messages);
+        }
+    } catch (e) {
+        console.error('请求失败', e);
+
+        // ⚠️ 发生异常，打破静默，弹出重试弹窗
+        const errorMsg = `批量填表失败：${e.message}\n\n是否重新尝试？`;
+        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
+
+        if (shouldRetry) {
+            // 用户选择重试，递归调用，传入相同参数
+            console.log('🔄 [用户重试] 正在重新调用批量填表...');
+            return autoRunBackfill(start, end, isManual);
+        }
+        return;
+    } finally {
+        // ✨【核心修复】标记结束：恢复正常状态
+        isSummarizing = false;
+    }
+
+    // 6. 处理结果
+    if (result && result.success) {
+        let aiOutput = unesc(result.summary || result.text || '');
+
+        // ✅ 强力提取：优先提取 <Memory> 标签内容
+        const tagMatch = aiOutput.match(/<Memory>[\s\S]*?<\/Memory>/i);
+        let finalOutput = '';
+
+        if (tagMatch) {
+            // 找到了标签，只保留标签内容
+            finalOutput = tagMatch[0];
+            console.log('✅ [内容提取] 成功提取 <Memory> 标签，已过滤废话');
+        } else {
+            // 没找到标签，尝试智能提取
+            console.warn('⚠️ [内容提取] 未找到 <Memory> 标签，尝试智能提取...');
+
+            // 移除常见的开场白模式
+            aiOutput = aiOutput
+                .replace(/^[\s\S]*?(?=<Memory>|insertRow|updateRow)/i, '')  // 移除开头到第一个指令之前的内容
+                .replace(/^(好的|明白|收到|了解|理解|根据|分析|总结|以下是)[^<\n]*\n*/gim, '')  // 移除礼貌用语
+                .replace(/^.*?(根据|基于|查看|阅读|分析).*?([，,：:]|之后)[^\n]*\n*/gim, '')  // 移除分析说明
+                .trim();
+
+            // 如果仍然包含指令，则使用清理后的内容
+            if (aiOutput.includes('insertRow') || aiOutput.includes('updateRow')) {
+                finalOutput = `<Memory><!-- ${aiOutput} --></Memory>`;
+                console.log('✅ [内容提取] 智能提取成功，已包装为标准格式');
+            } else {
+                // 完全没有有效内容
+                finalOutput = aiOutput;
+                console.error('❌ [内容提取] 未识别到有效的表格指令');
+            }
+        }
+
+        if (finalOutput) {
+            // ✨✨✨ 逻辑分流：如果是手动模式，绝不静默，也绝不显示"自动任务"弹窗
+            if (C.autoBackfillSilent && !isManual) {
+                 const cs = prs(finalOutput);
+                 if (cs.length > 0) {
+                     exe(cs);
+                     lastManualEditTime = Date.now();
+                     
+                     // ✅✅✅ 修复 1：调整顺序，先更新内存变量，再调用 save
+                     API_CONFIG.lastBackfillIndex = end;
+                     try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
+
+                     // ✅✅✅ 修复 2：同步到云端，防止 loadConfig 回滚
+                     saveAllSettingsToCloud();
+
+                     // ✅✅✅ 修复 3：最后保存到 Metadata
+                     m.save();
+                     updateCurrentSnapshot();
+                     
+                     if (typeof toastr !== 'undefined') toastr.success(`自动填表已完成`, '记忆表格', { timeOut: 1000, preventDuplicates: true });
+
+                     // ✨✨✨【核心修复】检测并刷新当前UI ✨✨✨
+                     if ($('#g-pop').length > 0) {
+                         const activeTab = $('.g-t.act').data('i');
+                         // 刷新当前显示的表格
+                         if (activeTab !== undefined) refreshTable(activeTab);
+                         // 同时也刷新一下各标签页的 (数字) 计数
+                         m.s.forEach((_, i) => updateTabCount(i));
+                         console.log('🔄 [自动填表] UI 已实时刷新');
+                     }
+                 }
+            } else {
+                 setTimeout(() => {
+                     if (typeof showBackfillEditPopup === 'function') {
+                         // ✅ 传递 end 给弹窗，让用户确认后再更新进度
+                         // 同时传递重新生成所需的参数
+                         const regenParams = { start, end, isManual };
+                         // ✅ 2. 仅显示编辑窗口，删除多余的 customAlert
+                         showBackfillEditPopup(finalOutput, end, regenParams);
+                     }
+                 }, 500);
+            }
+        }
+    } else if (result) {
+        // ⚠️ API 返回失败，打破静默，弹出重试弹窗
+        const errorMsg = `批量填表失败：${result.error || '未知错误'}\n\n是否重新尝试？`;
+        const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
+
+        if (shouldRetry) {
+            // 用户选择重试，递归调用，传入相同参数
+            console.log('🔄 [用户重试] 正在重新调用批量填表...');
+            return autoRunBackfill(start, end, isManual);
+        }
+    }
+}
+2. 修复 showBackfillEditPopup 函数
+(大约在 2670 行附近)
+code
+JavaScript
+// ✨ 独立的追溯结果编辑弹窗
+function showBackfillEditPopup(content, newIndex = null, regenParams = null) {
+    const h = `
+        <div class="g-p" style="background:#fff !important; color:#333 !important;">
+            <h4>📝 生成结果确认</h4>
+            <p style="color:#666; font-size:11px; margin-bottom:10px;">
+                AI已生成填表指令，请确认无误后点击写入。<br>
+                支持手动修改内容。
+            </p>
+            <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background-color: #ffffff !important; color: #333333 !important;">${esc(content)}</textarea>
+            <div style="margin-top:12px; display: flex; gap: 10px;">
+                <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃</button>
+                ${regenParams ? '<button id="bf-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
+                <button id="bf-popup-save" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">✅ 确认并写入</button>
+            </div>
+        </div>
+    `;
+
+    $('#g-backfill-pop').remove();
+    const $o = $('<div>', { id: 'g-backfill-pop', class: 'g-ov', css: { 'z-index': '10000005' } });
+    const $p = $('<div>', { class: 'g-w', css: { width: '700px', maxWidth: '92vw', height: 'auto' } });
+
+    const $hd = $('<div>', { class: 'g-hd' });
+    $hd.append(`<h3 style="color:${UI.tc}; flex:1;">🚀 写入确认</h3>`);
+
+    const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' } }).on('click', () => $o.remove());
+    $hd.append($x);
+
+    const $bd = $('<div>', { class: 'g-bd', html: h });
+    $p.append($hd, $bd);
+    $o.append($p);
+    $('body').append($o);
+
+    setTimeout(() => {
+        // ✅ 取消按钮 - 不保存数据，不更新进度
+        $('#bf-popup-cancel').on('click', () => {
+            $o.remove();
+        });
+
+        // ✅ 重新生成按钮
+        if (regenParams) {
+            $('#bf-popup-regen').on('click', async function() {
+                const $btn = $(this);
+                const originalText = $btn.text();
+
+                // 禁用所有按钮
+                $('#bf-popup-cancel, #bf-popup-regen, #bf-popup-save').prop('disabled', true);
+                $btn.text('生成中...');
+
+                try {
+                    console.log('🔄 [重新生成] 正在重新调用 autoRunBackfill...');
+
+                    // 临时标记：生成的内容将通过返回值获取，而不是弹出新窗口
+                    window._isRegeneratingBackfill = true;
+
+                    // 构建消息数组（复制自 autoRunBackfill 的逻辑）
+                    const ctx = window.SillyTavern.getContext();
+                    if (!ctx || !ctx.chat) {
+                        throw new Error('无法访问聊天上下文');
+                    }
+
+                    let userName = (ctx.name1) ? ctx.name1 : 'User';
+                    let charName = (ctx.name2) ? ctx.name2 : 'Character';
+
+                    // ✨ Instruction-Last 模式：System Prompt 完全由用户配置决定
+                    const messages = [{
+                        role: 'system',
+                        content: (PROMPTS.nsfwPrompt || NSFW_UNLOCK)
+                    }];
+
+                    // 构建聊天历史
+                    const chatSlice = ctx.chat.slice(regenParams.start, regenParams.end);
+                    chatSlice.forEach(msg => {
+                        if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
+                        let content = msg.mes || msg.content || '';
+                        content = cleanMemoryTags(content);
+
+                        // 标签过滤
+                        content = filterContentByTags(content);
+
+                        if (content && content.trim()) {
+                            const isUser = msg.is_user || msg.role === 'user';
+                            const role = isUser ? 'user' : 'assistant';
+                            const name = isUser ? userName : (msg.name || charName);
+                            messages.push({ role: role, content: `${name}: ${content}` });
+                        }
+                    });
+
+                    // 📋 Instruction-Last：将所有规则放在最后
+
+                    // ✨✨✨ 修复：手动构建包含状态栏的完整表格数据 ✨✨✨
+                    const tableTextRaw = m.getTableText();
+                    let statusStr = '\n=== 📋 当前表格状态 ===\n';
+                    m.s.slice(0, 8).forEach((s, i) => {
+                        const displayName = i === 1 ? '支线追踪' : s.n;
+                        const nextIndex = s.r.length;
+                        statusStr += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
+                    });
+                    statusStr += '=== 状态结束 ===\n';
+
+                    const currentTableData = tableTextRaw ? (tableTextRaw + statusStr) : statusStr;
+
+                    let rulesContent = PROMPTS.tablePrompt || DEFAULT_TABLE_PROMPT;
+                    rulesContent = rulesContent.replace(/{{user}}/gi, userName).replace(/{{char}}/gi, charName);
+
+                    let contextInfo = '';
+                    if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
+                        const char = ctx.characters[ctx.characterId];
+                        if (char.description) contextInfo += `[人物简介]\n${char.description}\n`;
+                    }
+
+                    // ✨✨✨ [化整为零策略] 插入历史总结为多条独立 System 消息 ✨✨✨
+                    // 在已有的 System 0 (NSFW Prompt) 之后，插入历史总结和表格数据
+                    let insertIndex = 1; // 从索引 1 开始插入（在 System 0 之后）
+
+                    // 第一步：拆分插入历史总结（每条作为独立 System 消息）
+                    if (m.sm.has()) {
+                        const summaryArray = m.sm.loadArray();
+                        const recentSummaries = summaryArray.slice(-15); // 取最近 15 条
+
+                        recentSummaries.forEach((item) => {
+                            messages.splice(insertIndex, 0, {
+                                role: 'system',
+                                content: `【前情提要 - ${item.type || '历史'}】\n${item.content}`
+                            });
+                            insertIndex++;
+                        });
+                        console.log(`✅ [重新生成-消息拆分] 已插入 ${recentSummaries.length} 条独立历史总结`);
+                    } else {
+                        messages.splice(insertIndex, 0, {
+                            role: 'system',
+                            content: '【前情提要】\n（暂无历史总结）'
+                        });
+                        insertIndex++;
+                    }
+
+                    // 第二步：插入当前表格状态（独立消息）
+                    messages.splice(insertIndex, 0, {
+                        role: 'system',
+                        content: `【当前表格状态】\n${currentTableData}`
+                    });
+                    insertIndex++;
+
+                    // 第三步：插入角色信息（如果有）
+                    if (contextInfo) {
+                        messages.splice(insertIndex, 0, {
+                            role: 'system',
+                            content: `【角色信息】\n${contextInfo}`
+                        });
+                        insertIndex++;
+                    }
+
+                    // 构建 User 指令（只包含规则，不包含数据）
+                    const finalInstruction = `${rulesContent}
+
+⚡ 立即开始执行：请从头到尾分析上述所有剧情，按照规则更新表格，将结果输出在 <Memory> 标签中。`;
+
+                    messages.push({ role: 'user', content: finalInstruction });
+                    console.log('✅ [Instruction-Last] 重新生成已采用后置指令模式');
+
+                    // 重新调用 API
+                    isSummarizing = true;
+                    let result;
+                    try {
+                        if (API_CONFIG.useIndependentAPI) {
+                            result = await callIndependentAPI(messages);
+                        } else {
+                            result = await callTavernAPI(messages);
+                        }
+                    } finally {
+                        isSummarizing = false;
+                    }
+
+                    if (result && result.success) {
+                        let aiOutput = unesc(result.summary || result.text || '');
+
+                        // ✅ 强力提取：优先提取 <Memory> 标签内容
+                        const tagMatch = aiOutput.match(/<Memory>[\s\S]*?<\/Memory>/i);
+                        let finalOutput = '';
+
+                        if (tagMatch) {
+                            // 找到了标签，只保留标签内容
+                            finalOutput = tagMatch[0];
+                            console.log('✅ [重新生成-内容提取] 成功提取 <Memory> 标签，已过滤废话');
+                        } else {
+                            // 没找到标签，尝试智能提取
+                            console.warn('⚠️ [重新生成-内容提取] 未找到 <Memory> 标签，尝试智能提取...');
+
+                            // 移除常见的开场白模式
+                            aiOutput = aiOutput
+                                .replace(/^[\s\S]*?(?=<Memory>|insertRow|updateRow)/i, '')
+                                .replace(/^(好的|明白|收到|了解|理解|根据|分析|总结|以下是)[^<\n]*\n*/gim, '')
+                                .replace(/^.*?(根据|基于|查看|阅读|分析).*?([，,：:]|之后)[^\n]*\n*/gim, '')
+                                .trim();
+
+                            // 如果仍然包含指令，则使用清理后的内容
+                            if (aiOutput.includes('insertRow') || aiOutput.includes('updateRow')) {
+                                finalOutput = `<Memory><!-- ${aiOutput} --></Memory>`;
+                                console.log('✅ [重新生成-内容提取] 智能提取成功，已包装为标准格式');
+                            } else {
+                                finalOutput = aiOutput;
+                                console.error('❌ [重新生成-内容提取] 未识别到有效的表格指令');
+                            }
+                        }
+
+                        if (finalOutput) {
+                            // 更新 textarea
+                            $('#bf-popup-editor').val(finalOutput);
+                            if (typeof toastr !== 'undefined') {
+                                toastr.success('内容已刷新', '重新生成', { timeOut: 1000, preventDuplicates: true });
+                            }
+                        } else {
+                            throw new Error('重新生成的内容为空或无效');
+                        }
+                    } else {
+                        throw new Error(result.error || 'API 返回失败');
+                    }
+
+                } catch (error) {
+                    console.error('❌ [重新生成失败]', error);
+
+                    // ⚠️ 使用重试弹窗
+                    const errorMsg = `重新生成失败：${error.message}\n\n是否重新尝试？`;
+                    const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成失败');
+
+                    if (shouldRetry) {
+                        // 用户选择重试，关闭当前弹窗，调用 autoRunBackfill
+                        console.log('🔄 [用户重试] 关闭弹窗并重新调用批量填表...');
+                        $o.remove();  // 关闭当前弹窗
+                        await autoRunBackfill(regenParams.start, regenParams.end, regenParams.isManual);
+                        return;  // 退出当前函数
+                    }
+                } finally {
+                    window._isRegeneratingBackfill = false;
+                    // 恢复按钮状态
+                    $('#bf-popup-cancel, #bf-popup-regen, #bf-popup-save').prop('disabled', false);
+                    $btn.text(originalText);
+                }
+            });
+        }
+
+        // ✅ 确认保存按钮 - 保存数据并更新进度
+        $('#bf-popup-save').on('click', async function() {
+            const finalContent = $('#bf-popup-editor').val().trim();
+            if (!finalContent) return;
+
+            const cs = prs(finalContent);
+            if (cs.length === 0) {
+                await customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
+                return;
+            }
+
+            // 执行写入
+            exe(cs);
+            lastManualEditTime = Date.now();
+
+            // ✅ 只有在用户确认保存时，才更新进度指针
+            if (newIndex !== null) {
+                API_CONFIG.lastBackfillIndex = newIndex;
+                try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
+                console.log(`✅ [进度更新] 批量填表进度已更新至: ${newIndex}`);
+            }
+
+            // ✅✅✅ 修复：同步到云端，防止下次 loadConfig 回滚
+            saveAllSettingsToCloud();
+
+            // ✅ 关键修复：在更新进度后再保存，确保进度被写入元数据
+            m.save();
+            updateCurrentSnapshot();
+
+            await customAlert('✅ 数据已写入', '完成');
+            $o.remove(); // 关闭弹窗
+
+            // ✨✨✨ 核心修复 2：保存成功后，自动返回主界面，解决状态滞留问题
+            shw();
+        });
+    }, 100);
+}

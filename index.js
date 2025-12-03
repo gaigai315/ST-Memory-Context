@@ -4232,6 +4232,14 @@ function bnd() {
             // 全部成功
             API_CONFIG.lastSummaryIndex = end;
             localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+            // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+            if (typeof saveAllSettingsToCloud === 'function') {
+                saveAllSettingsToCloud().catch(err => {
+                    console.warn('⚠️ [分批总结] 云端同步失败:', err);
+                });
+            }
+
             m.save();
             console.log(`✅ [分批总结] 全部完成，进度更新至: ${end}`);
 
@@ -4645,6 +4653,14 @@ async function callAIForSummary(forceStart = null, forceEnd = null, forcedMode =
                         }
                     });
                 }
+
+                // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [自动总结] 云端同步失败:', err);
+                    });
+                }
+
                 m.save();
                 updateCurrentSnapshot();
 
@@ -4839,6 +4855,13 @@ function showSummaryPreview(summaryText, sourceTables, isTableMode, newIndex = n
                         try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
                         console.log(`✅ [进度更新] 总结进度已更新至: ${newIndex}`);
                     }
+                }
+
+                // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [总结保存] 云端同步失败:', err);
+                    });
                 }
 
                 // 保存基础数据
@@ -6705,11 +6728,19 @@ async function shcf() {
     pop('⚙️ 配置', h, true);
     
     setTimeout(() => {
-        $('#reset-range-btn').on('click', function() {
+        $('#reset-range-btn').on('click', async function() {
             $('#man-start').val(0);
             $('#man-end').val(totalCount);
             API_CONFIG.lastSummaryIndex = 0;
             try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
+
+            // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+            if (typeof saveAllSettingsToCloud === 'function') {
+                await saveAllSettingsToCloud().catch(err => {
+                    console.warn('⚠️ [重置进度] 云端同步失败:', err);
+                });
+            }
+
             m.save(); // ✅ 修复：同步到聊天记录
             $('#edit-last-sum').val(0); // ✅ 更新输入框显示
             $('#reset-done-icon').fadeIn().delay(1000).fadeOut();
@@ -6834,6 +6865,14 @@ async function shcf() {
                     if (result && result.success) {
                         API_CONFIG.lastSummaryIndex = end;
                         localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                        // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+                        if (typeof saveAllSettingsToCloud === 'function') {
+                            saveAllSettingsToCloud().catch(err => {
+                                console.warn('⚠️ [手动总结] 云端同步失败:', err);
+                            });
+                        }
+
                         m.save();
                         $('#man-start').val(end);
                         $('#edit-last-sum').val(end);
@@ -7077,11 +7116,16 @@ async function shcf() {
             await saveAllSettingsToCloud();
 
             applyUiFold();
-            
+
             if (C.autoBackfill && C.enabled) {
                  C.enabled = false;
                  $('#c-enabled').prop('checked', false);
                  localStorage.setItem(CK, JSON.stringify(C));
+
+                 // ✅✅✅ 修复：自动关闭实时填表后，再次同步到云端
+                 await saveAllSettingsToCloud().catch(err => {
+                     console.warn('⚠️ [自动关闭实时填表] 云端同步失败:', err);
+                 });
             }
 
             await customAlert('配置已保存', '成功');
@@ -7467,6 +7511,14 @@ function omsg(id) {
                                 // 用户选择顺延
                                 API_CONFIG.lastBackfillIndex = currentCount - threshold + result.postpone;
                                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                                // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+                                if (typeof saveAllSettingsToCloud === 'function') {
+                                    saveAllSettingsToCloud().catch(err => {
+                                        console.warn('⚠️ [填表顺延] 云端同步失败:', err);
+                                    });
+                                }
+
                                 m.save(); // ✅ 修复：同步进度到聊天记录
                                 console.log(`⏰ [批量填表] 顺延 ${result.postpone} 楼，新触发点：${API_CONFIG.lastBackfillIndex + threshold}`);
                                 if (typeof toastr !== 'undefined') {
@@ -7516,6 +7568,14 @@ function omsg(id) {
                                     // 用户选择顺延
                                     API_CONFIG.lastSummaryIndex = currentCount - C.autoSummaryFloor + result.postpone;
                                     localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                                    // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+                                    if (typeof saveAllSettingsToCloud === 'function') {
+                                        saveAllSettingsToCloud().catch(err => {
+                                            console.warn('⚠️ [总结顺延] 云端同步失败:', err);
+                                        });
+                                    }
+
                                     m.save(); // ✅ 修复：同步进度到聊天记录
                                     console.log(`⏰ [自动总结] 顺延 ${result.postpone} 楼，新触发点：${API_CONFIG.lastSummaryIndex + C.autoSummaryFloor}`);
                                     if (typeof toastr !== 'undefined') {
@@ -7821,11 +7881,22 @@ async function autoRunBackfill(start, end, isManual = false) {
                  if (cs.length > 0) {
                      exe(cs);
                      lastManualEditTime = Date.now();
-                     m.save();
-                     updateCurrentSnapshot();
-                     // ✅ 只有静默模式且自动保存成功后，才更新进度
+
+                     // ✅✅✅ 修复 1：调整顺序，先更新内存变量，再调用 save
                      API_CONFIG.lastBackfillIndex = end;
                      try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
+
+                     // ✅✅✅ 修复 2：同步到云端，防止 loadConfig 回滚
+                     if (typeof saveAllSettingsToCloud === 'function') {
+                         saveAllSettingsToCloud().catch(err => {
+                             console.warn('⚠️ [自动填表] 云端同步失败:', err);
+                         });
+                     }
+
+                     // ✅✅✅ 修复 3：最后保存到 Metadata
+                     m.save();
+                     updateCurrentSnapshot();
+
                      if (typeof toastr !== 'undefined') toastr.success(`自动填表已完成`, '记忆表格', { timeOut: 1000, preventDuplicates: true });
 
                      // ✨✨✨【核心修复】检测并刷新当前UI ✨✨✨
@@ -8742,6 +8813,13 @@ function showBackfillEditPopup(content, newIndex = null, regenParams = null) {
                 API_CONFIG.lastBackfillIndex = newIndex;
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) {}
                 console.log(`✅ [进度更新] 批量填表进度已更新至: ${newIndex}`);
+            }
+
+            // ✅✅✅ 修复：同步到云端，防止下次 loadConfig 回滚
+            if (typeof saveAllSettingsToCloud === 'function') {
+                saveAllSettingsToCloud().catch(err => {
+                    console.warn('⚠️ [填表确认] 云端同步失败:', err);
+                });
             }
 
             // ✅ 关键修复：在更新进度后再保存，确保进度被写入元数据
