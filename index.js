@@ -2925,24 +2925,32 @@ function showBigEditor(ti, ri, ci, currentValue) {
     /**
      * 显示主界面（表格选择页）
      * 渲染所有表格的标签页和表格数据
+     * ✨ 修复版：自动保持当前选中的标签页，防止刷新后跳回首页
      */
 function shw() {
     // ✅ 【会话检查】防止在酒馆主页加载残留数据
     const context = SillyTavern.getContext();
-    // 如果没有 chatId (说明在主页) 或者 chat 数组为空 (说明还没加载对话)
     if (!context || !context.chatId || !context.chat) {
         customAlert('⚠️ 请先进入一个聊天会话，然后再打开记忆表格。\n(当前处于主页或空闲状态)', '未检测到会话');
         return;
     }
 
-    m.load();
+    // ✨ 1. 记录刷新前选中的标签索引 (如果有)
+    let activeTabIndex = 0;
+    if ($('#g-pop .g-t.act').length > 0) {
+        activeTabIndex = parseInt($('#g-pop .g-t.act').data('i')) || 0;
+    }
+
+    m.load(); // 强制重载数据
     pageStack = [shw];
-    
+
     const ss = m.all();
-    const tbs = ss.map((s, i) => { 
+    const tbs = ss.map((s, i) => {
         const count = s.r.length;
         const displayName = i === 1 ? '支线剧情' : s.n;
-        return `<button class="g-t${i === 0 ? ' act' : ''}" data-i="${i}">${displayName} (${count})</button>`; 
+        // ✨ 2. 根据记录的索引设置激活状态
+        const isActive = i === activeTabIndex ? ' act' : '';
+        return `<button class="g-t${isActive}" data-i="${i}">${displayName} (${count})</button>`;
     }).join('');
 
     const tls = `
@@ -2963,60 +2971,55 @@ function shw() {
     `;
 
     const tbls = ss.map((s, i) => gtb(s, i)).join('');
-    
-    // ✨✨✨ 核心修改：标题栏增加 "关于/更新" 按钮 ✨✨✨
-    const cleanVer = V.replace(/^v+/i, ''); 
+
+    const cleanVer = V.replace(/^v+/i, '');
     const titleHtml = `
         <div class="g-title-box">
             <span>记忆表格</span>
             <span class="g-ver-tag">v${cleanVer}</span>
-            <i id="g-about-btn" class="fa-solid fa-circle-info" 
-               style="margin-left:6px; cursor:pointer; opacity:0.8; font-size:14px; transition:all 0.2s;" 
+            <i id="g-about-btn" class="fa-solid fa-circle-info"
+               style="margin-left:6px; cursor:pointer; opacity:0.8; font-size:14px; transition:all 0.2s;"
                title="使用说明 & 检查更新"></i>
         </div>
     `;
-    // ✨✨✨ 结束 ✨✨✨
 
     const h = `<div class="g-vw">
         <div class="g-ts">${tbs}</div>
         <div class="g-tl">${tls}</div>
         <div class="g-tb">${tbls}</div>
     </div>`;
-    
+
     pop(titleHtml, h);
 
-    // ✨✨✨ 新增：静默检查更新状态（红点逻辑） ✨✨✨
     checkForUpdates(V.replace(/^v+/i, ''));
-
-    // ✨✨✨ 新增：首次打开新版本自动弹出说明书 ✨✨✨
     const lastReadVer = localStorage.getItem('gg_notice_ver');
     if (lastReadVer !== V) {
-        // 稍微延迟一点弹出，体验更好
-        setTimeout(() => {
-            showAbout(true); // true 表示这是自动弹出的
-        }, 300);
+        setTimeout(() => { showAbout(true); }, 300);
     }
-    
+
     setTimeout(bnd, 100);
-    
-    // ✨✨✨ 绑定说明按钮事件 ✨✨✨
+
+    // ✨ 3. 渲染完成后，手动触发一次点击以确保内容显示正确 (模拟用户切换)
     setTimeout(() => {
         $('#g-about-btn').hover(
             function() { $(this).css({ opacity: 1, transform: 'scale(1.1)' }); },
             function() { $(this).css({ opacity: 0.8, transform: 'scale(1)' }); }
         ).on('click', (e) => {
             e.stopPropagation();
-            showAbout(); // 打开说明页
+            showAbout();
         });
-    }, 100);
 
-    setTimeout(() => {
+        // ⚡ 关键修复：强制切换到之前选中的标签对应的表格内容
+        $('.g-tbc').hide(); // 先隐藏所有
+        $(`.g-tbc[data-i="${activeTabIndex}"]`).css('display', 'flex'); // 显示目标
+
+        // 确保复选框可见性
         $('#g-pop .g-row-select, #g-pop .g-select-all').css({
             'display': 'block', 'visibility': 'visible', 'opacity': '1',
             'position': 'relative', 'z-index': '99999', 'pointer-events': 'auto',
             '-webkit-appearance': 'checkbox', 'appearance': 'checkbox'
         });
-    }, 200);
+    }, 100);
 }
     
 function gtb(s, ti) {
