@@ -12,10 +12,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.2.6 启动');
+    console.log('🚀 记忆表格 v1.2.7 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.2.6';
+    const V = 'v1.2.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键
