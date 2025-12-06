@@ -5812,6 +5812,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // ========================================
                 let apiUrl = $('#api-url').val().trim();
                 const apiKey = $('#api-key').val().trim();  // 保持原值（可能为空）
+                let authHeader = apiKey.startsWith('Bearer ') ? apiKey : ('Bearer ' + apiKey);
                 const provider = $('#api-provider').val();
 
                 // 🔧 强制替换 0.0.0.0 为 127.0.0.1（浏览器兼容性）
