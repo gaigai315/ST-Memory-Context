@@ -26,8 +26,6 @@
 
 .g-w {
     position: relative !important;
-    transform: translate3d(0, 0, 0) !important;
-    backface-visibility: hidden !important;
     
     background: #fcfcfc !important;
 
@@ -1078,16 +1076,8 @@ input[type="checkbox"].g-select-all:checked {
    📱 提示词管理界面 - 手机端专项修复补丁
    ========================================== */
 @media (max-width: 600px) {
-    /* 1. 强制容器换行：解决“挤在一起”的核心代码 */
-    /* 针对提示词管理界面中带 flex 布局的行 */
-    .g-p div[style*="display: flex"], 
-    .g-p div[style*="display:flex"],
-    .g-p > div > div { 
-        flex-wrap: wrap !important; /* 允许掉到下一行 */
-        gap: 8px !important;        /* 增加间距 */
-    }
 
-    /* 2. 下拉框优化：让它自动撑满剩余空间，或者独占一行 */
+    /* 1. 下拉框优化：让它自动撑满剩余空间，或者独占一行 */
     .g-p select {
         width: auto !important;
         min-width: 100px !important; /* 保证最小宽度 */
@@ -1095,7 +1085,7 @@ input[type="checkbox"].g-select-all:checked {
         margin-right: 0 !important;
     }
     
-    /* 3. 按钮组优化：变成网格状或自动流式排列 */
+    /* 2. 按钮组优化：变成网格状或自动流式排列 */
     .g-p button {
         flex: 1 0 auto !important;   /* 按钮自动分配宽度 */
         min-width: 60px !important;  /* 按钮最小宽度 */
@@ -1104,13 +1094,13 @@ input[type="checkbox"].g-select-all:checked {
         white-space: nowrap !important;
     }
 
-    /* 4. 底部三大按钮（导入/导出）强制一行放不下就换行 */
+    /* 3. 底部三大按钮（导入/导出）强制一行放不下就换行 */
     /* 专门针对那三个大按钮 */
     .g-p button i {
         margin-right: 4px !important;
     }
 
-    /* 5. 修复复选框文字显示不全的问题 */
+    /* 4. 修复复选框文字显示不全的问题 */
     .g-p label {
         white-space: normal !important; /* 允许文字换行 */
         display: flex !important;       /* 使用弹性布局对齐复选框和文字 */
@@ -1119,7 +1109,8 @@ input[type="checkbox"].g-select-all:checked {
         width: 100% !important;
     }
 
-    .g-p input[type="checkbox"] {
+    /* 5. 修复只针对包裹在 label 里的复选框加边距，不影响配置页独立存在的复选框 */
+    .g-p label input[type="checkbox"] { 
         margin-top: 3px !important;    /* 复选框微调对齐第一行文字 */
         margin-right: 8px !important;  /* 复选框和文字的间距 */
         flex-shrink: 0 !important;     /* 禁止复选框被压扁 */

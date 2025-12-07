@@ -2401,7 +2401,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         #g-edit-pop *, #g-summary-pop *, #g-about-pop * {
             font-family: "Segoe UI", Roboto, "Helvetica Neue", "Microsoft YaHei", "微软雅黑", Arial, sans-serif !important;
             line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
+            -webkit-font-smoothing: auto;
             box-sizing: border-box;
             color: #333;
             font-size: var(--g-fs, 12px) !important; 
@@ -6812,7 +6812,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         marginTop: '15px',
                         padding: '8px 20px',
                         background: UI.c || '#888',
-                        color: '#fff',
+                        color: UI.tc || '#ffffff',
                         border: 'none',
                         borderRadius: '6px',
                         cursor: 'pointer',
@@ -8027,7 +8027,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const $icon = $('<div>', {
             id: 'gaigai-top-btn',
             // 关键：使用 drawer-icon 类名，这样大小、颜色、鼠标悬停效果就和旁边的“A”图标一模一样了
-            class: 'drawer-icon fa-solid fa-table fa-fw interactable',
+            // ✨✨✨ 修复：添加 closedIcon 类，让它在未激活时保持半透明(变暗)，和其他图标一致
+            class: 'drawer-icon fa-solid fa-table fa-fw interactable closedIcon', 
             title: '记忆表格',
             tabindex: '0'
         }).on('click', function (e) {
