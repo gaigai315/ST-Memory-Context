@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.0
+// 记忆表格 v1.3.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,10 +15,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.0 启动');
+    console.log('🚀 记忆表格 v1.3.1 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.0';
+    const V = 'v1.3.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键（已废弃，由 prompt_manager.js 接管）
@@ -4991,7 +4991,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 3. 智能补全 /v1
         // 如果 URL 不包含 /v1 且不包含 /chat 或 /models，且看起来像根域名
-        if (provider !== 'gemini' && provider !== 'claude') {
+        // ✅ [修复] local provider 用户经常使用自定义端点（如 Oobabooga），不自动添加 /v1
+        if (provider !== 'gemini' && provider !== 'claude' && provider !== 'local') {
             const urlParts = url.split('/');
             const isRootDomain = urlParts.length <= 3; // http://domain 或 http://domain:port
 
@@ -5074,12 +5075,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 try { csrfToken = await getCsrfToken(); } catch (e) { console.warn('⚠️ CSRF获取失败', e); }
 
                 // ✨✨✨【修复插入点：智能拦截】✨✨✨
-                // 只有当：提供商是“本地/反代” 且 模型名含“gemini”时，才走修复路
-                const isLocalGemini = (provider === 'local' || provider === 'proxy_only') && model.toLowerCase().includes('gemini');
+                // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路
+                // 本地反代 (local) 走标准 custom 协议
+                const isProxyGemini = (provider === 'proxy_only') && model.toLowerCase().includes('gemini');
 
-                if (isLocalGemini) {
-                    // === 分支 1: 针对你的本地 Gemini 反代 (MakerSuite 修复逻辑) ===
-                    console.log('🔧 [智能修正] 命中 Gemini 反代，使用 Makersuite 协议...');
+                if (isProxyGemini) {
+                    // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 修复逻辑) ===
+                    console.log('🔧 [智能修正] 命中网页端 Gemini 反代，使用 Makersuite 协议...');
                     
                     // 1. URL 清洗：只留 Base URL
                     let cleanBaseUrl = apiUrl.replace(/\/v1(\/|$)/, '').replace(/\/chat\/completions(\/|$)/, '').replace(/\/+$/, '');
@@ -5119,9 +5121,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     throw new Error(`反代修复模式报错: ${errText}`);
 
                 } else {
-                    // === 分支 2: 原有逻辑 (100% 粘贴你的原代码) ===
-                    // 只要不是 Gemini 反代，全部走这里，逻辑和你发给我的一模一样
-                    
+                    // === 分支 2: 标准 Custom 协议 (本地反代 + OpenAI + Claude 等) ===
+                    // 包括：本地反代(local)、OpenAI、Claude 等标准后端代理
+
                     // 构建酒馆后端代理 Payload
                     const proxyPayload = {
                         chat_completion_source: "custom",
@@ -5855,7 +5857,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     $('#api-url').attr('placeholder', '例如: http://127.0.0.1:8889');
                     $('#api-model').attr('placeholder', '例如: gemini-2.5-pro');
                     // 也可以给个默认值方便你改（可选）
-                    $('#api-url').val('http://127.0.0.1:8889/v1');
+                    $('#api-url').val('http://127.0.0.1:8889');
                 } else if (provider === 'compatible') {
                     // 兼容端点：不自动填充，保留用户输入
                     $('#api-url').attr('placeholder', '例如: https://api.xxx.com/v1 或 https://api.xxx.com/v1/chat/completions');
@@ -7145,6 +7147,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log(`⏳ [延迟] 消息 ${msgKey} 将在 1 秒后处理（等待流式传输完成）`);
             pendingTimers[msgKey] = setTimeout(() => {
                 try {
+                    // ✅ [修复进度指针重置] 在核心计算前加载最新配置，防止 API_CONFIG.lastBackfillIndex 被后台同步重置
+                    m.load();
+
                     // 重新获取最新上下文
                     const x = m.ctx();
                     if (!x || !x.chat) return;
