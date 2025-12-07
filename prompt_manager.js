@@ -822,16 +822,15 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         const h = `<div class="g-p" style="display: flex; flex-direction: column; gap: 15px;">
             <h4 style="margin:0 0 5px 0; opacity:0.8;">📝 提示词管理</h4>
 
-            <!-- 预设选择器 -->
             <div style="background: rgba(255,255,255,0.2); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.3);">
-                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; max-width: 100%;">
+                <div style="display: flex; flex-wrap: wrap !important; gap: 8px; align-items: center; margin-bottom: 10px; max-width: 100%;">
                     <label style="font-weight: 600; flex-shrink: 0;">📦 当前预设：</label>
                     <select id="profile-selector" style="flex: 1 1 auto; min-width: 150px; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.2); background: rgba(255,255,255,0.9); font-size: 12px;">
                         ${profileOptions}
                     </select>
-                    <button id="new-profile-btn" style="padding: 8px 12px; background: #28a745; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap;">➕ 新建</button>
-                    <button id="rename-profile-btn" style="padding: 8px 12px; background: #6c757d; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap;">✏️ 重命名</button>
-                    <button id="delete-profile-btn" style="padding: 8px 12px; background: #dc3545; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap;" ${currentProfileId === 'default' ? 'disabled' : ''}>🗑️ 删除</button>
+                    <button id="new-profile-btn" style="padding: 8px 12px; background: #28a745; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;">➕ 新建</button>
+                    <button id="rename-profile-btn" style="padding: 8px 12px; background: #6c757d; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;">✏️ 重命名</button>
+                    <button id="delete-profile-btn" style="padding: 8px 12px; background: #dc3545; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;" ${currentProfileId === 'default' ? 'disabled' : ''}>🗑️ 删除</button>
                 </div>
 
                 ${charName ? `
@@ -847,14 +846,12 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 ` : '<div style="font-size: 11px; opacity: 0.6;">💡 提示：进入对话后可绑定预设到特定角色</div>'}
             </div>
 
-            <!-- 导入/导出按钮 -->
-            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(0,0,0,0.1); max-width: 100%;">
+            <div style="display: flex; flex-wrap: wrap !important; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(0,0,0,0.1); max-width: 100%;">
                 <button id="import-btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📥 导入</button>
                 <button id="export-single-btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📤 导出当前</button>
                 <button id="export-all-btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📦 导出全部</button>
             </div>
             <input type="file" id="import-file-input" accept=".json" style="display: none;" />
-
             <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2);">
                 <div style="margin-bottom: 8px; font-weight: 600;">🔓 史官破限 (System Pre-Prompt)</div>
                 <div style="font-size:10px; opacity:0.6; margin-bottom:10px;">用于总结/追溯等独立任务，不会在实时填表时发送</div>
