@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.2
+// 记忆表格 v1.3.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,10 +15,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.2 启动');
+    console.log('🚀 记忆表格 v1.3.3 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.2';
+    const V = 'v1.3.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const PK = 'gg_prompts';           // 提示词存储键（已废弃，由 prompt_manager.js 接管）
@@ -4980,23 +4980,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         while (true) {
                             const { done, value } = await reader.read();
 
-                            if (done) {
-                                console.log('✅ [流式模式] 接收完成');
-                                // ✅ Flush 解码器缓存，防止最后一段字符丢失
+                            // ✅ 修复：先解码并追加到 buffer，无论是否 done
+                            if (value) {
+                                buffer += decoder.decode(value, { stream: !done });
+                            } else if (done) {
+                                // Flush 解码器缓存，防止最后一段字符丢失
                                 buffer += decoder.decode();
-                                break;
                             }
 
-                            // 解码当前 chunk 并追加到 buffer
-                            buffer += decoder.decode(value, { stream: true });
-
-                            // 按行分割（SSE 格式是换行符分隔）
+                            // ✅ 修复：统一处理 buffer，按行分割
                             const lines = buffer.split('\n');
 
-                            // 保留最后一个可能不完整的行
-                            buffer = lines.pop() || '';
+                            // ✅ 修复：如果流未结束，保留最后一行（可能不完整）
+                            //         如果流结束了，处理所有行，不保留
+                            if (!done) {
+                                buffer = lines.pop() || '';
+                            } else {
+                                buffer = '';  // 清空，确保所有数据都被处理
+                                console.log('✅ [流式模式] 接收完成，处理剩余的所有行');
+                            }
 
-                            // 处理每一行
+                            // 处理每一行（相同的解析逻辑）
                             for (const line of lines) {
                                 const trimmed = line.trim();
 
@@ -5059,61 +5063,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                     console.warn('⚠️ [流式解析] 无法识别的行格式 (前50字符):', trimmed.substring(0, 50));
                                 }
                             }
-                        }
 
-                        // 处理剩余 buffer 中的数据
-                        if (buffer.trim()) {
-                            console.log('📝 [流式模式] 处理剩余 buffer:', buffer.substring(0, 100));
-
-                            try {
-                                const trimmed = buffer.trim();
-
-                                if (trimmed && !trimmed.startsWith(':') && trimmed !== 'data: [DONE]' && trimmed !== 'data:[DONE]') {
-                                    const sseMatch = trimmed.match(/^data:\s*/);
-                                    if (sseMatch) {
-                                        const jsonStr = trimmed.substring(sseMatch[0].length);
-
-                                        if (jsonStr && jsonStr !== '[DONE]') {
-                                            try {
-                                                const chunk = JSON.parse(jsonStr);
-
-                                                const finishReason = chunk.choices?.[0]?.finish_reason;
-                                                if (finishReason === 'length') {
-                                                    isTruncated = true;
-                                                    console.warn('⚠️ [流式模式] 剩余 buffer 检测到截断');
-                                                }
-
-                                                const reasoningContent = chunk.choices?.[0]?.delta?.reasoning_content;
-                                                if (reasoningContent) {
-                                                    fullReasoning += reasoningContent;  // ✅ 累积思考内容
-                                                    console.log('🧠 [DeepSeek] 剩余 buffer 中检测到 reasoning_content');
-                                                }
-
-                                                const delta = chunk.choices?.[0]?.delta?.content;
-                                                if (delta) {
-                                                    fullText += delta;
-                                                    console.log('✅ [流式模式] 从剩余 buffer 中提取到内容，长度:', delta.length);
-                                                }
-
-                                                if (!delta && chunk.choices?.[0]?.text) {
-                                                    fullText += chunk.choices[0].text;
-                                                    console.log('✅ [流式模式] 从剩余 buffer 中提取到 text，长度:', chunk.choices[0].text.length);
-                                                }
-                                            } catch (parseErr) {
-                                                console.warn('⚠️ [流式解析] 剩余 buffer JSON 解析失败:', parseErr.message);
-                                                // ✅ 容错：尝试将原始内容作为纯文本追加，防止数据丢失
-                                                console.log('📝 [容错处理] 尝试将剩余 buffer 作为纯文本处理');
-                                                if (jsonStr && jsonStr.trim()) {
-                                                    fullText += jsonStr;
-                                                    console.log('✅ [容错处理] 已追加剩余文本，长度:', jsonStr.length);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (bufferErr) {
-                                console.error('❌ [流式解析] 处理剩余 buffer 时出错:', bufferErr);
-                            }
+                            // ✅ 修复：在处理完所有数据后再退出
+                            if (done) break;
                         }
 
                         // 如果检测到截断，在文本末尾添加视觉标记
@@ -5126,13 +5078,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         console.log(`🧠 [流式模式] 累积思考长度: ${fullReasoning.length} 字符`);
 
                         // ========================================
-                        // 循环结束后处理：兜底 + 清洗
+                        // 循环结束后处理：检测异常 + 清洗
                         // ========================================
 
-                        // 1️⃣ 兜底策略：如果正文全空，说明模型可能把回答写在思考里了
+                        // 1️⃣ 检测异常：如果正文全空，说明 AI 仅输出了思考过程（可能 Token 耗尽）
                         if (!fullText.trim() && fullReasoning.trim()) {
-                            console.warn('⚠️ [DeepSeek 兜底] 正文丢失，自动回退使用思考内容作为结果');
-                            fullText = fullReasoning;
+                            console.error('❌ [DeepSeek 异常] 正文为空，仅收到思考内容');
+                            // 提取最后 200 个字符的思考内容用于错误提示
+                            const reasoningPreview = fullReasoning.length > 200
+                                ? '...' + fullReasoning.slice(-200)
+                                : fullReasoning;
+                            throw new Error(
+                                `生成失败：AI 仅输出了思考过程，未输出正文（可能是 Token 耗尽）。\n\n` +
+                                `💭 思考内容末尾（最后 200 字符）：\n${reasoningPreview}\n\n` +
+                                `🔧 建议：减少每批处理的层数，或切换到非思考模型（如 GPT-4、Claude）。`
+                            );
                         }
 
                         // 2️⃣ 清洗策略：无论来源如何，必须清洗掉 <think> 标签，只留正文
