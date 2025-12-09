@@ -146,6 +146,14 @@
     let saveChatDebounceTimer = null; // 🧹 性能优化：saveChat 防抖计时器
     let isChatSwitching = false; // 🔒 性能优化：会话切换锁，防止卡顿期间误操作
 
+    // 🛡️ [辅助函数] 更新 lastManualEditTime 并同步到 window
+    // 确保内部变量和外部模块（backfill_manager.js）的 window.lastManualEditTime 保持同步
+    function updateLastManualEditTime() {
+        const now = Date.now();
+        lastManualEditTime = now;
+        window.lastManualEditTime = now;
+    }
+
     // ========================================================================
     // ========== 工具函数区：弹窗、CSRF令牌等辅助功能 ==========
     // ========================================================================
@@ -1361,6 +1369,14 @@
 
             if (!snapshot) {
                 console.warn(`⚠️ [回档失败] 找不到快照ID: ${key}`);
+                return false;
+            }
+
+            // 🛡️ [过期保护] 检查快照是否早于最后一次手动修改
+            // 同步读取 window.lastManualEditTime（可能被 backfill_manager.js 更新）
+            const currentManualEditTime = window.lastManualEditTime || lastManualEditTime;
+            if (snapshot.timestamp < currentManualEditTime) {
+                console.log(`🛡️ [保护] 检测到手动修改，跳过过时快照回滚 (快照:${new Date(snapshot.timestamp).toLocaleTimeString()}, 修改:${new Date(currentManualEditTime).toLocaleTimeString()})`);
                 return false;
             }
 
@@ -4964,9 +4980,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 let fullText = '';  // 累积完整文本
                 let fullReasoning = '';  // 累积思考内容（DeepSeek reasoning_content）
 
-                // 判断是否为流式响应（检测 Content-Type）
+                // 判断是否为流式响应（仅根据服务器实际返回的 Content-Type 判断）
+                // ✅ 修复：移除 requestBody.stream 判断，防止"假流"模型（请求 stream:true 但返回 json）解析失败
                 const contentType = directResponse.headers.get('content-type') || '';
-                const isStreamResponse = contentType.includes('text/event-stream') || requestBody.stream === true;
+                const isStreamResponse = contentType.includes('text/event-stream');
 
                 if (isStreamResponse && directResponse.body) {
                     console.log('🌊 [流式模式] 开始接收 SSE 流式响应...');
@@ -7745,6 +7762,19 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
     Object.defineProperty(window.Gaigai, 'deletedMsgIndex', {
         get() { return deletedMsgIndex; },
         set(val) { deletedMsgIndex = val; }
+    });
+
+    // 🛡️ [关键同步] 暴露 lastManualEditTime，并同步 window.lastManualEditTime
+    // 防止 backfill_manager.js 更新 window.lastManualEditTime 后，index.js 内部变量未同步
+    Object.defineProperty(window.Gaigai, 'lastManualEditTime', {
+        get() {
+            // 优先读取 window.lastManualEditTime（可能被外部模块更新）
+            return window.lastManualEditTime || lastManualEditTime;
+        },
+        set(val) {
+            lastManualEditTime = val;
+            window.lastManualEditTime = val; // 同步到 window
+        }
     });
 
     // ✅ 工具函数直接暴露
