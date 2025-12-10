@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.3
+// 记忆表格 v1.3.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,14 +15,12 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.3 启动');
+    console.log('🚀 记忆表格 v1.3.4 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.3';
+    const V = 'v1.3.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
-    const PK = 'gg_prompts';           // 提示词存储键（已废弃，由 prompt_manager.js 接管）
-    const PROMPT_VERSION = 20;         // 提示词版本号（由 prompt_manager.js 管理）
     const AK = 'gg_api';               // API配置存储键
     const CK = 'gg_config';            // 通用配置存储键
     const CWK = 'gg_col_widths';       // 列宽存储键
@@ -3088,6 +3086,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 '-webkit-appearance': 'checkbox', 'appearance': 'checkbox'
             });
         }, 100);
+
+        // ✅ 检查默认提示词更新（延迟执行，等待界面渲染完毕）
+        if (window.Gaigai.PromptManager && typeof window.Gaigai.PromptManager.checkUpdate === 'function') {
+            setTimeout(() => {
+                window.Gaigai.PromptManager.checkUpdate();
+            }, 800);
+        }
     }
 
     /**
@@ -7821,74 +7826,81 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
 
         const h = `
         <div class="g-p" style="display:flex; flex-direction:column; gap:12px; height:100%;">
+            <!-- 头部版本信息 -->
             <div style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); border-radius:8px; padding:12px; text-align:center; flex-shrink:0;">
                 <div style="font-size:18px; font-weight:bold; margin-bottom:5px; color:${textColor};">
                     📘 记忆表格 (Memory Context)
                 </div>
                 <div style="font-size:12px; opacity:0.8; margin-bottom:8px; color:${textColor};">当前版本: v${cleanVer}</div>
                 <div id="update-status" style="background:rgba(0,0,0,0.05); padding:6px; border-radius:4px; font-size:11px; display:flex; align-items:center; justify-content:center; gap:8px; color:${textColor};">
-                    <i class="fa-solid fa-spinner fa-spin"></i> 正在连接 GitHub 检查更新...
+                    ⏳ 正在连接 GitHub 检查更新...
                 </div>
             </div>
 
             <div style="flex:1; overflow-y:auto; background:rgba(255,255,255,0.4); border-radius:8px; padding:15px; font-size:13px; line-height:1.6; border:1px solid rgba(255,255,255,0.3);">
 
-                <div style="background:rgba(255, 165, 0, 0.15); border:1px solid rgba(255, 140, 0, 0.4); border-radius:6px; padding:10px; margin-bottom:15px; color:#d35400; font-size:12px; display:flex; align-items:start; gap:8px;">
-                    <i class="fa-solid fa-triangle-exclamation" style="margin-top:3px;"></i>
-
-                    <div>
-                        <strong>更新/操作前必读：</strong><br>
-                        为了防止数据意外丢失，强烈建议在<strong>每次更新插件文件</strong>之前，点击主界面的【📥 导出】按钮备份您的记忆数据！
-                    </div>
+                <!--⚠️ 备份警告 -->
+                <div style="background:rgba(255, 165, 0, 0.1); border:1px solid rgba(255, 140, 0, 0.3); border-radius:6px; padding:8px; margin-bottom:15px; color:#d35400; font-size:11px; display:flex; align-items:center; gap:6px;">
+                    ⚠️
+                    <strong>安全提醒：</strong>更新插件前，请点击【📥 导出】备份数据！
                 </div>
 
-                <h4 style="margin-top:0; border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:5px; color:${textColor};">📉 关键区别 (必读)</h4>
-
-                <div style="margin-bottom:15px; font-size:12px; color:${textColor}; background:rgba(255,255,255,0.3); padding:8px; border-radius:6px;">
-                    <div style="margin-bottom:8px;">
-                        <strong>👁️ UI 楼层折叠：</strong><br>
-                        <span style="opacity:0.8;">仅在网页界面上收起旧消息，防止页面卡顿。</span><br>
-                        <span style="font-size:11px; font-weight:bold; opacity:0.9;">👉 AI 依然能收到被折叠的楼层内容。</span>
-                    </div>
-                    
-                    <div>
-                        <strong>✂️ 隐藏楼层 (隐藏上下文)：</strong><br>
-                        <span style="opacity:0.8;">在发送请求时切除中间旧消息，仅保留人设和最近对话。</span><br>
-                        <span style="font-size:11px; font-weight:bold; opacity:0.9;">👉 大幅省Token，AI看不见旧内容(建议配合表格记忆)。</span>
-                    </div>
+                <!-- ✅ 第一部分：本次更新日志 (高亮显示) -->
+                <div style="margin-bottom:20px; border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:15px;">
+                    <h4 style="margin-top:0; margin-bottom:10px; color:${textColor}; display:flex; align-items:center; gap:6px;">
+                        📢 本次更新内容 (v${cleanVer})
+                    </h4>
+                    <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
+                        <li><strong> 修复进度残留：</strong> 解决了切换角色/会话时，旧卡不自动填表的问题。</li>
+                        <li><strong> 进度手动修正：</strong> 在追溯和总结界面增加了进度指针的手动修改功能。</li>
+                        <li><strong> 提示词热更新：</strong> 支持一键拉取最新的默认提示词，无需更新插件本体。</li>
+                        <li><strong> 插件热更新：</strong> 支持在关于页面一键更新插件代码，无需手动操作。</li>
+                        <li><strong> 交互优化：</strong> 优化了夜间模式下的弹窗显示，修复了输入框看不清的问题。</li>
+                    </ul>
                 </div>
 
-                <h4 style="border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:5px; color:${textColor};">💡 推荐用法</h4>
-                <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; margin-bottom:15px;">
-                    <li><strong>方案 A (省钱流)：</strong> 开启[记忆表格] + [隐藏楼层]。AI靠表格记事，靠隐藏楼层省Token。</li>
-                    <li><strong>方案 B (史官流)：</strong> 关闭[记忆表格]，使用[聊天总结]。即使关闭记忆，总结功能依然可用。</li>
-                </ul>
+                <!-- 📘 第二部分：功能指南 -->
+                <div>
+                    <h4 style="margin-top:0; margin-bottom:10px; color:${textColor}; opacity:0.9;">
+                        📘 功能介绍 & 新手引导
+                    </h4>
 
-                <h4 style="border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:5px; color:${textColor};">📍 注入位置</h4>
-                <div style="margin-bottom:15px; font-size:12px; color:${textColor};">
-                    默认相对位置注入到 <strong>System Prompt (系统预设)</strong> 的最末尾，可在配置中修改，可通过【最后发送内容 & Toke】功能查看。
-                </div>
-                
-                <h4 style="border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:5px; color:${textColor};">✨ 核心功能</h4>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px;">
+                        <div style="background:rgba(255,255,255,0.3); padding:10px; border-radius:6px; border:1px solid rgba(0,0,0,0.05);">
+                            <div style="font-weight:bold; margin-bottom:4px; color:${textColor}; font-size:12px;">📊 填表模式 (二选一)</div>
+                            <div style="font-size:11px; color:${textColor}; opacity:0.8;">
+                                • <strong>实时填表：</strong> 每回合都写。优点是实时性强，缺点是费钱/慢。<br>
+                                • <strong>批量填表：</strong> 每N楼写一次。优点是省Token、速度快。<br>
+                                <span style="opacity:0.6; font-size:10px;">(推荐开启批量填表 + 独立API)</span>
+                            </div>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.3); padding:10px; border-radius:6px; border:1px solid rgba(0,0,0,0.05);">
+                            <div style="font-weight:bold; margin-bottom:4px; color:${textColor}; font-size:12px;">📝 总结模式</div>
+                            <div style="font-size:11px; color:${textColor}; opacity:0.8;">
+                                • <strong>表格源：</strong> 读取表格里的数据生成总结。<br>
+                                • <strong>聊天源：</strong> 读取聊天记录生成总结。<br>
+                                <span style="opacity:0.6; font-size:10px;">(可在配置中切换总结来源)</span>
+                            </div>
+                        </div>
+                    </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:12px; color:${textColor};">
-                    <span>✅ <strong>自动记录：</strong> 智能提取剧情/物品</span>
-                    <span>✅ <strong>隐藏楼层：</strong> 智能压缩历史记录</span>
-                    <span>✅ <strong>折叠楼层：</strong> 聊天楼层折叠收纳</span>
-                    <span>✅ <strong>双模总结：</strong> 支持表格/聊天记录源</span>
-                    <span>✅ <strong>独立 API：</strong> 支持单独配置总结模型</span>
-                    <span>✅ <strong>灾难恢复：</strong> 支持快照回档/数据扫描</span>
-                    <span>✅ <strong>完全编辑：</strong> 支持长按编辑/拖拽列宽</span>
-                    <span>✅ <strong>数据探针：</strong> 一键核查发送给AI的真实内容</span>
+                    <div style="background:rgba(76, 175, 80, 0.1); border:1px solid rgba(76, 175, 80, 0.3); padding:10px; border-radius:6px;">
+                        <div style="font-weight:bold; color:#2e7d32; margin-bottom:4px; font-size:12px;">💡 新手/旧卡 推荐流程</div>
+                        <ol style="margin:0; padding-left:15px; font-size:11px; color:#2e7d32;">
+                            <li>点击 <strong>【⚡ 追溯】</strong> 按钮，进行一次全量或分批填表，补全历史数据。</li>
+                            <li>前往 <strong>【⚙️ 配置】</strong>，开启 <strong>[批量填表]</strong> 和 <strong>[自动总结]</strong>。</li>
+                            <li>享受全自动托管，AI 会自动维护记忆。</li>
+                        </ol>
+                    </div>
                 </div>
 
                 <div style="margin-top:15px; font-size:11px; text-align:center; opacity:0.7;">
                     <a href="${repoUrl}" target="_blank" style="text-decoration:none; color:${textColor}; border-bottom:1px dashed ${textColor};">
-                       <i class="fa-brands fa-github" style="font-family:'Font Awesome 6 Brands' !important;"></i> 访问 GitHub 项目主页
+                       🔗 GitHub 项目主页
                     </a>
                 </div>
             </div>
-            
+
             <div style="padding-top:5px; border-top:1px solid rgba(255,255,255,0.2); text-align:right; flex-shrink:0;">
                 <label style="font-size:12px; cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:6px; color:${textColor}; opacity:0.9;">
                     <input type="checkbox" id="dont-show-again" ${isChecked ? 'checked' : ''}>
@@ -7921,12 +7933,99 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                 }
             });
             checkForUpdates(cleanVer);
+
+            // ✅ 绑定一键更新按钮事件
+            $('#auto-update-plugin-btn').on('click', function () {
+                performPluginUpdate();
+            });
         }, 100);
 
         $o.on('click', e => { if (e.target === $o[0]) $o.remove(); });
     }
 
     // ✨✨✨ 修复：版本更新检查函数 (v1.1.13 图标终极兼容版) ✨✨✨
+    /**
+     * 一键热更新插件（自动调用酒馆后端 API）
+     */
+    async function performPluginUpdate() {
+        const btn = $('#auto-update-plugin-btn');
+        const oldText = btn.text();
+        btn.text('📥 下载中...').prop('disabled', true);
+
+        try {
+            // 步骤A: 获取 CSRF Token
+            const csrf = await getCsrfToken();
+
+            // 步骤B: 获取所有扩展列表
+            const listRes = await fetch('/api/extensions/list', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrf,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!listRes.ok) {
+                throw new Error('无法获取扩展列表');
+            }
+
+            const extensions = await listRes.json();
+
+            // 步骤C: 在列表中查找包含 gaigai315/ST-Memory-Context 的扩展
+            const myExtension = extensions.find(e =>
+                e.url && e.url.toLowerCase().includes('gaigai315/st-memory-context')
+            );
+
+            if (!myExtension) {
+                throw new Error('未找到安装记录，请手动前往"扩展"页面更新');
+            }
+
+            console.log(`🔍 [热更新] 识别到插件目录: ${myExtension.name}`);
+
+            // 步骤D: 发送更新请求
+            btn.text('🔄 更新中...');
+            const updateRes = await fetch('/api/extensions/update', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': csrf,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name: myExtension.name })
+            });
+
+            if (!updateRes.ok) {
+                const errorText = await updateRes.text();
+                throw new Error(errorText || '更新请求失败');
+            }
+
+            const result = await updateRes.json();
+
+            if (result.success === false) {
+                throw new Error(result.error || '更新失败');
+            }
+
+            // 步骤E: 成功提示并刷新页面
+            if (typeof toastr !== 'undefined') {
+                toastr.success('🎉 更新成功！即将刷新页面...', '系统');
+            }
+            btn.text('✅ 更新完成');
+
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+
+        } catch (e) {
+            // 步骤F: 错误处理
+            console.error('[热更新] 失败:', e);
+            if (typeof toastr !== 'undefined') {
+                toastr.error(e.message, '更新失败');
+            } else {
+                alert('更新失败: ' + e.message);
+            }
+            btn.text(oldText).prop('disabled', false);
+        }
+    }
+
     async function checkForUpdates(currentVer) {
         // 1. 获取UI元素
         const $status = $('#update-status'); // 说明页里的状态文字
@@ -7952,9 +8051,11 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                     if ($status.length > 0) {
                         $status.html(`
                             <div style="color:#d32f2f; font-weight:bold;">
-                                <i class="fa fa-arrow-circle-up"></i> 发现新版本: v${latestVer}
+                                ⬆️ 发现新版本: v${latestVer}
                             </div>
-                            <a href="https://github.com/${REPO_PATH}/releases" target="_blank" style="background:#d32f2f; color:#fff; padding:2px 8px; border-radius:4px; text-decoration:none; margin-left:5px;">去更新</a>
+                            <button id="auto-update-plugin-btn" style="background:#d32f2f; color:#fff; padding:4px 12px; border:none; border-radius:6px; cursor:pointer; margin-left:5px; font-weight:bold; transition:all 0.2s;">
+                                🚀 立即更新
+                            </button>
                         `);
                     }
                 } else {
@@ -7962,14 +8063,14 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                     $icon.removeClass('g-has-update').attr('title', '使用说明 & 检查更新'); // 移除红点
 
                     if ($status.length > 0) {
-                        $status.html(`<div style="color:#28a745; font-weight:bold;"><i class="fa fa-check-circle"></i> 当前已是最新版本</div>`);
+                        $status.html(`<div style="color:#28a745; font-weight:bold;">✅ 当前已是最新版本</div>`);
                     }
                 }
             }
         } catch (e) {
             console.warn('自动更新检查失败:', e);
             if ($status.length > 0) {
-                $status.html(`<div style="color:#ff9800;"><i class="fa fa-exclamation-triangle"></i> 检查失败: ${e.message}</div>`);
+                $status.html(`<div style="color:#ff9800;">⚠️ 检查失败: ${e.message}</div>`);
             }
         }
     }

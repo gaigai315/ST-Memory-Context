@@ -1,6 +1,6 @@
 // ========================================================================
 // 提示词管理器 - Prompt Manager for Memory Table Extension
-// 版本: 1.3.3
+// 版本: 1.3.4
 // ========================================================================
 (function() {
     'use strict';
@@ -15,7 +15,7 @@
 
     // ===== 常量定义 =====
     const PROFILE_KEY = 'gg_profiles';  // 预设数据存储键
-    const PROMPT_VERSION = 20;          // 提示词版本号（与主文件保持一致）
+    const PROMPT_VERSION = 1.1;         // 提示词版本号（Gen2 重置版本系统）
 
     // ========================================================================
     // 默认提示词定义区（从 index.js 迁移）
@@ -27,7 +27,7 @@
     // ----- 1. 填表提示词 -----
     const DEFAULT_TABLE_PROMPT = `🔴🔴🔴 记忆表格填表指南 🔴🔴🔴
 
-你必须需在后台作为一名静默的数据库管理员。你的目标是：**能合并的行绝对不新增！能追加的字绝对不分行！**
+你必须需在后台作为一名静默的数据库管理员。你的目标是：能合并的行绝对不新增！能追加的字绝对不分行！
 【强制时间线处理】
 🛑 在填写表格时，你必须按照剧情发生的时间顺序及严格遵守各表格记录规则进行记录。
 🛑 严禁只记录最近的剧情而遗漏早期剧情！
@@ -289,21 +289,21 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 在生成指令前，必须先扫描【当前表格状态】中是否已存在该对象。
 
 1. 👤 人物档案 (表3) & 角色状态 (表2)：
-   - **主键**：[角色名] (第0列)。
-   - **规则**：如果"张三"已存在于表格第 N 行，无论他发生了什么变动（地址变了、受伤了），**严禁**使用 insertRow 新建一行！
-   - **操作**：必须使用 updateRow(表格ID, N, {列ID: "新内容"}) 直接覆盖旧内容。
-   - **示例**：张三从"家"移动到"医院"。
+   - 主键：[角色名] (第0列)。
+   - 规则：如果"张三"已存在于表格第 N 行，无论他发生了什么变动（地址变了、受伤了），**严禁**使用 insertRow 新建一行！
+   - 操作：必须使用 updateRow(表格ID, N, {列ID: "新内容"}) 直接覆盖旧内容。
+   - 示例：张三从"家"移动到"医院"。
      ❌ 错误：insertRow(3, {0:"张三", 3:"医院" ...})
      ✅ 正确：updateRow(3, 5, {3: "医院"})  <-- 假设张三在第5行，直接修改第3列地点
 
 2. 📦 物品追踪 (表6)：
-   - **主键**：[物品名称] (第0列)。
-   - **规则**：神器/关键道具在表中必须是唯一的。
-   - **操作**：当物品发生转移时，找到该物品所在的行索引 N，使用 updateRow 更新 [当前位置] 和 [持有者]。
+   - 主键：[物品名称] (第0列)。
+   - 规则：神器/关键道具在表中必须是唯一的。
+   - 操作：当物品发生转移时，找到该物品所在的行索引 N，使用 updateRow 更新 [当前位置] 和 [持有者]。
 
 3. ❤️ 人物关系 (表4)：
-   - **主键**：[角色A] + [角色B] 的组合。
-   - **规则**：两人的关系只有一种状态。如果关系改变（如：朋友→恋人），找到对应的行，覆盖更新 [关系描述] 列。
+   - 主键：[角色A] + [角色B] 的组合。
+   - 规则：两人的关系只有一种状态。如果关系改变（如：朋友→恋人），找到对应的行，覆盖更新 [关系描述] 列。
 
 【输出要求】
 1.必须输出 <Memory> 标签
@@ -1310,6 +1310,98 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     }
 
     /**
+     * 检查并执行提示词更新
+     * 当代码中的 PROMPT_VERSION 更新时，提示用户更新默认提示词
+     */
+    async function checkAndExecutePromptUpdate() {
+        try {
+            // 1. 获取当前代码中的版本号
+            const currentVersion = PROMPT_VERSION;
+
+            // 2. 获取本地存储的版本号（默认为0）
+            // ✅ Gen2: 使用新存储键 + parseFloat 支持小数版本号
+            const localVersion = parseFloat(localStorage.getItem('gg_prompt_ver_gen2')) || 0;
+
+            // 3. 判断是否需要更新
+            if (currentVersion <= localVersion) {
+                console.log(`[PromptManager] 提示词版本检查: v${currentVersion} (已是最新)`);
+                return;
+            }
+
+            console.log(`[PromptManager] 检测到提示词更新: v${localVersion} -> v${currentVersion}`);
+
+            // 4. 弹窗询问用户
+            const userConfirmed = await window.Gaigai.customConfirm(
+                `📢 提示词库更新 (v${currentVersion})\n\n检测到开发者优化了默认提示词逻辑。\n是否更新 【默认通用】预设？\n\n🛡️ 安全提示：您的自定义预设和角色绑定不会受到任何影响。`,
+                '提示词更新'
+            );
+
+            // 5. ⚠️ 无论用户选择什么，都要立即更新版本号，防止重复弹窗
+            // ✅ Gen2: 使用新存储键
+            localStorage.setItem('gg_prompt_ver_gen2', currentVersion);
+            console.log(`[PromptManager] 已更新本地版本号为: v${currentVersion}`);
+
+            // 6. 如果用户点击取消，直接返回
+            if (!userConfirmed) {
+                console.log('[PromptManager] 用户取消了更新操作');
+                return;
+            }
+
+            // 7. 用户确认更新，开始执行
+            console.log('[PromptManager] 开始更新默认预设...');
+
+            // 7.1 读取当前的预设数据
+            let profilesData = getProfilesData() || initProfiles();
+
+            // 7.2 确保 default 预设存在
+            if (!profilesData.profiles) {
+                profilesData.profiles = {};
+            }
+            if (!profilesData.profiles['default']) {
+                profilesData.profiles['default'] = {
+                    name: '默认通用',
+                    data: {}
+                };
+            }
+
+            // 7.3 重置 default 预设的 data 为最新的默认值
+            profilesData.profiles['default'].data = {
+                nsfwPrompt: NSFW_UNLOCK,
+                tablePrompt: DEFAULT_TABLE_PROMPT,
+                tablePromptPos: 'system',
+                tablePromptPosType: 'system_end',
+                tablePromptDepth: 0,
+                summaryPromptTable: DEFAULT_SUM_TABLE,
+                summaryPromptChat: DEFAULT_SUM_CHAT,
+                backfillPrompt: DEFAULT_BACKFILL_PROMPT,
+                promptVersion: PROMPT_VERSION
+            };
+
+            // 7.4 保存数据
+            saveProfilesData(profilesData);
+            console.log('[PromptManager] 默认预设已更新');
+
+            // 7.5 云端同步（如果可用）
+            if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                await window.Gaigai.saveAllSettingsToCloud();
+                console.log('[PromptManager] 已同步到云端');
+            }
+
+            // 7.6 弹出成功提示
+            await window.Gaigai.customAlert('✅ 默认提示词已更新成功！\n\n您可以前往"配置 → 提示词"查看最新内容。', '更新成功');
+
+            // 7.7 如果当前正处于提示词管理界面，刷新界面
+            if ($('#profile-selector').length > 0) {
+                console.log('[PromptManager] 刷新提示词管理界面...');
+                showPromptManager();
+            }
+
+        } catch (error) {
+            console.error('[PromptManager] 检查更新时出错:', error);
+        }
+    }
+
+    /**
      * 显示表格编辑器（从 index.js 迁移）
      */
     function showTableEditor() {
@@ -1553,7 +1645,10 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         NSFW_UNLOCK: NSFW_UNLOCK,
 
         // 版本信息
-        PROMPT_VERSION: PROMPT_VERSION
+        PROMPT_VERSION: PROMPT_VERSION,
+
+        // ✅ 热更新功能
+        checkUpdate: checkAndExecutePromptUpdate
     };
 
     // 初始化预设系统
