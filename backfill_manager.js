@@ -831,7 +831,7 @@
                         ✅ AI 已生成指令，请检查。<br>
                         💡 点击 <strong>[确认]</strong> 将写入数据并继续，点击 <strong>[放弃]</strong> 将终止后续任务。
                     </p>
-                    <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background-color: #ffffff !important; color: ${UI.tc} !important;">${esc(content)}</textarea>
+                    <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background: #ffffff !important; color: #000000 !important;">${esc(content)}</textarea>
                     <div style="margin-top:12px; display: flex; gap: 10px;">
                         <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃任务</button>
                         ${regenParams ? '<button id="bf-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}

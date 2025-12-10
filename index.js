@@ -1070,22 +1070,24 @@
         }
 
         // 动态初始化表格结构（支持用户自定义）
-        initTables(tableDefinitions) {
+        initTables(tableDefinitions, preserveData = true) {
             if (!tableDefinitions || !Array.isArray(tableDefinitions) || tableDefinitions.length === 0) {
                 console.warn('⚠️ [initTables] 表格定义无效，使用默认结构');
                 tableDefinitions = DEFAULT_TABLES;
             }
 
-            // ✅ 1. 备份数据：深拷贝所有现有表格的行数据
+            // ✅ 1. 备份数据（仅在需要保留数据时）
             const backupData = [];
-            if (this.s && Array.isArray(this.s)) {
-                this.s.forEach((sheet, index) => {
-                    if (sheet && sheet.r && Array.isArray(sheet.r)) {
-                        // 深拷贝行数据（使用 JSON 方式确保完全独立）
-                        backupData[index] = JSON.parse(JSON.stringify(sheet.r));
-                        console.log(`💾 [数据备份] 表${index} "${sheet.n}" 备份了 ${sheet.r.length} 行数据`);
-                    }
-                });
+            if (preserveData) {
+                if (this.s && Array.isArray(this.s)) {
+                    this.s.forEach((sheet, index) => {
+                        if (sheet && sheet.r && Array.isArray(sheet.r)) {
+                            // 深拷贝行数据（使用 JSON 方式确保完全独立）
+                            backupData[index] = JSON.parse(JSON.stringify(sheet.r));
+                            console.log(`💾 [数据备份] 表${index} "${sheet.n}" 备份了 ${sheet.r.length} 行数据`);
+                        }
+                    });
+                }
             }
 
             // ✅ 2. 清空当前表格
@@ -1098,8 +1100,8 @@
                 }
             });
 
-            // ✅ 4. 恢复数据：将备份的行数据恢复到对应索引的新表格
-            if (backupData.length > 0) {
+            // ✅ 4. 恢复数据（仅在需要保留数据时）
+            if (preserveData && backupData.length > 0) {
                 this.s.forEach((newSheet, index) => {
                     if (backupData[index] && Array.isArray(backupData[index]) && backupData[index].length > 0) {
                         // 直接恢复行数据
@@ -1207,7 +1209,7 @@
                 const tableDef = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
                     ? C.customTables
                     : DEFAULT_TABLES;
-                this.initTables(tableDef);
+                this.initTables(tableDef, false); // 🔥 关键修复：切换会话时不保留旧数据
                 lastInternalSaveTime = 0;
                 summarizedRows = {}; // ✅ 核心修复：清空"已总结行"状态，防止跨会话串味
                 userColWidths = {};   // ✅ 核心修复：清空列宽设置，防止跨会话串味
@@ -1258,6 +1260,12 @@
 
                     // 同步回全局配置，确保 shcf 显示正确
                     localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                } else {
+                    // 🔴 新增逻辑（针对旧版存档）：有数据但无 meta，强制重置指针为 0
+                    API_CONFIG.lastSummaryIndex = 0;
+                    API_CONFIG.lastBackfillIndex = 0;
+                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                    console.log('⚙️ [兼容旧存档] 进度指针重置为 0');
                 }
 
                 lastInternalSaveTime = finalData.ts;
