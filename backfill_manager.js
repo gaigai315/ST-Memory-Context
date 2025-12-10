@@ -28,7 +28,8 @@
             // ✅ 读取追溯进度（不是总结进度）
             const API_CONFIG = window.Gaigai.config;
             let savedIndex = API_CONFIG.lastBackfillIndex || 0;
-            if (savedIndex > totalCount) savedIndex = 0;
+            // ✅ 智能归零逻辑（仅在聊天记录已加载时执行，防止误重置）
+            if (totalCount > 0 && savedIndex > totalCount) savedIndex = 0;
             const defaultStart = savedIndex;
 
             // 🆕 构建表格下拉选项

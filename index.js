@@ -6063,9 +6063,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const ctx = m.ctx();
         const totalCount = ctx && ctx.chat ? ctx.chat.length : 0;
 
-        // 智能归零逻辑
-        if (API_CONFIG.lastSummaryIndex === undefined || API_CONFIG.lastSummaryIndex > totalCount) API_CONFIG.lastSummaryIndex = 0;
-        if (API_CONFIG.lastBackfillIndex === undefined || API_CONFIG.lastBackfillIndex > totalCount) API_CONFIG.lastBackfillIndex = 0;
+        // 智能归零逻辑（仅在聊天记录已加载时执行，防止误重置）
+        if (totalCount > 0 && (API_CONFIG.lastSummaryIndex === undefined || API_CONFIG.lastSummaryIndex > totalCount)) API_CONFIG.lastSummaryIndex = 0;
+        if (totalCount > 0 && (API_CONFIG.lastBackfillIndex === undefined || API_CONFIG.lastBackfillIndex > totalCount)) API_CONFIG.lastBackfillIndex = 0;
 
         const lastIndex = API_CONFIG.lastSummaryIndex;
         const lastBf = API_CONFIG.lastBackfillIndex;

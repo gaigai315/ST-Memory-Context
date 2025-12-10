@@ -29,7 +29,8 @@
 
             // 读取进度
             let lastSumIndex = API_CONFIG.lastSummaryIndex || 0;
-            if (lastSumIndex > totalCount) lastSumIndex = 0;
+            // ✅ 智能归零逻辑（仅在聊天记录已加载时执行，防止误重置）
+            if (totalCount > 0 && lastSumIndex > totalCount) lastSumIndex = 0;
 
             // ✨ 读取自动总结配置
             const summarySource = API_CONFIG.summarySource || 'chat';
