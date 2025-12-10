@@ -350,6 +350,7 @@
             let successCount = 0;
             let failedBatches = [];
             let isUserCancelled = false; // 标记是否用户主动取消
+            let actualProgress = start; // ✅ 记录实际完成的进度位置
 
             // 辅助函数：更新按钮外观
             const updateBtn = (text, isRunning) => {
@@ -420,9 +421,10 @@
 
                     // ✅ 成功（可能是一次成功，也可能是重试后成功）
                     successCount++;
+                    actualProgress = batch.end; // ✅ 更新实际完成的进度
 
                     // 更新进度
-                    API_CONFIG.lastBackfillIndex = batch.end;
+                    API_CONFIG.lastBackfillIndex = actualProgress; // ✅ 修复：使用实际进度
                     localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
 
                     if (typeof toastr !== 'undefined') {
@@ -473,7 +475,7 @@
 
             // 结果汇报
             if (successCount > 0) {
-                API_CONFIG.lastBackfillIndex = end;
+                API_CONFIG.lastBackfillIndex = actualProgress; // ✅ 修复：使用实际完成的进度而不是目标 end
                 localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
                 window.Gaigai.m.save();
@@ -743,7 +745,14 @@
                     if (isSilentMode) {
                         const prs = window.prs;
                         const exe = window.exe;
-                        const cs = prs(finalOutput);
+
+                        // ✨ 先剥离标签和注释，提取纯指令文本（修复静默模式解析问题）
+                        let innerText = finalOutput
+                            .replace(/<\/?Memory>/gi, '') // 移除 <Memory> 标签
+                            .replace(/<!--/g, '')         // 移除 HTML 注释头
+                            .replace(/-->/g, '')          // 移除 HTML 注释尾
+                            .trim();
+                        const cs = prs(innerText);
                         if (cs.length > 0) {
                             exe(cs);
                             window.lastManualEditTime = Date.now();
@@ -789,60 +798,6 @@
         }
 
         /**
-         * 🆕 指令转换函数：将覆盖模式转换为追加模式
-         * @param {string} content - 原始Memory标签内容
-         * @returns {string} - 转换后的内容
-         * @private
-         */
-        _convertToAppendMode(content) {
-            const m = window.Gaigai.m;
-            const currentGid = m.gid(); // 🔒 安全检查：获取当前角色ID
-
-            if (!currentGid) {
-                console.error('🛑 [安全拦截] 无法获取当前角色ID，拒绝执行');
-                return content;
-            }
-
-            console.log(`🔄 [追加模式转换] 开始，角色ID: ${currentGid}`);
-
-            // 1. 提取Memory标签内的内容
-            const memoryMatch = content.match(/<Memory>([\s\S]*?)<\/Memory>/i);
-            if (!memoryMatch) {
-                console.warn('⚠️ [追加模式] 未找到Memory标签，返回原内容');
-                return content;
-            }
-
-            let innerContent = memoryMatch[1];
-
-            // 2. 提取所有 updateRow 指令并转换为 insertRow
-            // 正则匹配: updateRow(tableIndex, rowIndex, {data})
-            const updateRowPattern = /updateRow\s*\(\s*(\d+)\s*,\s*\d+\s*,\s*(\{[^}]*\})\s*\)/g;
-
-            let convertCount = 0;
-            innerContent = innerContent.replace(updateRowPattern, (match, tableIndex, dataObj) => {
-                const tIdx = parseInt(tableIndex);
-
-                // 🔒 安全检查：验证表格索引
-                if (tIdx < 0 || tIdx >= 8) {
-                    console.error(`🛑 [安全拦截] 表格索引 ${tIdx} 超出范围 [0-7]，跳过转换`);
-                    return match; // 保持原样
-                }
-
-                convertCount++;
-                // 转换为 insertRow，插入到该表格末尾
-                const newCmd = `insertRow(${tableIndex}, ${dataObj})`;
-                console.log(`   ✅ [转换 ${convertCount}] updateRow -> insertRow (表${tableIndex})`);
-                return newCmd;
-            });
-
-            // 3. 重新包装
-            const result = `<Memory>${innerContent}</Memory>`;
-            console.log(`✅ [追加模式转换] 完成，共转换 ${convertCount} 条指令`);
-
-            return result;
-        }
-
-        /**
          * 独立的追溯结果编辑弹窗
          * @param {string} content - AI生成的内容
          * @param {number} newIndex - 新的进度索引
@@ -865,19 +820,21 @@
 
             // ✨ 返回 Promise，让外部可以 await 用户点击结果
             return new Promise((resolve) => {
+                // 🎯 根据 newIndex 构造标题
+                const progressText = newIndex !== null ? ` (进度: ${newIndex}层)` : '';
+
                 const h = `
                 <div class="g-p" style="background:#fff !important; color:${UI.tc} !important;">
-                    <h4>📝 生成结果确认</h4>
+                    <h4>⚡ 剧情追溯确认${progressText}</h4>
                     <p style="color:${UI.tc}; opacity:0.8; font-size:11px; margin-bottom:10px;">
-                        AI已生成填表指令，请确认无误后选择保存方式。<br>
-                        支持手动修改内容。
+                        ✅ AI 已生成指令，请检查。<br>
+                        💡 点击 <strong>[确认]</strong> 将写入数据并继续，点击 <strong>[放弃]</strong> 将终止后续任务。
                     </p>
                     <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background-color: #ffffff !important; color: ${UI.tc} !important;">${esc(content)}</textarea>
                     <div style="margin-top:12px; display: flex; gap: 10px;">
-                        <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃</button>
+                        <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃任务</button>
                         ${regenParams ? '<button id="bf-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
-                        <button id="bf-popup-append" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">➕ 追加新行</button>
-                        <button id="bf-popup-replace" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">🔄 覆盖原位置</button>
+                        <button id="bf-popup-confirm" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">🚀 确认并执行</button>
                     </div>
                 </div>
                 `;
@@ -887,7 +844,7 @@
                 const $p = $('<div>', { class: 'g-w', css: { width: '700px', maxWidth: '92vw', height: 'auto' } });
 
                 const $hd = $('<div>', { class: 'g-hd' });
-                $hd.append(`<h3 style="color:${UI.tc}; flex:1;">🚀 写入确认</h3>`);
+                $hd.append(`<h3 style="color:${UI.tc}; flex:1;">⚡ 剧情追溯确认</h3>`);
 
                 // ❌ 关闭按钮：视为放弃
                 const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' } }).on('click', () => {
@@ -915,7 +872,7 @@
                             const originalText = $btn.text();
 
                             // 禁用所有按钮
-                            $('#bf-popup-cancel, #bf-popup-regen, #bf-popup-append, #bf-popup-replace').prop('disabled', true);
+                            $('#bf-popup-cancel, #bf-popup-regen, #bf-popup-confirm').prop('disabled', true);
                             $btn.text('生成中...');
 
                             try {
@@ -946,82 +903,19 @@
                                 await window.Gaigai.customAlert('重新生成失败: ' + error.message, '错误');
                             } finally {
                                 window._isRegeneratingBackfill = false;
-                                $('#bf-popup-cancel, #bf-popup-regen, #bf-popup-append, #bf-popup-replace').prop('disabled', false);
+                                $('#bf-popup-cancel, #bf-popup-regen, #bf-popup-confirm').prop('disabled', false);
                                 $btn.text(originalText);
                             }
                         });
                     }
 
-                    // ➕ 追加新行按钮
-                    $('#bf-popup-append').on('click', async function () {
-                        const originalContent = $('#bf-popup-editor').val().trim();
-                        if (!originalContent) return;
-
-                        // 🔒 安全检查1：验证会话ID是否一致
-                        const currentSessionId = m.gid();
-                        if (!currentSessionId) {
-                            await window.Gaigai.customAlert('🛑 安全拦截：无法获取会话标识', '错误');
-                            return;
-                        }
-
-                        if (currentSessionId !== initialSessionId) {
-                            console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 执行时: ${currentSessionId}`);
-                            await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，已取消操作\n\n请重新打开追溯功能', '错误');
-                            return;
-                        }
-
-                        // 🔄 转换为追加模式
-                        const appendContent = self._convertToAppendMode(originalContent);
-
-                        // 解析并执行
-                        const prs = window.prs;
-                        const exe = window.exe;
-                        const cs = prs(appendContent);
-                        if (cs.length === 0) {
-                            await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
-                            return;
-                        }
-
-                        // 🔒 安全检查2：执行前再次验证会话ID
-                        const finalSessionId = m.gid();
-                        if (finalSessionId !== initialSessionId) {
-                            console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 执行前: ${finalSessionId}`);
-                            await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，已取消操作', '错误');
-                            return;
-                        }
-
-                        console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 指令数: ${cs.length}`);
-
-                        // 执行写入
-                        exe(cs);
-                        window.lastManualEditTime = Date.now();
-
-                        // 更新进度指针
-                        if (newIndex !== null) {
-                            window.Gaigai.config.lastBackfillIndex = newIndex;
-                            try { localStorage.setItem('gg_api', JSON.stringify(window.Gaigai.config)); } catch (e) { }
-                        }
-
-                        if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud().catch(e => { });
-
-                        m.save();
-                        const updateCurrentSnapshot = window.updateCurrentSnapshot || (() => {});
-                        updateCurrentSnapshot();
-
-                        await window.Gaigai.customAlert('✅ 数据已追加为新行', '完成');
-                        $o.remove();
-
-                        // 刷新UI
-                        const shw = window.Gaigai.shw;
-                        if (shw) shw();
-
-                        resolve({ success: true });
-                    });
-
-                    // 🔄 覆盖原位置按钮
-                    $('#bf-popup-replace').on('click', async function () {
+                    // 🚀 确认并执行按钮
+                    $('#bf-popup-confirm').on('click', async function () {
                         const finalContent = $('#bf-popup-editor').val().trim();
-                        if (!finalContent) return;
+                        if (!finalContent) {
+                            await window.Gaigai.customAlert('⚠️ 内容不能为空！', '提示');
+                            return;
+                        }
 
                         // 🔒 安全检查1：验证会话ID是否一致
                         const currentSessionId = m.gid();
@@ -1036,6 +930,7 @@
                             return;
                         }
 
+                        // 解析并执行指令
                         const prs = window.prs;
                         const exe = window.exe;
                         const cs = prs(finalContent);
@@ -1052,6 +947,23 @@
                             return;
                         }
 
+                        // 🔒 安全检查3：验证指令的表索引范围（防止串表）
+                        let hasInvalidIndex = false;
+                        for (let i = 0; i < cs.length; i++) {
+                            const cmd = cs[i];
+                            if (cmd && typeof cmd.ti === 'number') {
+                                if (cmd.ti < 0 || cmd.ti > 7) {
+                                    console.error(`🛑 [表索引越界] 指令 ${i} 的表索引 ${cmd.ti} 超出范围 [0-7]`);
+                                    hasInvalidIndex = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (hasInvalidIndex) {
+                            await window.Gaigai.customAlert('🛑 安全拦截：检测到非法表索引，已取消操作', '错误');
+                            return;
+                        }
+
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 指令数: ${cs.length}`);
 
                         // 执行写入
@@ -1066,11 +978,23 @@
 
                         if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud().catch(e => { });
 
+                        // 🔒 安全检查4：保存前第三次验证会话ID（防止执行期间切换会话）
+                        const saveSessionId = m.gid();
+                        if (saveSessionId !== initialSessionId) {
+                            console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 保存时: ${saveSessionId}`);
+                            await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，数据未保存\n\n警告：已执行的指令无法回滚，请检查数据完整性！', '严重错误');
+                            $o.remove();
+                            resolve({ success: false });
+                            return;
+                        }
+
+                        console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 准备保存数据`);
+
                         m.save();
                         const updateCurrentSnapshot = window.updateCurrentSnapshot || (() => {});
                         updateCurrentSnapshot();
 
-                        await window.Gaigai.customAlert('✅ 数据已覆盖原位置', '完成');
+                        // 关闭弹窗
                         $o.remove();
 
                         // 刷新UI

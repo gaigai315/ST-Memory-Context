@@ -705,6 +705,14 @@
             const API_CONFIG = window.Gaigai.config;
             const UI = window.Gaigai.ui;
 
+            // 🔒 关键修复：记录弹窗打开时的会话ID
+            const initialSessionId = m.gid();
+            if (!initialSessionId) {
+                window.Gaigai.customAlert('🛑 安全拦截：无法获取会话标识', '错误');
+                return Promise.resolve({ success: false });
+            }
+            console.log(`🔒 [总结弹窗打开] 会话ID: ${initialSessionId}`);
+
             return new Promise((resolve) => {
                 const h = `
             <div class="g-p" style="display: flex; flex-direction: column; height: 100%;">
@@ -823,6 +831,21 @@
                             return;
                         }
 
+                        // 🔒 安全检查1：验证会话ID是否一致
+                        const currentSessionId = m.gid();
+                        if (!currentSessionId) {
+                            await window.Gaigai.customAlert('🛑 安全拦截：无法获取会话标识', '错误');
+                            return;
+                        }
+
+                        if (currentSessionId !== initialSessionId) {
+                            console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 保存时: ${currentSessionId}`);
+                            await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，已取消操作\n\n请重新打开总结功能', '错误');
+                            return;
+                        }
+
+                        console.log(`🔒 [安全验证通过] 会话ID: ${currentSessionId}, 准备保存总结`);
+
                         m.sm.save(editedSummary, noteValue);
                         await window.syncToWorldInfo(editedSummary);
 
@@ -840,6 +863,18 @@
                                 console.warn('⚠️ [总结保存] 云端同步失败:', err);
                             });
                         }
+
+                        // 🔒 安全检查2：保存前再次验证会话ID（防止同步期间切换会话）
+                        const saveSessionId = m.gid();
+                        if (saveSessionId !== initialSessionId) {
+                            console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 最终保存时: ${saveSessionId}`);
+                            await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，数据未保存\n\n警告：总结可能已同步到世界书，请检查数据完整性！', '严重错误');
+                            $o.remove();
+                            resolve({ success: false });
+                            return;
+                        }
+
+                        console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 保存总结数据`);
 
                         m.save();
                         window.updateCurrentSnapshot();
@@ -961,6 +996,7 @@
 
             let successCount = 0;
             let failedBatches = [];
+            let actualProgress = start; // ✅ 记录实际完成的进度位置
 
             // 辅助函数：更新按钮外观
             const updateBtn = (text, isRunning) => {
@@ -1016,6 +1052,7 @@
                     }
 
                     successCount++;
+                    actualProgress = batch.end; // ✅ 更新实际完成的进度
                     if (silent && typeof toastr !== 'undefined') {
                         toastr.success(`进度: ${batchNum}/${batches.length} 已保存`, '分批总结');
                     }
@@ -1052,7 +1089,7 @@
 
             // 结果汇报
             if (successCount > 0) {
-                API_CONFIG.lastSummaryIndex = end;
+                API_CONFIG.lastSummaryIndex = actualProgress; // ✅ 修复：使用实际完成的进度而不是目标 end
                 localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
 
                 if (typeof window.saveAllSettingsToCloud === 'function') window.saveAllSettingsToCloud();

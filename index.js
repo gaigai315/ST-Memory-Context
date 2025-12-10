@@ -6544,13 +6544,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     css: {
                         background:'#fff',
                         width:'500px',
-                        maxWidth:'100%',
-                        maxHeight:'80vh',
+                        maxWidth:'92vw',         // ✨ 修改：手机端左右留出边距 (原为100%)
+                        maxHeight:'85vh',        // ✨ 修改：限制最大高度，防止顶到屏幕外
+                        margin:'auto',           // ✨ 新增：辅助 Flex 布局居中
                         padding:'15px',
                         borderRadius:'8px',
                         display:'flex',
                         flexDirection:'column',
-                        overflow:'hidden'
+                        overflow:'hidden',       // 保持隐藏，让内部列表滚动
+                        boxShadow:'0 5px 20px rgba(0,0,0,0.3)'  // ✨ 新增：加点阴影更清晰
                     }
                 }).html(`
                     <h3 style="margin:0 0 10px 0; flex-shrink:0;">🚑 历史存档时光机</h3>
