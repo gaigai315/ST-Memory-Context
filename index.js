@@ -4688,7 +4688,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const model = API_CONFIG.model || 'gpt-3.5-turbo';
         let apiUrl = API_CONFIG.apiUrl.trim();
         const apiKey = API_CONFIG.apiKey.trim();  // 不做任何修改，保持原值（可能为空）
-        const maxTokens = 65536;
+        // 如果用户没填或配置不存在，默认使用 8192 以防止报错
+        const maxTokens = API_CONFIG.maxTokens || 8192;
         const temperature = API_CONFIG.temperature || 0.5;
         const provider = API_CONFIG.provider || 'openai';
 
@@ -5552,7 +5553,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             
             <label>模型名称：</label>
             <input type="text" id="api-model" value="${API_CONFIG.model}" placeholder="gpt-3.5-turbo" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
-            
+
+            <label>最大输出长度 (Max Tokens)：</label>
+            <input type="number" id="api-max-tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+
             <div style="text-align:right;">
                 <span id="fetch-models-btn" style="cursor:pointer; font-size:10px; color:${UI.tc}; border:1px solid ${UI.c}; padding:2px 6px; border-radius:3px; background:rgba(255,255,255,0.5);">🔄 拉取模型列表</span>
                 <select id="api-model-select" style="display:none; width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-top:5px;"></select>
@@ -5822,6 +5826,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 API_CONFIG.apiKey = $('#api-key').val();
                 API_CONFIG.model = $('#api-model').val();
+                API_CONFIG.maxTokens = parseInt($('#api-max-tokens').val()) || 8192;
                 API_CONFIG.temperature = 0.1;
                 API_CONFIG.enableAI = true;
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
