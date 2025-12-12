@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.3.4
+ * @version 1.3.5
  * @author Gaigai Team
  */
 
@@ -1090,6 +1090,12 @@
                 // ⏳ [稳定性等待] 强制等待 5 秒
                 console.log(`⏳ [批次缓冲] 等待数据落盘...`);
                 await new Promise(r => setTimeout(r, 5000));
+            }
+
+            // 等待最后一批数据的世界书同步防抖结束
+            if (successCount > 0 && !window.Gaigai.stopBatch) {
+                console.log('⏳ [分批结束] 正在等待最后一次世界书同步完成 (6s)...');
+                await new Promise(r => setTimeout(r, 6000));
             }
 
             // ✅ 任务结束：重置状态
