@@ -7806,11 +7806,7 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong> 修复进度残留：</strong> 解决了切换角色/会话时，旧卡不自动填表的问题。</li>
-                        <li><strong> 进度手动修正：</strong> 在追溯和总结界面增加了进度指针的手动修改功能。</li>
-                        <li><strong> 提示词热更新：</strong> 支持一键拉取最新的默认提示词，无需更新插件本体。</li>
-                        <li><strong> 插件热更新：</strong> 支持在关于页面一键更新插件代码，无需手动操作。</li>
-                        <li><strong> 交互优化：</strong> 优化了夜间模式下的弹窗显示，修复了输入框看不清的问题。</li>
+                        <li><strong> 优化世界书同步：</strong> 世界书条目按照总结页数进行新增，点击强制同步世界书一键覆盖旧内容</li>
                     </ul>
                 </div>
 
