@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.4
+// 记忆表格 v1.3.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -440,197 +440,121 @@
         }
     }
 
-    /**
-     * 同步总结到世界书（对话会话专属）- 追加模式
-     * 根据唯一会话ID (gid) 动态生成世界书名称，实现对话级记忆隔离
-     * ✨ 新增：如果世界书已存在，则追加内容而不是覆盖
-     * @param {string} content - 总结内容
-     * @returns {Promise<boolean>} - 是否成功
-     */
+    // ========================================================================
+    // ✨ 世界书同步：V5.5 终极防截断版 (延迟读取策略)
+    // 改进点：防抖(5s) -> 强制等待(3s) -> 【这才开始读取数据】 -> 写入
+    // ========================================================================
+    let syncDebounceTimer = null;
+    let globalLastWorldInfoUid = -1;
+    let globalWorldInfoEntriesCache = {};
+
     async function syncToWorldInfo(content) {
-        // 检查是否启用同步
-        if (!C.syncWorldInfo) {
-            console.log('📚 [世界书同步] 未启用，跳过');
-            return false;
+        // 1. 基础检查
+        if (!C.syncWorldInfo) return Promise.resolve();
+
+        // 2. 防抖：重置倒计时
+        if (syncDebounceTimer) {
+            clearTimeout(syncDebounceTimer);
+            console.log('⏳ [世界书同步] 倒计时重置 (5s)...');
         }
 
-        if (!content || !content.trim()) {
-            console.warn('⚠️ [世界书同步] 内容为空，取消同步');
-            return false;
-        }
-
-        try {
-            console.log('📚 [世界书同步] 开始同步到世界书...');
-
-            // 1. 获取唯一会话ID（去除可能导致文件系统错误的特殊字符）
-            const uniqueId = m.gid() || "Unknown_Chat";
-            const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_"); // 过滤非法文件名字符
-            const worldBookName = "Memory_Context_" + safeName;
-
-            console.log(`📚 [世界书同步] 使用对话专属世界书: ${worldBookName}`);
-
-            // 2. 获取 CSRF Token
-            let csrfToken = '';
+        // 3. 设置 5秒 防抖 (给AI生成留足时间)
+        syncDebounceTimer = setTimeout(async () => {
             try {
-                csrfToken = await getCsrfToken();
-            } catch (csrfError) {
-                console.warn('⚠️ [世界书同步] CSRF 获取失败，尝试无令牌请求');
-            }
+                // 🛑 步骤 A: 先进行强制等待 (IO缓冲)
+                // 这里的 5000ms 不仅是为了防文件锁，更是为了让数据彻底落稳
+                console.log('⏳ [IO缓冲] 等待 5秒，确保数据完整并释放锁...');
+                await new Promise(r => setTimeout(r, 5000)); 
 
-            const headers = {
-                'Content-Type': 'application/json'
-            };
-            if (csrfToken) {
-                headers['X-CSRF-Token'] = csrfToken;
-            }
+                // 🔄 步骤 B: 等待结束后，再获取表格数据！(关键修改)
+                // 这样能确保我们读到的是等待结束后的最新、最全的数据
+                const summarySheet = m.get(8);
+                if (!summarySheet || summarySheet.r.length === 0) {
+                    console.log('⚠️ [世界书同步] 表格为空，跳过');
+                    return;
+                }
 
-            // ✨✨✨ 第一步：获取现有世界书数据 ✨✨✨
-            let existingContent = '';
-            let worldBookExists = false;
+                console.log(`⚡ [世界书同步] 开始打包 ${summarySheet.r.length} 条数据...`);
 
-            try {
-                const getResponse = await fetch('/api/worldinfo/get', {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({ name: worldBookName })
+                // --- 准备数据 ---
+                const uniqueId = m.gid() || "Unknown_Chat";
+                const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
+                const worldBookName = "Memory_Context_" + safeName;
+                const importEntries = {};
+                let maxUid = -1;
+
+                // 构建全量数据
+                summarySheet.r.forEach((row, index) => {
+                    const uid = index;
+                    maxUid = uid;
+                    const title = row[0] || '无标题';
+                    const rowContent = row[1] || '';
+                    const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
+
+                    importEntries[uid] = {
+                        uid: uid,
+                        key: ["总结", "summary", "前情提要", "memory", "记忆"],
+                        keysecondary: [],
+                        comment: `[绑定对话: ${safeName}] 自动同步于 ${new Date().toLocaleString()}`,
+                        content: `【${title}${note}】\n${rowContent}`,
+                        constant: true,
+                        vectorized: false,
+                        enabled: true,
+                        position: 1,
+                        order: 100,
+                        extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
+                    };
                 });
 
-                if (getResponse.ok) {
-                    const existingData = await getResponse.json();
-                    console.log('📚 [世界书同步] 获取到现有世界书数据');
+                const finalJson = { entries: importEntries, name: worldBookName };
+                
+                // 获取 CSRF
+                let csrfToken = '';
+                try { csrfToken = await getCsrfToken(); } catch (e) {}
 
-                    // ✨✨✨ 第二步：检查Entry "0"是否存在 ✨✨✨
-                    if (existingData && existingData.entries && existingData.entries["0"]) {
-                        worldBookExists = true;
-                        existingContent = existingData.entries["0"].content || '';
-                        console.log(`📚 [世界书同步] 检测到已存在的世界书，当前内容长度: ${existingContent.length} 字符`);
+                // --- 4. 尝试删除 (规避弹窗) ---
+                try {
+                    const delRes = await fetch('/api/worldinfo/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        body: JSON.stringify({ name: worldBookName })
+                    });
+
+                    if (!delRes.ok) {
+                        console.warn(`⚠️ [世界书同步] 删除旧文件返回 ${delRes.status}，可能文件被占用，尝试直接覆盖...`);
                     }
-                } else {
-                    console.log('📚 [世界书同步] 世界书不存在，将创建新条目');
-                }
-            } catch (getError) {
-                console.warn('⚠️ [世界书同步] 获取现有数据失败，将创建新条目', getError);
-            }
-
-            // ✨✨✨ 第三步：合并内容 ✨✨✨
-            let finalContent = content;
-
-            if (worldBookExists && existingContent) {
-                // 追加模式：仅添加通用分隔符 (不含现实时间)
-                finalContent = existingContent + `\n\n--- 新增总结 ---\n\n` + content;
-                console.log(`📚 [世界书同步] 追加模式：合并后内容长度 ${finalContent.length} 字符`);
-            } else {
-                console.log('📚 [世界书同步] 创建模式：使用新内容');
-            }
-
-            // ✨✨✨ 第四步：构建并发送更新请求 ✨✨✨
-            const payload = {
-                name: worldBookName,
-                data: {
-                    entries: {
-                        "0": {
-                            uid: 0,
-                            key: ["总结", "summary", "前情提要", "memory", "记忆"],
-                            keysecondary: [],
-                            comment: `[绑定对话: ${safeName}] 由记忆表格插件自动生成 v${V}`,
-                            content: finalContent,
-                            constant: true,    // 常驻，确保 AI 能看到
-                            vectorized: false,
-                            enabled: true,
-                            position: 3,       // ✅ 修改为 3 (示例消息后)
-                            order: 100,
-                            extensions: {
-                                position: 3,   // ✅ 修改为 3 (示例消息后)
-                                exclude_recursion: false,
-                                display_index: 0,
-                                probability: 100,
-                                useProbability: true
-                            }
-                        }
-                    }
-                }
-            };
-
-            const response = await fetch('/api/worldinfo/edit', {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errorText}`);
-            }
-
-            const actionType = worldBookExists ? '追加' : '创建';
-            console.log(`✅ [世界书同步] ${actionType}成功！世界书: ${worldBookName}`);
-            if (typeof toastr !== 'undefined') {
-                toastr.success(`总结已${actionType}到世界书 [${worldBookName}]`, '世界书同步', { timeOut: 1000, preventDuplicates: true });
-            }
-
-            // =========================================================
-            // ✨✨✨ 截图定制版：精准 ID (world_refresh) 刷新方案 ✨✨✨
-            // =========================================================
-            try {
-                console.log('🔄 [UI同步] 正在通过 ID: #world_refresh 刷新界面...');
-
-                // 1. 根据用户截图，精准获取刷新按钮
-                const refreshBtn = document.getElementById('world_refresh');
-
-                if (refreshBtn) {
-                    refreshBtn.click();
-                    console.log('✅ [UI同步] 成功点击刷新按钮');
-                } else {
-                    // 兜底：如果 ID 变了，尝试找图标类名
-                    const iconBtn = document.querySelector('#world_popup .fa-arrows-rotate');
-                    if (iconBtn) {
-                        iconBtn.click();
-                        console.log('✅ [UI同步] 通过图标类名点击了刷新按钮');
-                    } else {
-                        console.warn('⚠️ [UI同步] 未找到 #world_refresh 按钮');
-                    }
+                } catch (e) {
+                    console.warn('⚠️ [世界书同步] 删除请求异常，尝试直接覆盖:', e);
                 }
 
-                // 2. 延迟 800ms 等待刷新，然后操作下拉框
-                // (根据之前的截图，下拉框 ID 是 world_editor_select)
-                setTimeout(() => {
-                    const selectEl = document.getElementById('world_editor_select') ||
-                                     document.getElementById('world_info');
+                // 🛑 核心修复：给文件系统喘息时间，防止 500 错误导致的连带写入失败
+                console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
+                await new Promise(r => setTimeout(r, 1500));
 
-                    if (selectEl) {
-                        let targetFound = false;
-                        // 遍历选项找新书
-                        for (let i = 0; i < selectEl.options.length; i++) {
-                            if (selectEl.options[i].value === worldBookName) {
-                                selectEl.value = worldBookName;
-                                targetFound = true;
-                                break;
-                            }
-                        }
+                // --- 5. 前端模拟上传 (触发UI刷新) ---
+                console.log('⚡ [世界书同步] 准备写入 JSON，大小:', JSON.stringify(finalJson).length);
+                const $fileInput = $('#world_import_file');
+                if ($fileInput.length > 0) {
+                    const file = new File([JSON.stringify(finalJson)], `${worldBookName}.json`, { type: "application/json" });
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    $fileInput[0].files = dataTransfer.files;
 
-                        if (targetFound) {
-                            // 强制触发 change 事件，让酒馆加载内容
-                            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-                            console.log(`✅ [UI同步] 已自动选中并加载: ${worldBookName}`);
-                            if (typeof toastr !== 'undefined') toastr.success('世界书列表已刷新并加载', '同步完成');
-                        }
-                    }
-                }, 800);
+                    console.log('⚡ [世界书同步] 触发前端刷新');
+                    $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    $fileInput.trigger('change');
+                }
 
-            } catch (domErr) {
-                console.warn('⚠️ [UI同步] DOM 操作异常:', domErr);
+                // 更新缓存
+                globalWorldInfoEntriesCache = importEntries;
+                globalLastWorldInfoUid = maxUid;
+
+            } catch (error) {
+                console.error('❌ [世界书同步] 异常:', error);
             }
-            // =========================================================
+        }, 5000); // 5秒防抖
 
-            return true;
-
-        } catch (error) {
-            console.error('❌ [世界书同步] 同步失败:', error);
-            if (typeof toastr !== 'undefined') {
-                toastr.error(`同步失败: ${error.message}`, '世界书同步');
-            }
-            return false;
-        }
+        return Promise.resolve();
     }
 
     /**
@@ -4766,7 +4690,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         max_tokens: maxTokens,
                         stream: false,
                         custom_prompt_post_processing: "strict",
-                        use_makersuite_sysprompt: true
+                        use_makersuite_sysprompt: true,
+                        safetySettings: [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                        ]
                     };
 
                     const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
@@ -6738,91 +6668,96 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('#open-api').on('click', () => navTo('AI总结配置', shapi));
             $('#open-pmt').on('click', () => navTo('提示词管理', window.Gaigai.PromptManager.showPromptManager));
 
-            // ✨✨✨ 新增：强制覆盖世界书逻辑 ✨✨✨
-            $('#btn-force-sync-wi').on('click', async function() {
+            // ✨✨✨ 强制覆盖世界书 (V8 终极版：模拟前端导入) ✨✨✨
+            $('#btn-force-sync-wi').off('click').on('click', async function() {
                 const summarySheet = m.get(8);
 
-                // 1. 安全拦截：空表禁止覆盖
+                // 1. 安全拦截
                 if (!summarySheet || summarySheet.r.length === 0) {
-                    await customAlert('❌ 总结表格为空！\n\n为了防止误删备份，禁止执行覆盖操作。', '安全拦截');
+                    await customAlert('❌ 总结表格为空！\n\n无法执行覆盖操作。', '安全拦截');
                     return;
                 }
 
-                // 2. 危险操作确认
-                if (!await customConfirm('⚠️ 确定要执行覆盖同步吗？\n\n此操作将【清空】世界书 [Memory_Context_Auto] 中的原有内容，并填入当前总结表的全部数据。\n\n请确保总结表内容是您想要的最新版本。', '覆盖确认')) {
+                // 2. 确认提示
+                const confirmMsg = `⚠️ 确定要强制覆盖吗？\n\n1. 当前世界书将被【清空】。\n2. 总结表中的 ${summarySheet.r.length} 条记录将被写入。`;
+                if (!await customConfirm(confirmMsg, '覆盖确认')) {
                     return;
                 }
 
                 const btn = $(this);
                 const oldText = btn.html();
-                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 同步中...').prop('disabled', true);
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...').prop('disabled', true);
 
                 try {
-                    // 3. 准备数据
-                    // 拼接所有总结行：标题 + 内容
-                    const fullContent = summarySheet.r.map(row => {
-                        const title = row[0] || '无标题';
-                        const content = row[1] || '';
-                        // 如果有第3列(备注)，也加上
-                        const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
-                        return `【${title}${note}】\n${content}`;
-                    }).join('\n\n--- 分隔线 ---\n\n');
-
-                    // 计算世界书名称 (与 syncToWorldInfo 逻辑保持一致)
+                    // 3. 准备基础信息
                     const uniqueId = m.gid() || "Unknown_Chat";
                     const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
                     const worldBookName = "Memory_Context_" + safeName;
 
-                    // 4. 发送覆盖请求
-                    const csrfToken = await getCsrfToken();
-                    const payload = {
-                        name: worldBookName,
-                        data: {
-                            entries: {
-                                "0": {
-                                    uid: 0,
-                                    key: ["总结", "summary", "前情提要", "memory", "记忆"],
-                                    comment: `[绑定对话: ${safeName}] 强制同步于 ${new Date().toLocaleString()}`,
-                                    content: fullContent, // 👈 直接覆盖
-                                    constant: true,
-                                    enabled: true,
-                                    position: 3
-                                }
-                            }
-                        }
-                    };
+                    // 4. 构建标准 World Info JSON
+                    const importEntries = {};
+                    let maxUid = -1;
 
-                    const response = await fetch('/api/worldinfo/edit', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify(payload)
+                    summarySheet.r.forEach((row, index) => {
+                        const uid = index; // 重置 UID，从 0 开始顺序排列
+                        maxUid = uid;
+
+                        const title = row[0] || '无标题';
+                        const content = row[1] || '';
+                        const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
+
+                        importEntries[uid] = {
+                            uid: uid,
+                            key: ["总结", "summary", "前情提要", "memory", "记忆"],
+                            keysecondary: [],
+                            comment: `[绑定对话: ${safeName}] 强制覆盖于 ${new Date().toLocaleString()}`,
+                            content: `【${title}${note}】\n${content}`,
+                            constant: true,
+                            vectorized: false,
+                            enabled: true,
+                            position: 1, // 角色定义后
+                            order: 100,
+                            extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
+                        };
                     });
 
-                    if (!response.ok) throw new Error(await response.text());
+                    const finalJson = {
+                        entries: importEntries,
+                        name: worldBookName
+                    };
 
-                    // 5. 刷新 UI (复用之前的精准刷新逻辑)
-                    const refreshBtn = document.getElementById('world_refresh'); // 精准ID
-                    if (refreshBtn) refreshBtn.click();
+                    // 5. 关键步骤：模拟文件上传 (V8 方案)
+                    const $fileInput = $('#world_import_file');
+                    if ($fileInput.length === 0) {
+                        throw new Error('未找到上传控件 #world_import_file，请确保位于酒馆主界面。');
+                    }
 
-                    // 尝试选中
-                    setTimeout(() => {
-                        const selectEl = document.getElementById('world_editor_select') || document.getElementById('world_info');
-                        if (selectEl) {
-                            for(let i=0; i<selectEl.options.length; i++) {
-                                if (selectEl.options[i].value === worldBookName) {
-                                    selectEl.value = worldBookName;
-                                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-                                    break;
-                                }
-                            }
-                        }
-                    }, 800);
+                    // 创建虚拟文件
+                    const file = new File([JSON.stringify(finalJson)], `${worldBookName}.json`, { type: "application/json" });
 
-                    if (typeof toastr !== 'undefined') toastr.success('世界书已重写并刷新', '同步成功');
+                    // 利用 DataTransfer 注入
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    $fileInput[0].files = dataTransfer.files;
+
+                    // 触发导入
+                    console.log('⚡ [强制覆盖] 触发前端模拟导入...');
+                    $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    $fileInput.trigger('change');
+
+                    // 6. 更新本地缓存 (防止后续自动任务冲突)
+                    if (typeof globalWorldInfoEntriesCache !== 'undefined') {
+                        globalWorldInfoEntriesCache = importEntries;
+                        globalLastWorldInfoUid = maxUid;
+                    }
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已重置并加载 ${summarySheet.r.length} 条记录`, '覆盖成功');
+                    }
 
                 } catch (e) {
                     console.error(e);
-                    await customAlert(`同步失败: ${e.message}`, '错误');
+                    await customAlert(`操作失败: ${e.message}`, '错误');
                 } finally {
                     btn.html(oldText).prop('disabled', false);
                 }
@@ -7146,6 +7081,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 🔒 性能优化：加锁，防止切换期间误操作
         isChatSwitching = true;
         console.log('🔒 [ochat] 会话切换锁已启用');
+
+        // ✨✨✨ [防串味补丁] 切换会话时，彻底重置世界书同步缓存 ✨✨✨
+        if (typeof globalWorldInfoEntriesCache !== 'undefined') {
+            globalWorldInfoEntriesCache = {}; // 清空条目缓存
+            globalLastWorldInfoUid = -1;      // 重置 UID 计数器
+            worldInfoSyncQueue = Promise.resolve(); // 重置队列
+
+            // 清理防抖计时器
+            if (syncDebounceTimer) {
+                clearTimeout(syncDebounceTimer);
+                syncDebounceTimer = null;
+            }
+
+            console.log('🧹 [ochat] 已重置世界书同步缓存，防止跨会话污染');
+        }
 
         // ⚡ [Pre-loading] 后台预加载配置，无需等待，让用户点配置按钮时秒开
         loadConfig().catch(e => console.error('⚠️ [配置预加载] 失败:', e));
