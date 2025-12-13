@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.5
+// 记忆表格 v1.3.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,10 +15,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.5 启动');
+    console.log('🚀 记忆表格 v1.3.6 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.5';
+    const V = 'v1.3.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -28,7 +28,7 @@
     const REPO_PATH = 'gaigai315/ST-Memory-Context';  // GitHub仓库路径
 
     // ===== UI主题配置 =====
-    let UI = { c: '#dfdcdcff', bc: '#ffffff', tc: '#000000ff' };
+    let UI = { c: '#dfdcdcff', bc: '#ffffff', tc: '#000000ff', darkMode: false };
 
     // ==================== 用户配置对象 ====================
     const C = {
@@ -165,6 +165,17 @@
     function customAlert(message, title = '提示') {
         return new Promise((resolve) => {
             const id = 'custom-alert-' + Date.now();
+
+            // 🌙 Dark Mode: 动态颜色
+            const isDark = UI.darkMode;
+            const dialogBg = isDark ? '#1e1e1e' : '#fff';
+            const headerBg = isDark ? '#252525' : UI.c;
+            const headerColor = isDark ? '#e0e0e0' : (UI.tc || '#ffffff');
+            const bodyColor = isDark ? '#e0e0e0' : '#333';
+            const borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#eee';
+            const btnBg = isDark ? '#252525' : UI.c;
+            const btnColor = isDark ? '#e0e0e0' : (UI.tc || '#ffffff');
+
             const $overlay = $('<div>', {
                 id: id,
                 css: {
@@ -178,7 +189,7 @@
 
             const $dialog = $('<div>', {
                 css: {
-                    background: '#fff', borderRadius: '12px',
+                    background: dialogBg, borderRadius: '12px',
                     boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
                     maxWidth: '500px', width: '90%',
                     maxHeight: '80vh', overflow: 'auto'
@@ -187,8 +198,8 @@
 
             const $header = $('<div>', {
                 css: {
-                    background: UI.c,
-                    color: UI.tc || '#ffffff', // ✨ 修复：跟随主题字体色
+                    background: headerBg,
+                    color: headerColor,
                     padding: '16px 20px', borderRadius: '12px 12px 0 0',
                     fontSize: '16px', fontWeight: '600'
                 },
@@ -198,22 +209,22 @@
             const $body = $('<div>', {
                 css: {
                     padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
-                    color: '#333', whiteSpace: 'pre-wrap'
+                    color: bodyColor, whiteSpace: 'pre-wrap'
                 },
                 text: message
             });
 
             const $footer = $('<div>', {
                 css: {
-                    padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right'
+                    padding: '12px 20px', borderTop: `1px solid ${borderColor}`, textAlign: 'right'
                 }
             });
 
             const $okBtn = $('<button>', {
                 text: '确定',
                 css: {
-                    background: UI.c,
-                    color: UI.tc || '#ffffff', // ✨ 修复：跟随主题字体色
+                    background: btnBg,
+                    color: btnColor,
                     border: 'none', padding: '8px 24px', borderRadius: '6px',
                     fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
                 }
@@ -259,6 +270,22 @@
 
             const message = `${icon} 已达到自动${taskName}触发条件！\n\n当前楼层：${currentFloor}\n上次记录：${triggerFloor}\n差值：${currentFloor - triggerFloor} 层（≥ ${threshold} 层触发）`;
 
+            // 🌙 Dark Mode: 动态颜色
+            const isDark = UI.darkMode;
+            const dialogBg = isDark ? '#1e1e1e' : '#fff';
+            const headerBg = isDark ? '#252525' : UI.c;
+            const headerColor = isDark ? '#e0e0e0' : (UI.tc || '#ffffff');
+            const bodyColor = isDark ? '#e0e0e0' : '#333';
+            const borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#eee';
+            const inputBg = isDark ? '#333333' : '#ffffff';
+            const inputBorder = isDark ? 'rgba(255,255,255,0.2)' : '#ddd';
+            const labelColor = isDark ? '#aaa' : '#666';
+            const btnBg = isDark ? '#252525' : UI.c;
+            const btnColor = isDark ? '#e0e0e0' : (UI.tc || '#ffffff');
+            const postponeBg = isDark ? 'rgba(255, 193, 7, 0.15)' : 'rgba(255, 193, 7, 0.1)';
+            const postponeBorder = isDark ? 'rgba(255, 193, 7, 0.4)' : 'rgba(255, 193, 7, 0.3)';
+            const postponeLabelColor = isDark ? '#ffb74d' : '#856404';
+
             const $overlay = $('<div>', {
                 id: id,
                 css: {
@@ -274,9 +301,9 @@
 
             const $dialog = $('<div>', {
                 css: {
-                    background: '#fff', borderRadius: '12px',
+                    background: dialogBg, borderRadius: '12px',
                     boxShadow: '0 5px 25px rgba(0,0,0,0.5)', // ✅ 增强阴影，因为没有黑色背景衬托
-                    border: '1px solid rgba(0,0,0,0.2)', // ✅ 增加边框，增强辨识度
+                    border: `1px solid ${borderColor}`, // ✅ 增加边框，增强辨识度
                     maxWidth: '450px', width: '90%',
                     maxHeight: '80vh', overflow: 'auto',
                     pointerEvents: 'auto' // ✅ 关键：恢复弹窗可交互
@@ -285,8 +312,8 @@
 
             const $header = $('<div>', {
                 css: {
-                    background: UI.c,
-                    color: UI.tc || '#ffffff',
+                    background: headerBg,
+                    color: headerColor,
                     padding: '16px 20px', borderRadius: '12px 12px 0 0',
                     fontSize: '16px', fontWeight: '600'
                 },
@@ -296,7 +323,7 @@
             const $body = $('<div>', {
                 css: {
                     padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
-                    color: '#333'
+                    color: bodyColor
                 }
             });
 
@@ -307,8 +334,8 @@
 
             const $postponeSection = $('<div>', {
                 css: {
-                    background: 'rgba(255, 193, 7, 0.1)',
-                    border: '1px solid rgba(255, 193, 7, 0.3)',
+                    background: postponeBg,
+                    border: `1px solid ${postponeBorder}`,
                     borderRadius: '8px',
                     padding: '12px',
                     marginBottom: '16px'
@@ -316,7 +343,7 @@
             });
 
             const $postponeLabel = $('<div>', {
-                css: { fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: '#856404' },
+                css: { fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: postponeLabelColor },
                 text: '⏰ 临时顺延'
             });
 
@@ -333,15 +360,17 @@
                 css: {
                     width: '80px',
                     padding: '6px',
-                    border: '1px solid #ddd',
+                    border: `1px solid ${inputBorder}`,
                     borderRadius: '4px',
                     textAlign: 'center',
-                    fontSize: '14px'
+                    fontSize: '14px',
+                    background: inputBg,
+                    color: bodyColor
                 }
             });
 
             const $inputLabel = $('<span>', {
-                css: { fontSize: '13px', color: '#666' },
+                css: { fontSize: '13px', color: labelColor },
                 text: '楼（0=立即执行，>0=延后N楼）'
             });
 
@@ -351,7 +380,7 @@
 
             const $footer = $('<div>', {
                 css: {
-                    padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right',
+                    padding: '12px 20px', borderTop: `1px solid ${borderColor}`, textAlign: 'right',
                     display: 'flex', justifyContent: 'flex-end', gap: '10px'
                 }
             });
@@ -368,8 +397,8 @@
             const $confirmBtn = $('<button>', {
                 text: '确定',
                 css: {
-                    background: UI.c,
-                    color: UI.tc || '#ffffff',
+                    background: btnBg,
+                    color: btnColor,
                     border: 'none', padding: '8px 24px', borderRadius: '6px',
                     fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
                 }
@@ -447,6 +476,7 @@
     let syncDebounceTimer = null;
     let globalLastWorldInfoUid = -1;
     let globalWorldInfoEntriesCache = {};
+    let worldInfoSyncQueue = Promise.resolve();
 
     async function syncToWorldInfo(content) {
         // 1. 基础检查
@@ -566,6 +596,17 @@
     function customConfirm(message, title = '确认') {
         return new Promise((resolve) => {
             const id = 'custom-confirm-' + Date.now();
+
+            // 🌙 Dark Mode: 动态颜色
+            const isDark = UI.darkMode;
+            const dialogBg = isDark ? '#1e1e1e' : '#fff';
+            const headerBg = isDark ? '#252525' : UI.c;
+            const headerColor = isDark ? '#e0e0e0' : (UI.tc || '#ffffff');
+            const bodyColor = isDark ? '#e0e0e0' : '#333';
+            const borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#eee';
+            const btnBg = isDark ? '#252525' : UI.c;
+            const btnColor = isDark ? '#e0e0e0' : (UI.tc || '#ffffff');
+
             const $overlay = $('<div>', {
                 id: id,
                 css: {
@@ -579,7 +620,7 @@
 
             const $dialog = $('<div>', {
                 css: {
-                    background: '#fff', borderRadius: '12px',
+                    background: dialogBg, borderRadius: '12px',
                     boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
                     maxWidth: '500px', width: '90%',
                     maxHeight: '80vh', overflow: 'auto'
@@ -588,8 +629,8 @@
 
             const $header = $('<div>', {
                 css: {
-                    background: UI.c,
-                    color: UI.tc || '#ffffff', // ✨ 修复：跟随主题字体色
+                    background: headerBg,
+                    color: headerColor,
                     padding: '16px 20px', borderRadius: '12px 12px 0 0',
                     fontSize: '16px', fontWeight: '600'
                 },
@@ -599,14 +640,14 @@
             const $body = $('<div>', {
                 css: {
                     padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
-                    color: '#333', whiteSpace: 'pre-wrap'
+                    color: bodyColor, whiteSpace: 'pre-wrap'
                 },
                 text: message
             });
 
             const $footer = $('<div>', {
                 css: {
-                    padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right',
+                    padding: '12px 20px', borderTop: `1px solid ${borderColor}`, textAlign: 'right',
                     display: 'flex', justifyContent: 'flex-end', gap: '10px'
                 }
             });
@@ -614,7 +655,7 @@
             const $cancelBtn = $('<button>', {
                 text: '取消',
                 css: {
-                    background: '#6c757d', color: '#ffffff', // ✨ 修复：白色字
+                    background: '#6c757d', color: '#ffffff',
                     border: 'none', padding: '8px 24px', borderRadius: '6px',
                     fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
                 }
@@ -623,8 +664,8 @@
             const $okBtn = $('<button>', {
                 text: '确定',
                 css: {
-                    background: UI.c,
-                    color: UI.tc || '#ffffff', // ✨ 修复：跟随主题字体色
+                    background: btnBg,
+                    color: btnColor,
                     border: 'none', padding: '8px 24px', borderRadius: '6px',
                     fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
                 }
@@ -654,6 +695,13 @@
     function customRetryAlert(message, title = '⚠️ 生成失败') {
         return new Promise((resolve) => {
             const id = 'custom-retry-' + Date.now();
+
+            // 🌙 Dark Mode: 动态颜色
+            const isDark = UI.darkMode;
+            const dialogBg = isDark ? '#1e1e1e' : '#fff';
+            const bodyColor = isDark ? '#e0e0e0' : '#333';
+            const borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#eee';
+
             const $overlay = $('<div>', {
                 id: id,
                 css: {
@@ -667,7 +715,7 @@
 
             const $dialog = $('<div>', {
                 css: {
-                    background: '#fff', borderRadius: '12px',
+                    background: dialogBg, borderRadius: '12px',
                     boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
                     maxWidth: '500px', width: '90%',
                     maxHeight: '80vh', overflow: 'auto'
@@ -687,14 +735,14 @@
             const $body = $('<div>', {
                 css: {
                     padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
-                    color: '#333', whiteSpace: 'pre-wrap'
+                    color: bodyColor, whiteSpace: 'pre-wrap'
                 },
                 text: message
             });
 
             const $footer = $('<div>', {
                 css: {
-                    padding: '12px 20px', borderTop: '1px solid #eee', textAlign: 'right',
+                    padding: '12px 20px', borderTop: `1px solid ${borderColor}`, textAlign: 'right',
                     display: 'flex', justifyContent: 'flex-end', gap: '10px'
                 }
             });
@@ -1042,40 +1090,44 @@
         get(i) { return this.s[i]; }
         all() { return this.s; }
 
-        // ✨✨✨ 核心修复：将进度指针保存到角色独立存档中
+        // ✨✨✨ 核心修复：增强版熔断保护 (防止空数据覆盖)
         save(force = false) {
             const id = this.gid();
             if (!id) return;
             const ctx = this.ctx();
+            
+            // 计算当前内存中的总行数
             const totalRows = this.s.reduce((acc, sheet) => acc + (sheet.r ? sheet.r.length : 0), 0);
 
-            // 🛡️ [基础熔断保护] 防御完全空数据
-            if (!force && ctx && ctx.chat && ctx.chat.length > 5 && totalRows === 0) {
-                console.warn('🛡️ [熔断保护] 检测到异常空数据，已阻止覆盖保存！');
-                return;
-            }
+            // 🛑 [毁灭级熔断保护] 
+            // 场景：用户打开酒馆，插件加载失败(内存为0)，但本地存档其实是有货的。
+            // 此时如果触发自动保存，本地存档就会被清空。必须拦截！
+            if (!force) {
+                try {
+                    const rawLocalData = localStorage.getItem(`${SK}_${id}`);
+                    // 如果本地有存档
+                    if (rawLocalData) {
+                        const localData = JSON.parse(rawLocalData);
+                        // 计算本地存档的行数
+                        const localRows = localData.d ? localData.d.reduce((sum, sheet) => sum + (sheet.r ? sheet.r.length : 0), 0) : 0;
 
-            // 🛑 [增强版熔断保护] 针对用户反馈的300楼数据丢失问题
-            // 逻辑：如果是本次会话刚启动后的第一次尝试保存(lastInternalSaveTime === 0)，
-            // 且检测到是长对话(>10条消息)，但表格数据量极少(<5行)，
-            // ✨ 修复：同时检查本地是否已有存档。如果本地无存档(hasLocalData为null)，说明是新安装插件，允许保存！
-            const hasLocalData = localStorage.getItem(`${SK}_${id}`);
-            
-            if (!force && lastInternalSaveTime === 0 && ctx && ctx.chat && ctx.chat.length > 10 && totalRows < 5 && hasLocalData) {
-                console.error('🛑 [严重熔断] 检测到长对话冷启动时数据异常（可能加载失败），已阻止毁灭性覆盖保存！');
-                console.error(`   对话长度: ${ctx.chat.length} 条 | 表格数据: ${totalRows} 行 → 数据比例严重失衡`);
-                if (typeof toastr !== 'undefined') {
-                    toastr.error(
-                        '⚠️ 数据加载可能不完整，已阻止自动保存以保护存档！\n\n' +
-                        '建议操作：\n' +
-                        '1. 刷新页面重试\n' +
-                        '2. 点击[强制读取服务端数据]\n' +
-                        '3. 检查网络连接',
-                        '熔断保护',
-                        { timeOut: 0, extendedTimeOut: 0 }
-                    );
+                        // ⚡️ 判定：如果本地有大量数据(>5行)，而当前内存几乎为空(<2行)
+                        // 判定为“加载失败”，禁止覆盖保存！
+                        if (localRows > 5 && totalRows < 2) {
+                            console.error(`🛑 [严重熔断] 拦截了一次毁灭性保存！`);
+                            console.error(`   原因：内存数据(${totalRows}行) 远少于 本地存档(${localRows}行)。可能因加载失败导致。`);
+                            
+                            // 仅提示一次，防止刷屏
+                            if (!window.hasShownSaveWarning) {
+                                if (typeof toastr !== 'undefined') toastr.error('⚠️ 数据加载异常，已阻止自动保存以保护存档！\n请尝试刷新页面。', '熔断保护');
+                                window.hasShownSaveWarning = true;
+                            }
+                            return; // ⛔️ 终止保存
+                        }
+                    }
+                } catch(e) { 
+                    console.error('熔断检查出错', e); 
                 }
-                return;
             }
 
             const now = Date.now();
@@ -1093,15 +1145,23 @@
                 meta: {
                     lastSum: API_CONFIG.lastSummaryIndex,
                     lastBf: API_CONFIG.lastBackfillIndex
+                },
+                // ✅ Per-Chat Configuration: Save critical feature toggles for this chat
+                config: {
+                    enabled: C.enabled,
+                    autoBackfill: C.autoBackfill,
+                    autoSummary: C.autoSummary
                 }
             };
 
             try { localStorage.setItem(`${SK}_${id}`, JSON.stringify(data)); } catch (e) { }
+            
+            // 云端同步逻辑 (保持不变)
             if (C.cloudSync) {
                 try {
                     if (ctx && ctx.chatMetadata) {
                         ctx.chatMetadata.gaigai = data;
-                        // 🧹 性能优化：使用 2 秒防抖，避免高频 IO 操作
+                        // 🧹 性能优化：使用 2 秒防抖
                         if (typeof ctx.saveChat === 'function') {
                             if (saveChatDebounceTimer) {
                                 clearTimeout(saveChatDebounceTimer);
@@ -1109,11 +1169,11 @@
                             saveChatDebounceTimer = setTimeout(() => {
                                 try {
                                     ctx.saveChat();
-                                    console.log('💾 [防抖保存] saveChat 已执行');
+                                    // console.log('💾 [防抖保存] saveChat 已执行');
                                 } catch (err) {
                                     console.error('❌ saveChat 执行失败:', err);
                                 }
-                            }, 2000); // 2秒防抖
+                            }, 2000); 
                         }
                     }
                 } catch (e) { }
@@ -1124,6 +1184,23 @@
         load() {
             const id = this.gid();
             if (!id) return;
+
+            // ✅ Per-Chat Configuration: STEP 1 - Reset to Global Defaults
+            // Always reload global config from localStorage to avoid carrying over settings from previous chat
+            try {
+                const globalConfigStr = localStorage.getItem(CK);
+                if (globalConfigStr) {
+                    const globalConfig = JSON.parse(globalConfigStr);
+                    // Reset critical toggles to global defaults
+                    if (globalConfig.enabled !== undefined) C.enabled = globalConfig.enabled;
+                    if (globalConfig.autoBackfill !== undefined) C.autoBackfill = globalConfig.autoBackfill;
+                    if (globalConfig.autoSummary !== undefined) C.autoSummary = globalConfig.autoSummary;
+                    console.log('🔄 [配置重置] 已加载全局默认配置');
+                }
+            } catch (e) {
+                console.warn('⚠️ [配置加载] 读取全局配置失败:', e);
+            }
+
             if (this.id !== id) {
                 // 🔄 检测到会话/角色切换，重置所有状态
                 this.id = id;
@@ -1188,6 +1265,16 @@
                     API_CONFIG.lastBackfillIndex = 0;
                     localStorage.setItem(AK, JSON.stringify(API_CONFIG));
                     console.log('⚙️ [兼容旧存档] 进度指针重置为 0');
+                }
+
+                // ✅ Per-Chat Configuration: STEP 2 - Override with chat-specific config
+                if (finalData.config) {
+                    if (finalData.config.enabled !== undefined) C.enabled = finalData.config.enabled;
+                    if (finalData.config.autoBackfill !== undefined) C.autoBackfill = finalData.config.autoBackfill;
+                    if (finalData.config.autoSummary !== undefined) C.autoSummary = finalData.config.autoSummary;
+                    console.log('✅ [每聊配置] 已加载此聊天的专属配置:', finalData.config);
+                } else {
+                    console.log('ℹ️ [每聊配置] 此聊天无专属配置，使用全局默认值');
                 }
 
                 lastInternalSaveTime = finalData.ts;
@@ -1492,6 +1579,10 @@
     // ✨✨✨ 视图设置窗口（轻量级悬浮窗版本） ✨✨✨
     function showViewSettings() {
         const currentRowHeight = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--g-rh')) || 24;
+
+        // 🌙 获取主题配置
+        const isDark = UI.darkMode;
+        const themeColor = UI.c;
         const textColor = UI.tc || '#333333'; // 防止未定义
 
         // 1. 创建几乎透明的遮罩层 (让用户能看到背后表格的实时变化)
@@ -1514,7 +1605,9 @@
         // 2. 创建小窗口 (适配手机屏幕)
         const $box = $('<div>', {
             css: {
-                background: '#fff',
+                background: isDark ? '#1e1e1e' : '#fff',
+                color: textColor,
+                border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
                 width: '90vw',
                 maxWidth: '320px',
                 maxHeight: '85vh',
@@ -1548,7 +1641,7 @@
                 border: 'none',
                 fontSize: '24px',
                 cursor: 'pointer',
-                color: '#999',
+                color: isDark ? '#999' : '#999',
                 padding: '0',
                 lineHeight: '1'
             }
@@ -1560,13 +1653,13 @@
         // 4. 行高调整区域
         const $sliderContainer = $('<div>', {
             css: {
-                background: '#f8f9fa',
+                background: isDark ? 'rgba(255,255,255,0.05)' : '#f8f9fa',
                 padding: '12px',
                 borderRadius: '8px',
-                border: '1px solid #eee'
+                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #eee'
             }
         });
-        $sliderContainer.append(`<div style="font-size:12px; font-weight:600; margin-bottom:8px; color:#555;">行高调整 (px)</div>`);
+        $sliderContainer.append(`<div style="font-size:12px; font-weight:600; margin-bottom:8px; color:${textColor};">行高调整 (px)</div>`);
 
         const $controlRow = $('<div>', {
             css: {
@@ -1598,8 +1691,10 @@
                 width: '50px',
                 textAlign: 'center',
                 padding: '4px',
-                border: '1px solid #ddd',
-                borderRadius: '4px'
+                border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #ddd',
+                borderRadius: '4px',
+                background: isDark ? 'rgba(255,255,255,0.05)' : '#fff',
+                color: textColor
             }
         });
 
@@ -1618,10 +1713,9 @@
         const btnStyle = {
             flex: 1,
             padding: '10px',
-            border: 'none',
+            border: `1px solid ${themeColor}`,
             borderRadius: '6px',
             cursor: 'pointer',
-            color: '#fff',
             fontSize: '12px',
             fontWeight: '600'
         };
@@ -1629,15 +1723,16 @@
         const $btnResetWidth = $('<button>', {
             text: '📐 重置列宽',
             css: Object.assign({}, btnStyle, {
-                background: '#ffc107',
-                color: '#333'
+                background: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
+                color: textColor
             })
         });
 
         const $btnResetHeight = $('<button>', {
             text: '📏 重置行高',
             css: Object.assign({}, btnStyle, {
-                background: '#17a2b8'
+                background: themeColor,
+                color: '#fff'
             })
         });
 
@@ -2326,12 +2421,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (parsed.tc) UI.tc = parsed.tc;
                 if (parsed.fs) UI.fs = parseInt(parsed.fs);
                 if (parsed.bookBg !== undefined) UI.bookBg = parsed.bookBg; // ✅ 读取背景图设置
+                if (parsed.darkMode !== undefined) UI.darkMode = parsed.darkMode; // ✅ 读取夜间模式设置
             }
         } catch (e) { console.warn('读取主题配置失败'); }
 
-        if (!UI.c) UI.c = '#f0f0f0';  // 奶灰白表头
-        if (!UI.tc) UI.tc = '#333333';  // 黑色字体
+        // ✅ 夜间模式：设置不同的默认颜色
+        if (!UI.c) {
+            UI.c = UI.darkMode ? '#252525' : '#f0f0f0';  // 夜间默认深色表头，白天默认浅色
+        }
+        if (!UI.tc) {
+            UI.tc = UI.darkMode ? '#ffffff' : '#333333';  // 夜间默认浅色字体，白天默认深色
+        }
         if (!UI.fs || isNaN(UI.fs) || UI.fs < 10) UI.fs = 12;
+
+        // ✅ 夜间模式安全检查：如果用户设置了深色字体，强制改为浅色确保可读性
+        if (UI.darkMode && (UI.tc === '#333333' || UI.tc === '#000000' || UI.tc === '#000000ff')) {
+            UI.tc = '#ffffff';
+        }
 
         // 更新 CSS 变量
         document.documentElement.style.setProperty('--g-c', UI.c);
@@ -2366,6 +2472,31 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             ? `url("${UI.bookBg}")`
             : `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"), linear-gradient(to bottom, #fdfbf7, #f7f4ed)`;
 
+        // 🌙【新增】定义深色纸张背景（深灰渐变 + 噪点）
+        const bookBgImageDark = UI.bookBg
+            ? `url("${UI.bookBg}")` // 如果用户自定义了图，就保持用户的
+            : `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"), linear-gradient(to bottom, #2b2b2b, #1a1a1a)`;
+
+       // ✅ 🌙 Dark Mode: 动态变量定义 (深色毛玻璃版)
+        const isDark = UI.darkMode;
+        // 窗口背景：降低透明度到 0.75，让模糊效果透出来，颜色改为深灰黑
+        const bg_window = isDark ? 'rgba(25, 25, 25, 0.75)' : 'rgba(252, 252, 252, 0.85)';
+        // 面板背景：不再用实色，改为半透明黑，叠加在窗口上增加层次感
+        const bg_panel  = isDark ? 'rgba(0, 0, 0, 0.25)' : '#fcfcfc';
+        const bg_header = UI.c; 
+        // 输入框：半透明黑，带有磨砂感
+        const bg_input  = isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.8)';
+        const color_text = UI.tc; 
+        // 边框：稍微亮一点的白色半透明，营造玻璃边缘感
+        const color_border = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.15)';
+        const bg_table_wrap = isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.3)';
+        const bg_table_cell = isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.5)'; // 单元格极淡
+        const bg_edit_focus = isDark ? 'rgba(60, 60, 60, 0.9)' : 'rgba(255, 249, 230, 0.95)';
+        const bg_edit_hover = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 251, 240, 0.9)';
+        const bg_row_num = isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(200, 200, 200, 0.4)';
+
+
+
         const style = `
         /* 1. 字体与重置 */
         #g-pop div, #g-pop p, #g-pop span, #g-pop td, #g-pop th, #g-pop button, #g-pop input, #g-pop select, #g-pop textarea, #g-pop h3, #g-pop h4,
@@ -2374,7 +2505,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             line-height: 1.5;
             -webkit-font-smoothing: auto;
             box-sizing: border-box;
-            color: ${UI.tc}; /* 跟随主题字体颜色 */
+            color: ${color_text}; /* 🌙 动态文字颜色 */
             font-size: var(--g-fs, 12px) !important;
         }
         
@@ -2385,15 +2516,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         /* 2. 容器 */
         .g-ov { background: rgba(0, 0, 0, 0.5) !important; position: fixed !important; top: 0; left: 0; right: 0; bottom: 0; z-index: 20000 !important; display: flex !important; align-items: center !important; justify-content: center !important; } /* 加深遮罩，让磨砂玻璃更突出 */
         .g-w {
-            background: rgba(252, 252, 252, 0.85) !important; /* 半透明白色 */
+            background: ${bg_window} !important; /* 🌙 动态窗口背景 */
             backdrop-filter: blur(20px) saturate(180%) !important; /* 磨砂玻璃模糊 */
             -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-            border: 1px solid rgba(255, 255, 255, 0.6) !important;
+            border: 1px solid ${color_border} !important;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
             border-radius: 12px !important;
             display: flex !important; flex-direction: column !important;
             position: relative !important; margin: auto !important;
             transform: none !important; left: auto !important; top: auto !important;
+        }
+
+        /* 🌙 强制所有弹窗容器使用动态背景色 (覆盖 style.css 的固定白色) */
+        #g-backfill-pop .g-w,
+        #g-summary-pop .g-w,
+        #g-optimize-pop .g-w,
+        #g-edit-pop .g-w,
+        #g-about-pop .g-w {
+            background: ${bg_window} !important;
         }
 
         /* 3. 表格核心布局 */
@@ -2402,7 +2542,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         .g-tbl-wrap {
             width: 100% !important;
             flex: 1 !important;
-            background: rgba(255, 255, 255, 0.3) !important; /* 轻微半透明白色，增强磨砂质感 */
+            background: ${bg_table_wrap} !important; /* 🌙 动态背景 */
             overflow: auto !important;
             padding-bottom: 150px !important;
             padding-right: 50px !important;
@@ -2418,13 +2558,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             margin: 0 !important;
         }
 
-        .g-tbl-wrap th { 
-            background: ${UI.c} !important; 
-            color: ${UI.tc} !important; 
-            border-right: 1px solid rgba(0, 0, 0, 0.2) !important;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.2) !important;
+        .g-tbl-wrap th {
+            background: ${bg_header} !important;
+            color: ${color_text} !important;
+            border-right: 1px solid ${color_border} !important;
+            border-bottom: 1px solid ${color_border} !important;
             position: sticky !important; top: 0 !important; z-index: 10 !important;
-            height: auto !important; min-height: 32px !important; 
+            height: auto !important; min-height: 32px !important;
             padding: 4px 6px !important;
             font-size: var(--g-fs, 12px) !important; font-weight: bold !important;
             text-align: center !important;
@@ -2435,19 +2575,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
 /* 1. 单元格样式 */
         .g-tbl-wrap td {
-            border-right: 1px solid rgba(0, 0, 0, 0.15) !important;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.15) !important;
-            background: rgba(255, 255, 255, 0.5) !important;
-            
+            border-right: 1px solid ${color_border} !important;
+            border-bottom: 1px solid ${color_border} !important;
+            background: ${bg_table_cell} !important; /* 🌙 动态背景 */
+
             /* ✅ 修复1：只设默认高度，允许被 JS 拖拽覆盖 */
-            height: 24px; 
-            
+            height: 24px;
+
             /* ✅ 修复2：强制允许换行！没有这一句，拖下来也是一行字 */
-            white-space: normal !important; 
-            
-            padding: 0 !important; 
+            white-space: normal !important;
+
+            padding: 0 !important;
             vertical-align: top !important; /* 文字顶对齐，拉大时好看 */
-            overflow: hidden !important; 
+            overflow: hidden !important;
             position: relative !important;
             box-sizing: border-box !important;
         }
@@ -2504,11 +2644,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
         .g-row.g-summarized { background-color: rgba(0, 0, 0, 0.05) !important; }
 
-        .g-hd { background: ${UI.c} !important; opacity: 0.98; border-bottom: 1px solid rgba(0,0,0,0.1) !important; padding: 0 16px !important; height: 50px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; flex-shrink: 0 !important; border-radius: 12px 12px 0 0 !important; }
+        .g-hd { background: ${bg_header} !important; opacity: 0.98; border-bottom: 1px solid ${color_border} !important; padding: 0 16px !important; height: 50px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; flex-shrink: 0 !important; border-radius: 12px 12px 0 0 !important; }
 
         /* ✨✨✨ 标题栏优化：增大字号、强制颜色跟随主题 ✨✨✨ */
         .g-hd h3 {
-            color: ${UI.tc} !important;
+            color: ${color_text} !important;
             margin: 0 !important;
             flex: 1;
             display: flex !important;
@@ -2522,7 +2662,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             align-items: center !important;
             justify-content: center !important;
             gap: 8px !important;
-            color: ${UI.tc} !important;
+            color: ${color_text} !important;
         }
 
         /* 3. 主标题文字：增加 #g-pop 前缀 */
@@ -2530,7 +2670,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             font-size: 18px !important;       /* 增大字号 */
             font-weight: 800 !important;
             letter-spacing: 1px !important;
-            color: ${UI.tc} !important;       /* 强制跟随主题色 */
+            color: ${color_text} !important;       /* 强制跟随主题色 */
         }
 
         /* 4. 版本号标签：增加 #g-pop 前缀 & 强制颜色 */
@@ -2541,7 +2681,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             background: rgba(0,0,0,0.1) !important;
             padding: 2px 6px !important;
             border-radius: 4px !important;
-            color: ${UI.tc} !important;       /* 强制跟随主题色 */
+            color: ${color_text} !important;       /* 强制跟随主题色 */
         }
 
         /* 修复图标颜色 */
@@ -2550,8 +2690,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             opacity: 0.8;
         }
 
-        .g-x { background: transparent !important; border: none !important; color: ${UI.tc} !important; cursor: pointer !important; font-size: 20px !important; width: 32px !important; height: 32px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
-        .g-back { background: transparent !important; border: none !important; color: ${UI.tc} !important; cursor: pointer !important; font-size: var(--g-fs, 12px) !important; font-weight: 600 !important; display: flex !important; align-items: center !important; gap: 6px !important; padding: 4px 8px !important; border-radius: 4px !important; }
+        .g-x { background: transparent !important; border: none !important; color: ${color_text} !important; cursor: pointer !important; font-size: 20px !important; width: 32px !important; height: 32px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+        .g-back { background: transparent !important; border: none !important; color: ${color_text} !important; cursor: pointer !important; font-size: var(--g-fs, 12px) !important; font-weight: 600 !important; display: flex !important; align-items: center !important; gap: 6px !important; padding: 4px 8px !important; border-radius: 4px !important; }
         .g-back:hover { background: rgba(255,255,255,0.2) !important; }
 
         .g-e { 
@@ -2584,20 +2724,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             overflow: hidden !important; 
         }
         
-        .g-e:focus { outline: 2px solid ${UI.c} !important; outline-offset: -2px; background: rgba(255, 249, 230, 0.95) !important; box-shadow: 0 4px 12px ${shadowColor} !important; z-index: 10; position: relative; overflow-y: auto !important; align-items: flex-start !important; }
-        .g-e:hover { background: rgba(255, 251, 240, 0.9) !important; box-shadow: inset 0 0 0 1px var(--g-c); }
+        .g-e:focus { outline: 2px solid ${bg_header} !important; outline-offset: -2px; background: ${bg_edit_focus} !important; /* 🌙 动态背景 */ box-shadow: 0 4px 12px ${shadowColor} !important; z-index: 10; position: relative; overflow-y: auto !important; align-items: flex-start !important; }
+        .g-e:hover { background: ${bg_edit_hover} !important; /* 🌙 动态背景 */ box-shadow: inset 0 0 0 1px var(--g-c); }
 
-        #g-pop input[type="number"], #g-pop input[type="text"], #g-pop input[type="password"], #g-pop select, #g-pop textarea { background: rgba(255, 255, 255, 0.8) !important; color: ${UI.tc} !important; border: 1px solid rgba(0, 0, 0, 0.15) !important; font-size: var(--g-fs, 12px) !important; }
-        .g-p input[type="number"], .g-p input[type="text"], .g-p select, .g-p textarea { color: ${UI.tc} !important; }
+        #g-pop input[type="number"], #g-pop input[type="text"], #g-pop input[type="password"], #g-pop select, #g-pop textarea { background: ${bg_input} !important; /* 🌙 动态背景 */ color: ${color_text} !important; border: 1px solid ${color_border} !important; font-size: var(--g-fs, 12px) !important; }
+        .g-p input[type="number"], .g-p input[type="text"], .g-p select, .g-p textarea { color: ${color_text} !important; }
         
-        .g-col-num { position: sticky !important; left: 0 !important; z-index: 11 !important; background: ${UI.c} !important; border-right: 1px solid rgba(0, 0, 0, 0.2) !important; }
-        tbody .g-col-num { background: rgba(200, 200, 200, 0.4) !important; z-index: 9 !important; }
+        .g-col-num { position: sticky !important; left: 0 !important; z-index: 11 !important; background: ${bg_header} !important; border-right: 1px solid ${color_border} !important; }
+        tbody .g-col-num { background: ${bg_row_num} !important; /* 🌙 动态背景 */ z-index: 9 !important; }
         
-        .g-tl button, .g-p button { background: ${UI.c} !important; color: ${UI.tc} !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; border-radius: 6px !important; padding: 6px 12px !important; font-size: var(--g-fs, 12px) !important; font-weight: 600 !important; cursor: pointer !important; box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
+        .g-tl button, .g-p button { background: ${bg_header} !important; color: ${color_text} !important; border: 1px solid ${color_border} !important; border-radius: 6px !important; padding: 6px 12px !important; font-size: var(--g-fs, 12px) !important; font-weight: 600 !important; cursor: pointer !important; box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
         
         #g-pop ::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
-        #g-pop ::-webkit-scrollbar-thumb { background: ${UI.c} !important; border-radius: 10px !important; }
-        #g-pop ::-webkit-scrollbar-thumb:hover { background: ${UI.c} !important; filter: brightness(0.8); }
+        #g-pop ::-webkit-scrollbar-thumb { background: ${bg_header} !important; border-radius: 10px !important; }
+        #g-pop ::-webkit-scrollbar-thumb:hover { background: ${bg_header} !important; filter: brightness(0.8); }
         
         @media (max-width: 600px) {
             .g-w { width: 100vw !important; height: 85vh !important; bottom: 0 !important; border-radius: 12px 12px 0 0 !important; position: absolute !important; }
@@ -2812,15 +2952,147 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 
                 padding: 5px 5px 60px 5px !important; /* 底部留白60px，防止字被挡住 */
                 font-size: 14px !important;
-                
+
                 /* 强制开启滚动条 */
-                overflow-y: auto !important; 
+                overflow-y: auto !important;
                 overflow-x: hidden !important;
-                -webkit-overflow-scrolling: touch !important; 
+                -webkit-overflow-scrolling: touch !important;
             }
         }
-    `;
 
+       /* ============================================
+           🌙 DARK MODE FORCE OVERRIDES (深色毛玻璃修复版)
+           强制覆盖内联样式，确保夜间模式通透
+           ============================================ */
+        ${isDark ? `
+            /* ========== 1. 强制输入框透明化 ========== */
+            #g-pop textarea, #g-pop input, #g-pop select,
+            .g-w textarea, .g-w input, .g-w select,
+            #g-edit-pop textarea, #g-edit-pop input, #g-edit-pop select,
+            body > div[style*="fixed"] textarea,
+            body > div[style*="fixed"] input[type="text"],
+            body > div[style*="fixed"] input[type="number"],
+            body > div[style*="fixed"] select,
+            /* 覆盖弹窗内的输入框 */
+            #bf-popup-editor, #summary-editor, #opt-result-editor,
+            #bf-custom-prompt, #opt-prompt, #bf-target-table,
+            #opt-target, #opt-range-input, #summary-note {
+                background-color: rgba(0, 0, 0, 0.4) !important; /* 半透明黑 */
+                color: ${color_text} !important;
+                border: 1px solid rgba(255, 255, 255, 0.15) !important;
+                backdrop-filter: blur(5px); /* 输入框内微模糊 */
+            }
+
+            /* ✅ 修复：下拉框选项强制深色背景 (必须是实色，不能透明) */
+            option {
+                background-color: #080808ff !important; 
+                color: ${color_text} !important;
+            }
+
+            /* ========== 2. 强制弹窗容器毛玻璃化 ========== */
+            /* 这里的关键是把所有之前的 #fff 背景都变成半透明 */
+            
+            /* 针对白色背景的 div，强制改为深色半透明 */
+            .g-ov > div[style*="background"][style*="#fff"],
+            .g-ov > div[style*="background"][style*="rgb(255, 255, 255)"],
+            body > div[style*="fixed"] div[style*="background:#fff"],
+            .summary-action-box {
+                background: rgba(30, 30, 30, 0.85) !important; /* 核心窗口背景 */
+                backdrop-filter: blur(20px) saturate(180%) !important;
+                border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;
+            }
+
+            /* 针对弹窗内的白色板块（如配置项背景），改为更淡的半透明 */
+            .g-p div[style*="background: rgba(255,255,255"],
+            .g-p div[style*="background:rgba(255,255,255"],
+            .g-p div[style*="background:#fff"],
+            #api-config-section,
+            #auto-bf-settings,
+            #auto-sum-settings {
+                background: rgba(255, 255, 255, 0.05) !important; /* 微微提亮 */
+                border-color: rgba(255, 255, 255, 0.1) !important;
+            }
+
+            /* ========== 3. 强制文字颜色 ========== */
+            .g-ov div, .g-ov h3, .g-ov h4, .g-ov strong, .g-ov span, .g-ov label,
+            .g-p, .g-w, .g-hd h3 {
+                color: ${color_text} !important;
+            }
+            
+            /* 弱化辅助文字颜色 */
+            .g-p div[style*="color: #666"],
+            .g-p div[style*="color:#666"],
+            .g-p span[style*="opacity:0.7"],
+            .g-p div[style*="opacity:0.8"] {
+                color: rgba(255, 255, 255, 0.6) !important;
+            }
+
+            /* ========== 4. 按钮样式微调 ========== */
+            /* 取消按钮/灰色按钮 */
+            button[style*="background:#6c757d"],
+            button[style*="background: #6c757d"],
+            .summary-action-keep {
+                background: rgba(255, 255, 255, 0.15) !important;
+                color: ${color_text} !important;
+                border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            }
+            button[style*="background:#6c757d"]:hover {
+                background: rgba(255, 255, 255, 0.25) !important;
+            }
+
+            /* ========== 5. 强制覆盖 specific ID 的弹窗背景 ========== */
+            /* 这一步确保总结、追溯等弹窗也是毛玻璃 */
+            #g-backfill-pop .g-w,
+            #g-summary-pop .g-w,
+            #g-optimize-pop .g-w,
+            #g-edit-pop .g-w,
+            #g-about-pop .g-w {
+                background: rgba(30, 30, 30, 0.75) !important; /* 与主窗口一致 */
+                backdrop-filter: blur(20px) saturate(180%) !important;
+            }
+            
+            /* 配置页面的背景板 */
+            #g-backfill-pop .g-p,
+            #g-summary-pop .g-p,
+            #g-optimize-pop .g-p {
+                background: transparent !important; /* 让它透出 g-w 的毛玻璃 */
+            }
+
+            /* ========== 6. 表格单元格 ========== */
+            .g-tbl-wrap td {
+                background: rgba(255, 255, 255, 0.02) !important; /* 极淡的透明 */
+                border-color: rgba(255, 255, 255, 0.08) !important;
+            }
+            .g-tbl-wrap th {
+                border-color: rgba(255, 255, 255, 0.1) !important;
+                background: rgba(30, 30, 30, 0.9) !important; /* 表头稍微实一点 */
+            }
+            /* 选中行 */
+            .g-row.g-selected td {
+                background: rgba(255, 255, 255, 0.1) !important;
+            }
+
+            /* ========== 7. 笔记本模式 (Notebook) ========== */
+            /* 保持深色纸张质感，但也加深阴影 */
+            .g-book-view {
+                background-image: ${bookBgImageDark} !important;
+                background-color: #1a1a1a !important;
+                color: ${color_text} !important;
+                box-shadow: inset 0 0 50px rgba(0,0,0,0.8) !important;
+            }
+            .g-book-btn {
+                background: rgba(255, 255, 255, 0.05) !important;
+                color: ${color_text} !important;
+            }
+            .g-book-meta-tag {
+                background: rgba(255, 255, 255, 0.05) !important;
+                border-color: rgba(255, 255, 255, 0.1) !important;
+                color: #ccc !important;
+            }
+        ` : ''}
+    `;
+        
         $('#gaigai-theme').remove();
         $('<style id="gaigai-theme">').text(style).appendTo('head');
     }
@@ -2878,8 +3150,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     function showBigEditor(ti, ri, ci, currentValue) {
         const sh = m.get(ti);
         const colName = sh.c[ci];
-        // ✨ 修复：这里也加上了 background-color 和 color 强制样式
-        const h = `<div class="g-p"><h4>✏️ 编辑单元格</h4><p style="color:${UI.tc}; opacity:0.8; font-size:11px; margin-bottom:10px;">表格：<strong>${sh.n}</strong> | 行：<strong>${ri + 1}</strong> | 列：<strong>${colName}</strong></p><textarea id="big-editor" style="width:100%; height:300px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background-color: #ffffff !important; color: ${UI.tc} !important;">${esc(currentValue)}</textarea><div style="margin-top:12px;"><button id="save-edit" style="padding:6px 12px; background:${UI.c}; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">💾 保存</button><button id="cancel-edit" style="padding:6px 12px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">取消</button></div></div>`;
+        // 🌙 Dark Mode Fix: Remove inline background/color, let CSS from thm() handle it
+        const h = `<div class="g-p"><h4>✏️ 编辑单元格</h4><p style="color:${UI.tc}; opacity:0.8; font-size:11px; margin-bottom:10px;">表格：<strong>${sh.n}</strong> | 行：<strong>${ri + 1}</strong> | 列：<strong>${colName}</strong></p><textarea id="big-editor" style="width:100%; height:300px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(currentValue)}</textarea><div style="margin-top:12px;"><button id="save-edit" style="padding:6px 12px; background:${UI.c}; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">💾 保存</button><button id="cancel-edit" style="padding:6px 12px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">取消</button></div></div>`;
         $('#g-edit-pop').remove();
         const $o = $('<div>', { id: 'g-edit-pop', class: 'g-ov', css: { 'z-index': '10000000' } });
         const $p = $('<div>', { class: 'g-w', css: { width: '600px', maxWidth: '90vw', height: 'auto' } });
@@ -3302,7 +3574,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // 全选/单选逻辑
-        // 全选逻辑优化：点击全选时，弹出对话框询问是"全显"还是"全隐"
         $('#g-pop').off('click', '.g-select-all').on('click', '.g-select-all', async function (e) {
             e.preventDefault(); // 阻止默认勾选行为
             e.stopPropagation();
@@ -3310,6 +3581,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const ti = parseInt($(this).data('ti'));
             const sh = m.get(ti);
             if (!sh || sh.r.length === 0) return;
+
+            // === 修复开始：定义夜间模式颜色 ===
+            const isDark = UI.darkMode; 
+            const boxBg = isDark ? '#1e1e1e' : '#fff'; // 背景色：黑/白
+            const borderCol = isDark ? 'rgba(255,255,255,0.15)' : '#ddd'; // 边框色
+            const btnCancelBg = isDark ? '#333' : '#fff'; // 取消按钮背景
+            // === 修复结束 ===
 
             // 自定义三选一弹窗
             const id = 'select-all-dialog-' + Date.now();
@@ -3325,8 +3603,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             const $box = $('<div>', {
                 css: {
-                    background: '#fff', borderRadius: '8px', padding: '20px',
+                    background: boxBg, // 使用动态背景色
+                    borderRadius: '8px', padding: '20px',
                     boxShadow: '0 4px 15px rgba(0,0,0,0.3)', width: '300px',
+                    border: '1px solid ' + borderCol, // 使用动态边框
                     display: 'flex', flexDirection: 'column', gap: '10px'
                 }
             });
@@ -3334,9 +3614,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $box.append(`<div style="font-weight:bold; margin-bottom:5px; text-align:center; color:var(--g-tc);">📊 批量状态操作</div>`);
             $box.append(`<div style="font-size:12px; color:var(--g-tc); opacity:0.8; margin-bottom:10px; text-align:center;">当前表格共 ${sh.r.length} 行，请选择操作：</div>`);
 
+            // 定义通用按钮样式
+            const btnStyle = `padding:10px; border:1px solid ${borderCol}; background:transparent; border-radius:5px; cursor:pointer; color:var(--g-tc) !important; font-weight:bold; font-size:13px;`;
+
             // 按钮1：全部显示
             const $btnShow = $('<button>', { text: '👁️ 全部显示 (白色)' })
-                .attr('style', 'padding:10px; border:1px solid #ddd; background:transparent; border-radius:5px; cursor:pointer; color:var(--g-tc) !important; font-weight:bold; font-size:13px;')
+                .attr('style', btnStyle)
                 .on('click', () => {
                 if (!summarizedRows[ti]) summarizedRows[ti] = [];
                 summarizedRows[ti] = []; // 清空该表的隐藏列表
@@ -3346,7 +3629,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 按钮2：全部隐藏
             const $btnHide = $('<button>', { text: '🙈 全部隐藏 (绿色)' })
-                .attr('style', 'padding:10px; border:1px solid #ddd; background:transparent; border-radius:5px; cursor:pointer; color:var(--g-tc) !important; font-weight:bold; font-size:13px;')
+                .attr('style', btnStyle)
                 .on('click', () => {
                 if (!summarizedRows[ti]) summarizedRows[ti] = [];
                 // 将所有行索引加入列表
@@ -3357,7 +3640,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 按钮3：仅全选 (保留原有功能)
             const $btnSelect = $('<button>', { text: '✔️ 仅全选' })
-                .attr('style', 'padding:10px; border:1px solid #ddd; background:transparent; border-radius:5px; cursor:pointer; color:var(--g-tc) !important; font-weight:bold; font-size:13px;')
+                .attr('style', btnStyle)
                 .on('click', () => {
                 $overlay.remove();
                 // 手动触发原本的全选勾选逻辑
@@ -3369,7 +3652,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             const $btnCancel = $('<button>', { text: '取消' })
-                .attr('style', 'padding:8px; border:1px solid #ddd; background:#fff; border-radius:5px; cursor:pointer; margin-top:5px; color:var(--g-tc) !important;')
+                .attr('style', `padding:8px; border:1px solid ${borderCol}; background:${btnCancelBg}; border-radius:5px; cursor:pointer; margin-top:5px; color:var(--g-tc) !important;`)
                 .on('click', () => $overlay.remove());
 
             function finish() {
@@ -3991,6 +4274,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ✨✨✨ 新增：导出选项窗口 ✨✨✨
         // ✨✨✨ 导出选项窗口 (轻量级模态窗) ✨✨✨
         function showExportOptions() {
+            // 🌙 获取主题配置
+            const isDark = UI.darkMode;
+            const themeColor = UI.c;
+            const textColor = UI.tc;
+
             // 1. 创建遮罩层
             const $overlay = $('<div>', {
                 id: 'g-export-overlay',
@@ -4015,7 +4303,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 2. 创建小窗口容器
             const $box = $('<div>', {
                 css: {
-                    background: '#fff',
+                    background: isDark ? '#1e1e1e' : '#fff',
+                    color: textColor,
+                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
                     width: '320px',
                     maxWidth: '90vw',
                     padding: '20px',
@@ -4038,7 +4328,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     fontSize: '16px',
                     fontWeight: '600',
                     textAlign: 'center',
-                    color: '#333'
+                    color: textColor
                 }
             });
 
@@ -4047,7 +4337,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 text: '请选择要导出的内容',
                 css: {
                     fontSize: '12px',
-                    color: '#666',
+                    color: textColor,
+                    opacity: '0.8',
                     marginBottom: '8px',
                     textAlign: 'center'
                 }
@@ -4056,14 +4347,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 4.5. 格式选择复选框 (TXT 方便手机传输)
             const $formatContainer = $('<div>', {
                 css: {
-                    background: '#f8f9fa',
+                    background: isDark ? 'rgba(255,255,255,0.05)' : '#f8f9fa',
                     padding: '10px',
                     borderRadius: '6px',
                     marginBottom: '8px',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    border: '1px solid #e0e0e0'
+                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e0e0e0'
                 }
             });
 
@@ -4079,11 +4370,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             const $formatLabel = $('<label>', {
                 for: 'export-txt-format',
-                html: '📄 保存为 TXT 格式 <span style="font-size:11px;color:#999;">(方便手机传输)</span>',
+                html: `📄 保存为 TXT 格式 <span style="font-size:11px;color:${textColor};opacity:0.6;">(方便手机传输)</span>`,
                 css: {
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: '#555',
+                    color: textColor,
                     flex: 1,
                     userSelect: 'none'
                 }
@@ -4653,8 +4944,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ========================================
         // 分流逻辑
         // ========================================
-        const useProxy = (provider === 'local' || provider === 'openai' || provider === 'claude'|| provider === 'proxy_only');
-        const useDirect = (provider === 'compatible' || provider === 'deepseek' || provider === 'gemini');
+const useProxy = (provider === 'local' || provider === 'openai' || provider === 'claude'|| provider === 'proxy_only' || provider === 'deepseek'|| provider === 'siliconflow');
+const useDirect = (provider === 'compatible' || provider === 'gemini');
 
        // ==========================================
         // 🔴 通道 A: 后端代理 (local, openai, claude, proxy_only)
@@ -4723,12 +5014,26 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // === 分支 2: 标准 Custom 协议 (本地反代 + OpenAI + Claude 等) ===
                     // 包括：本地反代(local)、OpenAI、Claude 等标准后端代理
 
+                    // === 智能分流修复 (Key优先级 + 404修复) ===
+                    
+                    // 1. URL 清洗：OpenAI 模式会自动加 /chat/completions，如果用户填了，要剪掉
+                    let cleanBaseUrl = apiUrl;
+                    if (cleanBaseUrl.endsWith('/chat/completions')) {
+                        cleanBaseUrl = cleanBaseUrl.replace(/\/chat\/completions\/?$/, '');
+                    }
+
+                    // 2. 确定模式：Claude 用 claude，其他(OpenAI/DeepSeek/反代)全用 openai
+                    let targetSource = 'openai';
+                    if (provider === 'claude') targetSource = 'claude';
+
                     // 构建酒馆后端代理 Payload
                     const proxyPayload = {
-                        chat_completion_source: "custom",
+                        chat_completion_source: targetSource,
+                        reverse_proxy: cleanBaseUrl,
+                        proxy_password: apiKey,
+                        
+                        // 兼容字段 (留着保险)
                         custom_url: apiUrl,
-                        reverse_proxy: apiUrl,
-                        proxy_password: apiKey,  // ✅ 始终赋值（可能为空字符串）
 
                         // ✅ 基础 Headers
                         custom_include_headers: {
@@ -4745,6 +5050,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         mode: 'chat',
                         instruction_mode: 'chat'
                     };
+
+                    // ✨✨✨【Gemini 专享修复】即使是反代/本地，只要模型名含 gemini，强制注入安全设置 ✨✨✨
+                    if (model.toLowerCase().includes('gemini')) {
+                        console.log('🛡️ [后端代理] 检测到 Gemini 模型，强制注入安全豁免...');
+                        // 注入 OpenAI 格式的安全设置 (兼容大多数中转)
+                        proxyPayload.safety_settings = [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                        ];
+                        // 注入 Gemini 原生格式 (双重保险)
+                        proxyPayload.safetySettings = proxyPayload.safety_settings;
+                        // 注入酒馆专用字段 (三重保险)
+                        proxyPayload.gemini_safety_settings = proxyPayload.safety_settings;
+                    }
 
                     // 🔑 只有当 Key 不为空时，才添加 Authorization Header
                     // (注意：这里直接使用了函数作用域里的 authHeader 变量，正如你原代码写的)
@@ -5293,7 +5614,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const h = `
     <div class="g-p">
         <h4>🎨 主题设置</h4>
-        
+
+        <!-- 🌙 夜间模式开关 -->
+        <div style="background:rgba(0,0,0,0.05); padding:10px; border-radius:6px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+            <label style="font-weight:bold; margin:0; display:flex; align-items:center; gap:5px;">🌙 夜间模式 (Dark Mode)</label>
+            <input type="checkbox" id="ui-dark-mode" ${UI.darkMode ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer;">
+        </div>
+
         <label>主题色（按钮、表头）：</label>
         <input type="color" id="tc" value="${UI.c}" style="width:100%; height:40px; border-radius:4px; border:1px solid #ddd; cursor:pointer;">
         <br><br>
@@ -5310,7 +5637,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             oninput="document.getElementById('fs-val').innerText = this.value + 'px'; document.documentElement.style.setProperty('--g-fs', this.value + 'px');"
             style="width:100%; cursor:pointer; margin-top:5px;">
 
-        <div style="font-size:10px; color:${UI.tc}; opacity:0.6; margin-top:4px;">拖动滑块实时调整表格文字大小</div>
+        <div style="font-size:10px; color:#333; opacity:0.6; margin-top:4px;">拖动滑块实时调整表格文字大小</div>
 
         <div style="margin-top: 15px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 10px;">
             <label style="font-weight: 600; display:block; margin-bottom:5px;">📖 总结本背景图 (DIY)</label>
@@ -5333,7 +5660,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
         <br>
 
-        <div style="background:rgba(255,255,255,0.6); padding:10px; border-radius:4px; font-size:10px; margin-bottom:12px; color:${UI.tc}; border:1px solid rgba(0,0,0,0.1);">
+        < <div style="background:rgba(255,255,255,0.6); padding:10px; border-radius:4px; font-size:10px; margin-bottom:12px; color:#333333; border:1px solid rgba(0,0,0,0.1);">
             <strong>💡 提示：</strong><br>
             • 如果主题色较浅，请将字体颜色设为深色（如黑色）<br>
             • 字体过大可能会导致表格内容显示不全，请酌情调整
@@ -5349,6 +5676,58 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         document.documentElement.style.setProperty('--g-fs', UI.fs + 'px');
 
         setTimeout(() => {
+            // ✅ 🌙 夜间模式切换事件 (带记忆功能)
+            $('#ui-dark-mode').off('change').on('change', function() {
+                const isChecked = $(this).is(':checked'); // 目标状态
+
+                // 1. 切换前：先保存【当前模式】的颜色到记忆库
+                if (isChecked) {
+                    // 即将进入夜间，说明刚才是在白天 -> 保存白天自定义配色
+                    UI.day_c = UI.c;
+                    UI.day_tc = UI.tc;
+                } else {
+                    // 即将进入白天，说明刚才是在夜间 -> 保存夜间自定义配色
+                    UI.night_c = UI.c;
+                    UI.night_tc = UI.tc;
+                }
+
+                // 2. 切换后：读取【目标模式】的记忆（如果有），否则用默认
+                if (isChecked) {
+                    // 🌙 切换到夜间
+                    // 优先读取记忆中的夜间色，没有则用标准深色
+                    UI.c = UI.night_c || '#252525';
+                    UI.tc = UI.night_tc || '#ffffff';
+                } else {
+                    // ☀️ 切换到白天
+                    // 优先读取记忆中的白天色，没有则用标准浅色
+                    UI.c = UI.day_c || '#f0f0f0';
+                    UI.tc = UI.day_tc || '#333333';
+                }
+
+                // 3. 更新界面控件
+                $('#tc').val(UI.c);
+                $('#ttc').val(UI.tc);
+
+                // 4. 应用样式
+                document.documentElement.style.setProperty('--g-c', UI.c);
+                document.documentElement.style.setProperty('--g-tc', UI.tc);
+                UI.darkMode = isChecked;
+
+                // 5. 保存配置 (会连同记忆库一起保存到 localStorage)
+                try { localStorage.setItem('gg_ui', JSON.stringify(UI)); } catch (e) { }
+                
+                if (typeof API_CONFIG !== 'undefined') {
+                    API_CONFIG.darkMode = isChecked;
+                    try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
+                }
+                
+                thm();
+
+                if (typeof window.saveAllSettingsToCloud === 'function') {
+                    window.saveAllSettingsToCloud().catch(err => {});
+                }
+            });
+
             // ✅ 这里的绑定作为双重保险
             // 使用 document 代理事件，确保一定能抓到元素
             $(document).off('input', '#tfs').on('input', '#tfs', function () {
@@ -5411,6 +5790,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 UI.c = $('#tc').val();
                 UI.tc = $('#ttc').val();
                 UI.fs = parseInt($('#tfs').val());
+                UI.darkMode = $('#ui-dark-mode').is(':checked'); // ✅ 保存夜间模式状态
                 // ✅ bookBg 已经在上面的事件中赋值到 UI.bookBg 了
 
                 try { localStorage.setItem(UK, JSON.stringify(UI)); } catch (e) { }
@@ -5424,16 +5804,62 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 await customAlert('主题与字体设置已保存', '成功');
             });
 
+            // 恢复默认按钮 (智能版：清除记忆 + 恢复默认)
             $('#tr').off('click').on('click', async function () {
-                if (!await customConfirm('确定恢复默认主题？', '确认')) return;
-                UI = { c: '#f0f0f0', bc: '#ffffff', tc: '#333333', fs: 12, bookBg: '' }; // ✅ 默认：奶灰白表头+黑色字体
-                try { localStorage.removeItem(UK); } catch (e) { }
+                const isCurrentNight = $('#ui-dark-mode').is(':checked');
+                const modeName = isCurrentNight ? '夜间' : '白天';
+
+                if (!await customConfirm(`确定重置【${modeName}模式】的颜色配置？\n\n(字体大小和背景图也将重置)`, '恢复默认')) return;
+
+                // 1. 恢复当前模式的默认值
+                if (isCurrentNight) {
+                    UI.c = '#252525';
+                    UI.tc = '#ffffff';
+                    UI.darkMode = true;
+                    // ✨ 清除夜间记忆，下次切换回来就是默认了
+                    delete UI.night_c;
+                    delete UI.night_tc;
+                } else {
+                    UI.c = '#f0f0f0';
+                    UI.tc = '#333333';
+                    UI.darkMode = false;
+                    // ✨ 清除白天记忆
+                    delete UI.day_c;
+                    delete UI.day_tc;
+                }
+
+                // 2. 重置公共属性
+                UI.fs = 12;
+                UI.bookBg = '';
+
+                // 3. 保存与同步
+                if (typeof API_CONFIG !== 'undefined') {
+                    API_CONFIG.darkMode = UI.darkMode;
+                    try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
+                }
+                try { localStorage.setItem('gg_ui', JSON.stringify(UI)); } catch (e) { }
+                
                 m.save();
                 thm();
-                // 恢复时也强制更新一下变量
                 document.documentElement.style.setProperty('--g-fs', '12px');
-                await customAlert('已恢复默认主题', '成功');
-                goBack();
+
+                // 4. 刷新控件
+                $('#ui-dark-mode').prop('checked', UI.darkMode);
+                $('#tc').val(UI.c);
+                $('#ttc').val(UI.tc);
+                $('#tfs').val(12);
+                $('#fs-val').text('12px');
+                
+                $('#bg-preview').css('background-image', '').text('暂无背景，使用默认纸张');
+                $('#bg-url').val('');
+                $('#bg-file').val('');
+
+                // 5. 提示
+                if (typeof toastr !== 'undefined') {
+                    toastr.success(`已恢复【${modeName}模式】默认设置`, '成功');
+                } else {
+                    await customAlert(`已恢复【${modeName}模式】默认设置`, '成功');
+                }
             });
         }, 100);
     }
@@ -5458,15 +5884,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             
             <label>API提供商：</label>
             <select id="api-provider" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; margin-bottom:10px;">
-                <optgroup label="━━━ 需要后端代理 ━━━">
-                    <option value="local" ${API_CONFIG.provider === 'local' ? 'selected' : ''}>🔌 本地/内网 API</option>
-                    <option value="proxy_only" ${API_CONFIG.provider === 'proxy_only' ? 'selected' : ''}>🛠️ 反代</option>
+                <optgroup label="━━━ 后端代理 ━━━">
+                    <option value="local" ${API_CONFIG.provider === 'local' ? 'selected' : ''}>本地/内网（本地反代）</option>
+                    <option value="proxy_only" ${API_CONFIG.provider === 'proxy_only' ? 'selected' : ''}>反代(如build)</option>
                     <option value="openai" ${API_CONFIG.provider === 'openai' ? 'selected' : ''}>OpenAI 官方</option>
-                    <option value="claude" ${API_CONFIG.provider === 'claude' ? 'selected' : ''}>Anthropic Claude 官方</option>
+                    <option value="claude" ${API_CONFIG.provider === 'claude' ? 'selected' : ''}>Claude 官方</option>
+                    <option value="deepseek" ${API_CONFIG.provider === 'deepseek' ? 'selected' : ''}>DeepSeek 官方</option>
+                    <option value="siliconflow" ${API_CONFIG.provider === 'siliconflow' ? 'selected' : ''}>硅基流动 (SiliconFlow)</option>
                 </optgroup>
                 <optgroup label="━━━ 浏览器直连 ━━━">
-                    <option value="compatible" ${API_CONFIG.provider === 'compatible' ? 'selected' : ''}>☁️ 兼容端点 (中转/代理)</option>
-                    <option value="deepseek" ${API_CONFIG.provider === 'deepseek' ? 'selected' : ''}>DeepSeek 官方</option>
+                    <option value="compatible" ${API_CONFIG.provider === 'compatible' ? 'selected' : ''}>兼容端点 (中转/代理)</option>
                     <option value="gemini" ${API_CONFIG.provider === 'gemini' ? 'selected' : ''}>Google Gemini 官方</option>
                 </optgroup>
             </select>
@@ -5479,18 +5906,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </div>
 
             <label>API密钥 (Key)：</label>
-            <input type="password" id="api-key" value="${API_CONFIG.apiKey}" placeholder="sk-..." style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+            <div style="position: relative; margin-bottom: 10px;">
+                <input type="password" id="api-key" value="${API_CONFIG.apiKey}" placeholder="sk-..." style="width:100%; padding:5px 30px 5px 5px; border:1px solid #ddd; border-radius:4px; font-size:10px;">
+                <i id="toggle-key-btn" class="fa-solid fa-eye" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--g-tc); opacity: 0.6;" title="显示/隐藏密钥"></i>
+            </div>
             
-            <label>模型名称：</label>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="margin:0;">模型名称：</label>
+                <span id="fetch-models-btn" style="cursor:pointer; font-size:10px; color:${UI.tc}; border:1px solid ${UI.c}; padding:1px 6px; border-radius:3px; background:rgba(127,127,127,0.1);">🔄 拉取模型列表</span>
+            </div>
+
             <input type="text" id="api-model" value="${API_CONFIG.model}" placeholder="gpt-3.5-turbo" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+            <select id="api-model-select" style="display:none; width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;"></select>
 
             <label>最大输出长度 (Max Tokens)：</label>
             <input type="number" id="api-max-tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
-
-            <div style="text-align:right;">
-                <span id="fetch-models-btn" style="cursor:pointer; font-size:10px; color:${UI.tc}; border:1px solid ${UI.c}; padding:2px 6px; border-radius:3px; background:rgba(255,255,255,0.5);">🔄 拉取模型列表</span>
-                <select id="api-model-select" style="display:none; width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-top:5px;"></select>
-            </div>
 
         </fieldset>
         
@@ -5503,6 +5933,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         pop('🤖 AI总结配置', h, true);
 
         setTimeout(() => {
+
+            // === 新增：小眼睛切换功能 ===
+            $('#toggle-key-btn').off('click').on('click', function() {
+                const $input = $('#api-key');
+                const $icon = $(this);
+                if ($input.attr('type') === 'password') {
+                    $input.attr('type', 'text');
+                    $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+                } else {
+                    $input.attr('type', 'password');
+                    $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                }
+            });
+            
             $('input[name="api-mode"]').on('change', function () {
                 const isIndependent = $(this).val() === 'independent';
                 if (isIndependent) {
@@ -5539,6 +5983,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 } else if (provider === 'deepseek') {
                     $('#api-url').val('https://api.deepseek.com/v1');
                     $('#api-model').val('deepseek-chat');
+                } else if (provider === 'siliconflow') {
+                    $('#api-url').val('https://api.siliconflow.cn/v1');
+                    $('#api-model').val('deepseek-ai/DeepSeek-V3'); 
                 } else if (provider === 'gemini') {
                     // Gemini 使用纯净的 Base URL，插件会自动拼接 /models/{model}:generateContent
                     $('#api-url').val('https://generativelanguage.googleapis.com/v1beta');
@@ -5587,11 +6034,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 2. 定义策略
                 // ========================================
                 // 🔴 强制代理组
-                // 🔴 强制代理组
-                 const forceProxy = (provider === 'local' || provider === 'openai' || provider === 'claude' || provider === 'proxy_only');
+                const forceProxy = (provider === 'local' || provider === 'openai' || provider === 'claude' || provider === 'proxy_only' || provider === 'deepseek' || provider === 'siliconflow');
                 
                 // 🟢 优先直连组 (兼容端点放这里，实现双保险)
-                const tryDirect = (provider === 'compatible' || provider === 'deepseek' || provider === 'gemini');
+                const tryDirect = (provider === 'compatible' || provider === 'gemini');
 
                 // ========================================
                 // 3. 封装后端代理逻辑 (修复 Header 问题)
@@ -5608,8 +6054,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         customHeaders["Authorization"] = authHeader;
                     }
 
+                    // 智能判断模式，修复拉取失败
+                    let targetSource = 'custom';
+                    // 如果是 DeepSeek/OpenAI/硅基流动，强制用 openai 模式，这样才会请求 /models
+                    if (provider === 'openai' || provider === 'deepseek' || provider === 'siliconflow') {
+                        targetSource = 'openai';
+                    }
+
                     const proxyPayload = {
-                        chat_completion_source: 'custom',
+                        chat_completion_source: targetSource, // ✅ 这里改成变量，不再死板写 custom
                         custom_url: apiUrl,
                         reverse_proxy: apiUrl,
                         proxy_password: apiKey, 
@@ -5882,7 +6335,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (useServerData) {
             console.log('✅ [配置] 使用云端数据');
             if (serverData.config) Object.assign(C, serverData.config);
-            if (serverData.api) Object.assign(API_CONFIG, serverData.api);
+
+            // ✅ PROTECT PROGRESS POINTERS: Don't let global config overwrite chat-specific progress
+            if (serverData.api) {
+                delete serverData.api.lastSummaryIndex;
+                delete serverData.api.lastBackfillIndex;
+                Object.assign(API_CONFIG, serverData.api);
+            }
+
             if (serverData.ui) Object.assign(UI, serverData.ui);
 
             // ✅ 新增：从云端恢复预设数据
@@ -5891,14 +6351,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             localStorage.setItem(CK, JSON.stringify(C));
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            // ✅ Don't save progress pointers to localStorage - use cleaned version
+            const cleanedApiForStorage = JSON.parse(JSON.stringify(API_CONFIG));
+            delete cleanedApiForStorage.lastSummaryIndex;
+            delete cleanedApiForStorage.lastBackfillIndex;
+            localStorage.setItem(AK, JSON.stringify(cleanedApiForStorage));
             localStorage.setItem(UK, JSON.stringify(UI));
             localStorage.setItem('gg_timestamp', serverTimestamp.toString());
         }
         else if (localData.api || localData.config) {
             console.log('⚠️ [配置] 使用本地缓存');
             if (localData.config) Object.assign(C, localData.config);
-            if (localData.api) Object.assign(API_CONFIG, localData.api);
+
+            // ✅ PROTECT PROGRESS POINTERS: Don't let global config overwrite chat-specific progress
+            if (localData.api) {
+                delete localData.api.lastSummaryIndex;
+                delete localData.api.lastBackfillIndex;
+                Object.assign(API_CONFIG, localData.api);
+            }
+
             if (localData.ui) Object.assign(UI, localData.ui);
             needMigration = true;
         }
@@ -5986,7 +6457,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (!window.extension_settings) window.extension_settings = {};
             window.extension_settings.st_memory_table = allSettings;
             localStorage.setItem(CK, JSON.stringify(C));
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            localStorage.setItem(AK, JSON.stringify(cleanedApiConfig)); // ✅ Use cleaned config without progress pointers
             localStorage.setItem(UK, JSON.stringify(UI));
             // ❌ 已删除：localStorage.setItem(PK, JSON.stringify(PROMPTS));
             // ✅ 预设数据现在由 PromptManager 管理，通过 profiles 保存
@@ -6183,7 +6654,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 </div>
             </div>
             <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:4px;">输入标签名，逗号分隔。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think, search</code></div>
-            <input type="text" id="c-filter-tags" value="${esc(C.filterTags || '')}" placeholder="标签名..." style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc); background:#fff;">
+            <input type="text" id="c-filter-tags" value="${esc(C.filterTags || '')}" placeholder="标签名..." style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
             <div style="font-size:10px; color:#d63031; margin-top:4px;" id="filter-tip">
                 ${C.filterMode === 'whitelist' ?
                 '⚠️ 白名单模式：仅提取标签内的文字，丢弃其他所有内容（若未找到标签则保留原文）。' :
@@ -6293,15 +6764,30 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ✨✨✨ 自动总结开关的 UI 联动 ✨✨✨
             $('#c-auto-sum').on('change', function () {
-                if ($(this).is(':checked')) {
+                const isChecked = $(this).is(':checked');
+
+                if (isChecked) {
                     $('#auto-sum-settings').slideDown();
                 } else {
                     $('#auto-sum-settings').slideUp();
                 }
+
+                // ✅ Per-Chat Configuration: Update C and save to current chat immediately
+                C.autoSummary = isChecked;
+                m.save();
+                console.log('💾 [每聊配置] 已保存自动总结设置到当前聊天:', isChecked);
             });
 
             // 💉 注入记忆表格说明图标点击事件
             $('#memory-injection-info').on('click', function () {
+                // 🌙 Dark Mode Fix: Use dynamic colors based on darkMode setting
+                const dialogBg = UI.darkMode ? '#1e1e1e' : '#ffffff';
+                const titleColor = UI.darkMode ? '#e0e0e0' : '#333';
+                const textColor = UI.darkMode ? '#c0c0c0' : '#555';
+                const accentColor = UI.darkMode ? '#4db8ff' : '#155724';
+                const codeBg = UI.darkMode ? '#2a2a2a' : '#f0f0f0';
+                const borderColor = UI.darkMode ? 'rgba(255, 255, 255, 0.15)' : '#f0f0f0';
+
                 // 创建一个小型弹窗而不是使用pop
                 const $overlay = $('<div>', {
                     // class: 'g-ov', <--- 删掉了这一行
@@ -6322,7 +6808,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 const $dialog = $('<div>', {
                     css: {
-                        background: '#ffffff',
+                        background: dialogBg,
                         borderRadius: '12px',
                         padding: '20px',
                         maxWidth: '500px',
@@ -6335,19 +6821,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
 
                 const $title = $('<div>', {
-                    html: '<strong style="font-size: 15px; color: #333;">💉 变量模式说明</strong>',
-                    css: { marginBottom: '15px', paddingBottom: '10px', borderBottom: '2px solid #f0f0f0' }
+                    html: `<strong style="font-size: 15px; color: ${titleColor};">💉 变量模式说明</strong>`,
+                    css: { marginBottom: '15px', paddingBottom: '10px', borderBottom: `2px solid ${borderColor}` }
                 });
 
                 const $content = $('<div>', {
-                    css: { fontSize: '13px', lineHeight: '1.8', color: '#555' },
+                    css: { fontSize: '13px', lineHeight: '1.8', color: textColor },
                     html: `
-                        <div style="margin-bottom: 12px; font-weight: 600; color: #155724;">🌟 变量模式：</div>
+                        <div style="margin-bottom: 12px; font-weight: 600; color: ${accentColor};">🌟 变量模式：</div>
                         <div style="margin-bottom: 12px;">与实时填表搭配使用，在酒馆的【预设】中随机一处插入变量调整填表提示词、总结内容、表格内容在上下文的位置：</div>
-                        <div style="margin-bottom: 8px;">• 实时填表插入变量(全部表单含总结)：<code style="background:#f0f0f0; color:#155724; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY}}</code> (跟随实时填表开关)</div>
-                        <div style="margin-bottom: 8px;">• 表格插入变量(不含总结表)：<code style="background:#f0f0f0; color:#155724; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE}}</code> (强制发送表格内容)</div>
-                        <div style="margin-bottom: 8px;">• 总结插入变量(不含其他表格)：<code style="background:#f0f0f0; color:#155724; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_SUMMARY}}</code> (强制发送总结内容)</div>
-                        <div>• 填表规则插入变量：<code style="background:#f0f0f0; color:#155724; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_PROMPT}}</code></div>
+                        <div style="margin-bottom: 8px;">• 实时填表插入变量(全部表单含总结)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY}}</code> (跟随实时填表开关)</div>
+                        <div style="margin-bottom: 8px;">• 表格插入变量(不含总结表)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE}}</code> (强制发送表格内容)</div>
+                        <div style="margin-bottom: 8px;">• 总结插入变量(不含其他表格)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_SUMMARY}}</code> (强制发送总结内容)</div>
+                        <div>• 填表规则插入变量：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_PROMPT}}</code></div>
                     `
                 });
 
@@ -6460,10 +6946,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
 
+            // 🚑 历史存档时光机按钮
             $('#rescue-btn').off('click').on('click', async function () {
                 const btn = $(this);
                 const originalText = btn.text();
                 btn.text('正在扫描全盘...');
+
+                // === 🌙 变量定义区 ===
+                const isDark = UI.darkMode; 
+                const bgColor = isDark ? '#1e1e1e' : '#fff';
+                const txtColor = isDark ? '#e0e0e0' : UI.tc;
+                const borderColor = isDark ? '1px solid rgba(255,255,255,0.15)' : 'none';
+                const rowBorder = isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #eee';
+                const shadow = isDark ? '0 10px 40px rgba(0,0,0,0.6)' : '0 5px 20px rgba(0,0,0,0.3)';
+                
+                // ✨ 修复关键：定义按钮默认颜色
+                // 如果是夜间模式，按钮文字用浅灰色(#e0e0e0)；如果是白天，用主题色(UI.c)
+                const btnDefColor = isDark ? '#e0e0e0' : UI.c;
+                const btnBorderColor = isDark ? 'rgba(255,255,255,0.3)' : UI.c;
+                // ===================
 
                 let backups = [];
                 for (let i = 0; i < localStorage.length; i++) {
@@ -6482,99 +6983,146 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 backups.sort((a, b) => b.ts - a.ts);
 
                 if (backups.length === 0) {
-                    await window.Gaigai.customAlert('❌ 未找到历史数据。', '扫描结果');
+                    await customAlert('❌ 未找到历史数据。', '扫描结果');
                     btn.text(originalText);
                     return;
                 }
 
-                const $overlay = $('<div>', { css: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.5)', zIndex:20000020, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }});
+                const $overlay = $('<div>', { css: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.6)', zIndex:20000020, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }});
+                
                 const $box = $('<div>', {
                     css: {
-                        background:'#fff',
+                        background: bgColor,
+                        color: txtColor,
+                        border: borderColor,
                         width:'500px',
-                        maxWidth:'92vw',         // ✨ 修改：手机端左右留出边距 (原为100%)
-                        maxHeight:'85vh',        // ✨ 修改：限制最大高度，防止顶到屏幕外
-                        margin:'auto',           // ✨ 新增：辅助 Flex 布局居中
+                        maxWidth:'92vw',
+                        maxHeight:'85vh',
+                        margin:'auto',
                         padding:'15px',
-                        borderRadius:'8px',
+                        borderRadius:'12px',
                         display:'flex',
                         flexDirection:'column',
-                        overflow:'hidden',       // 保持隐藏，让内部列表滚动
-                        boxShadow:'0 5px 20px rgba(0,0,0,0.3)'  // ✨ 新增：加点阴影更清晰
+                        overflow:'hidden',
+                        boxShadow: shadow
                     }
                 }).html(`
-                    <h3 style="margin:0 0 10px 0; flex-shrink:0;">🚑 历史存档时光机</h3>
-                    <div style="flex:1; overflow-y:auto; margin-bottom:10px;">
+                    <h3 style="margin:0 0 15px 0; flex-shrink:0; display:flex; align-items:center; gap:8px;">
+                        🚑 历史存档时光机
+                    </h3>
+                    <div style="flex:1; overflow-y:auto; margin-bottom:15px; border-radius:6px; border:${rowBorder};">
                         <table style="width:100%; font-size:12px; border-collapse: collapse;">
-                            <thead style="position:sticky; top:0; background:${window.Gaigai.ui.c}; color:#fff;">
-                                <tr><th style="padding:8px;">时间</th><th>数据量</th><th>操作</th></tr>
+                            <thead style="position:sticky; top:0; background:${UI.c}; color:#fff;">
+                                <tr><th style="padding:10px;">时间</th><th style="width:60px;">数据量</th><th style="width:60px;">操作</th></tr>
                             </thead>
                             <tbody>${backups.map(b => {
-                                const countStyle = b.count > 0 ? 'color:#28a745; font-weight:bold;' : 'color:#999;';
-                                return `<tr style="border-bottom:1px solid #eee;">
-                                    <td style="padding:8px;">${b.dateStr}<br><span style="color:#999;font-size:10px;">${b.id}</span></td>
-                                    <td style="padding:8px; text-align:center; ${countStyle}">${b.count} 行</td>
-                                    <td style="padding:8px; text-align:center;">
-                                        <button class="restore-item-btn" data-key="${b.key}" style="padding:4px 8px; cursor:pointer; white-space:nowrap;">恢复</button>
+                                const countStyle = b.count > 0 ? 'color:#28a745; font-weight:bold;' : (isDark ? 'color:#777;' : 'color:#999;');
+                                const subTextStyle = isDark ? 'color:#888;' : 'color:#999;';
+                                
+                                // ✨ 修改：按钮 style 中的 color 使用 btnDefColor 变量
+                                return `<tr style="border-bottom:${rowBorder}; transition:background 0.2s;">
+                                    <td style="padding:10px;">
+                                        <div style="font-weight:600; margin-bottom:2px;">${b.dateStr}</div>
+                                        <div style="font-size:10px; ${subTextStyle} white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${b.id}</div>
+                                    </td>
+                                    <td style="padding:10px; text-align:center; ${countStyle}">${b.count} 行</td>
+                                    <td style="padding:10px; text-align:center;">
+                                        <button class="restore-item-btn" data-key="${b.key}" style="padding:4px 10px; cursor:pointer; white-space:nowrap; background:transparent; border:1px solid ${btnBorderColor}; color:${btnDefColor}; border-radius:4px;">恢复</button>
                                     </td>
                                 </tr>`;
                             }).join('')}</tbody>
                         </table>
                     </div>
                     <div style="text-align:right; flex-shrink:0;">
-                        <button id="close-rescue" style="padding:8px 16px; cursor:pointer;">关闭</button>
+                        <button id="close-rescue" style="padding:8px 20px; cursor:pointer; background:${isDark ? 'rgba(255,255,255,0.1)' : '#f0f0f0'}; border:none; border-radius:6px; color:${txtColor};">关闭</button>
                     </div>
                 `);
 
                 $overlay.append($box);
                 $('body').append($overlay);
 
-                $box.find('.restore-item-btn').on('click', async function() {
+                $box.find('tr').hover(
+                    function() { $(this).css('background', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'); },
+                    function() { $(this).css('background', 'transparent'); }
+                );
+
+                // ✨ 修复：鼠标移出时，恢复的颜色必须是 btnDefColor，而不是 UI.c
+                $box.find('.restore-item-btn').hover(
+                    function() { 
+                        // 鼠标悬停：背景变主题色，字变白
+                        $(this).css({background: UI.c, color: '#fff', border: `1px solid ${UI.c}`}); 
+                    },
+                    function() { 
+                        // 鼠标移出：背景变透明，字变回默认色(夜间为白，白天为主题色)
+                        $(this).css({background: 'transparent', color: btnDefColor, border: `1px solid ${btnBorderColor}`}); 
+                    }
+                ).on('click', async function() {
                     const key = $(this).data('key');
                     const target = backups.find(b => b.key === key);
-                    if(confirm(`确定回退到 ${target.dateStr} (包含 ${target.count} 行数据) 吗？`)) {
-                        window.Gaigai.m.s.forEach((sheet, i) => {
+                    if(await customConfirm(`确定回退到 ${target.dateStr} (包含 ${target.count} 行数据) 吗？\n\n⚠️ 当前未保存的内容将会丢失！`, '回档确认')) {
+                        m.s.forEach((sheet, i) => {
                             if (target.data.d[i]) sheet.from(target.data.d[i]);
                             else sheet.clear();
                         });
-                        if (target.data.summarized) window.summarizedRows = target.data.summarized;
-                        // 强制保存 (true 参数绕过熔断)
-                        window.Gaigai.m.save(true);
-                        window.Gaigai.shw();
+                        if (target.data.summarized) summarizedRows = target.data.summarized;
+                        m.save(true);
+                        shw(); 
                         $overlay.remove();
-                        alert('✅ 数据已恢复！');
+                        if (typeof toastr !== 'undefined') toastr.success('✅ 数据已恢复！');
                     }
                 });
 
                 $('#close-rescue').on('click', () => $overlay.remove());
+                
+                $overlay.on('click', (e) => {
+                    if(e.target === $overlay[0]) $overlay.remove();
+                });
+
                 btn.text(originalText);
             });
-
+            
             // 互斥开关控制
             $('#c-enabled').on('change', async function () {
-                if ($(this).is(':checked')) {
+                const isChecked = $(this).is(':checked');
+
+                if (isChecked) {
                     if ($('#c-auto-bf').is(':checked')) {
                         await customAlert('⚠️ 冲突提示\n\n【实时记忆填表】和【自动批量填表】不能同时开启。\n\n已自动关闭自动填表。', '模式切换');
                         $('#c-auto-bf').prop('checked', false);
                         $('#auto-bf-settings').slideUp();
+                        C.autoBackfill = false; // Update config
                     }
                 }
+
+                // ✅ Per-Chat Configuration: Update C and save to current chat immediately
+                C.enabled = isChecked;
+                m.save();
+                console.log('💾 [每聊配置] 已保存实时填表设置到当前聊天:', isChecked);
             });
 
             $('#c-auto-bf').on('change', async function () {
-                if ($(this).is(':checked')) {
+                const isChecked = $(this).is(':checked');
+
+                if (isChecked) {
                     $('#auto-bf-settings').slideDown();
                     if ($('#c-enabled').is(':checked')) {
                         if (await customConfirm('⚠️ 模式切换\n\n开启【自动批量填表】需要关闭【实时记忆填表】。\n\n确定切换吗？', '确认')) {
                             $('#c-enabled').prop('checked', false);
+                            C.enabled = false; // Update config
                         } else {
                             $(this).prop('checked', false);
                             $('#auto-bf-settings').slideUp();
+                            return; // Don't save if user cancelled
                         }
                     }
                 } else {
                     $('#auto-bf-settings').slideUp();
                 }
+
+                // ✅ Per-Chat Configuration: Update C and save to current chat immediately
+                C.autoBackfill = isChecked;
+                m.save();
+                console.log('💾 [每聊配置] 已保存批量填表设置到当前聊天:', isChecked);
             });
 
             $('#save-cfg').on('click', async function () {
@@ -6802,6 +7350,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         try {
             const x = m.ctx();
             if (!x || !x.chat) return;
+            const currentSessionId = m.gid(); // 🔒 锁定当前会话ID
+
 
             // 确定当前触发的消息ID
             const i = typeof id === 'number' ? id : x.chat.length - 1;
@@ -6825,6 +7375,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log(`⏳ [延迟] 消息 ${msgKey} 将在 1 秒后处理（等待流式传输完成）`);
             pendingTimers[msgKey] = setTimeout(() => {
                 try {
+
+                    // 🛑 [防串味] 执行前再次检查ID，不对立刻停止
+                if (m.gid() !== currentSessionId) {
+                    console.warn('🛑 [安全拦截] 会话已变更，终止写入！');
+                    return;
+                }
                     // ✅ [修复进度指针重置] 在核心计算前加载最新配置，防止 API_CONFIG.lastBackfillIndex 被后台同步重置
                     m.load();
 
@@ -7077,9 +7633,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     // ============================================================
     // 1. 聊天状态变更监听 (修复删楼后的快照链断裂)
     // ============================================================
-    function ochat() {
+    async function ochat() {
         // 🔒 性能优化：加锁，防止切换期间误操作
         isChatSwitching = true;
+        // 🧹 [清理] 切换会话时，清除所有挂起的写入任务
+        Object.keys(pendingTimers).forEach(key => {
+            clearTimeout(pendingTimers[key]);
+            delete pendingTimers[key];
+        });
         console.log('🔒 [ochat] 会话切换锁已启用');
 
         // ✨✨✨ [防串味补丁] 切换会话时，彻底重置世界书同步缓存 ✨✨✨
@@ -7097,8 +7658,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('🧹 [ochat] 已重置世界书同步缓存，防止跨会话污染');
         }
 
-        // ⚡ [Pre-loading] 后台预加载配置，无需等待，让用户点配置按钮时秒开
-        loadConfig().catch(e => console.error('⚠️ [配置预加载] 失败:', e));
+        // 🛑 FIX: Must await global config BEFORE loading chat specific config
+        // This prevents race condition where loadConfig() overwrites chat-specific toggles
+        try {
+            await loadConfig();
+            console.log('✅ [ochat] 全局配置已加载完成');
+        } catch (e) {
+            console.warn('⚠️ [Config] Pre-load failed:', e);
+        }
 
         // 1. 🔐【关键修改】在切换前，将当前内存里的快照"归档"到旧会话的仓库中
         // m.id 此时还是旧会话的 ID
@@ -7108,6 +7675,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // 2. 加载新会话数据 (这会更新 m.id)
+        // NOW it is safe to load chat specific data (overriding globals)
         m.load();
         thm();
 
@@ -7344,14 +7912,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 初始化状态变量（如果不存在）
         if (typeof window.Gaigai.foldOffset === 'undefined') window.Gaigai.foldOffset = 0;
+        if (typeof window.Gaigai.lastHideCount === 'undefined') window.Gaigai.lastHideCount = -1;
 
-        // 清理旧UI和样式
-        $('#gaigai-fold-style').remove();
-        $('#g-fold-controls').remove();
-
-        // 如果开关关闭，或消息总数少于保留数，直接退出
+        // ✅ Clean Disable: If feature is OFF, clean up and exit
         if (!C.uiFold || total <= keep) {
-            window.Gaigai.foldOffset = 0;
+            // Only clean up if we previously had the feature enabled
+            if (window.Gaigai.lastHideCount !== -1) {
+                $('#gaigai-fold-style').remove();
+                $('#g-fold-controls').remove();
+                window.Gaigai.lastHideCount = -1;
+                window.Gaigai.foldOffset = 0;
+                console.log('🧹 [Fold] Feature disabled, cleaned up DOM');
+            }
             return;
         }
 
@@ -7359,12 +7931,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let hideCount = total - keep - window.Gaigai.foldOffset;
         if (hideCount < 0) hideCount = 0;
 
-        // 1. 注入 CSS
-        if (hideCount > 0) {
-            const css = `
+        // ✅ Early Exit: If state hasn't changed AND DOM exists, do nothing
+        const $existingStyle = $('#gaigai-fold-style');
+        const $existingControls = $('#g-fold-controls');
+
+        if (hideCount === window.Gaigai.lastHideCount &&
+            $existingStyle.length > 0 &&
+            $existingControls.length > 0) {
+            console.log(`⏭️ [Fold] State unchanged (hiding ${hideCount}), skipping DOM update`);
+            return;
+        }
+
+        console.log(`🔄 [Fold] State changed: ${window.Gaigai.lastHideCount} → ${hideCount}, updating DOM`);
+
+        // ✅ Graceful Update: Update existing style tag content
+        const css = `
             /* 隐藏前 N 条消息 */
             #chat > .mes:nth-child(-n+${hideCount}) {
-                display: none !important;
+                display: ${hideCount > 0 ? 'none' : 'block'} !important;
             }
             /* 嵌入式控制条样式 (修复版) */
             #g-fold-controls {
@@ -7387,42 +7971,77 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             .g-fold-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.05); }
             .g-fold-btn i { font-size: 14px; }
         `;
+
+        if ($existingStyle.length > 0) {
+            // Update existing style tag
+            $existingStyle.text(css);
+        } else {
+            // Create new style tag
             $('<style id="gaigai-fold-style">').text(css).appendTo('head');
         }
 
-        // 2. 创建控制按钮容器
-        const $ctrlDiv = $('<div>', { id: 'g-fold-controls' });
+        // ✅ Graceful Update: Update control buttons content
+        let controlsHTML = '';
 
         // 按钮A: 再看10条
         if (hideCount > 0) {
-            const $loadMore = $('<div>', {
-                class: 'g-fold-btn',
-                title: `上方还有 ${hideCount} 条被折叠`,
-                html: `<i class="fa-solid fa-clock-rotate-left"></i> 展开 ${STEP} 条 (剩余 ${hideCount})`
-            }).on('click', () => {
-                window.Gaigai.foldOffset += STEP;
-                applyUiFold();
-            });
-            $ctrlDiv.append($loadMore);
+            controlsHTML += `<div class="g-fold-btn" data-action="load-more" title="上方还有 ${hideCount} 条被折叠">
+                <i class="fa-solid fa-clock-rotate-left"></i> 展开 ${STEP} 条 (剩余 ${hideCount})
+            </div>`;
         }
 
         // 按钮B: 恢复折叠
         if (window.Gaigai.foldOffset > 0) {
-            const $reset = $('<div>', {
-                class: 'g-fold-btn',
-                html: `<i class="fa-solid fa-compress"></i> 收起折叠`
-            }).on('click', () => {
-                window.Gaigai.foldOffset = 0;
-                applyUiFold();
-            });
-            $ctrlDiv.append($reset);
+            controlsHTML += `<div class="g-fold-btn" data-action="reset">
+                <i class="fa-solid fa-compress"></i> 收起折叠
+            </div>`;
         }
 
-        // ✨ 关键修复：插入到 #chat 容器的最前面，而不是 body
-        // 这样它就会出现在"被隐藏消息"的位置，看起来像是"加载更多"的按钮
-        if ($ctrlDiv.children().length > 0) {
-            $chat.prepend($ctrlDiv);
+        if ($existingControls.length > 0) {
+            // Update existing controls
+            if (controlsHTML) {
+                $existingControls.html(controlsHTML);
+
+                // Re-bind event handlers (since we replaced HTML)
+                $existingControls.find('[data-action="load-more"]').on('click', () => {
+                    window.Gaigai.foldOffset += STEP;
+                    applyUiFold();
+                });
+
+                $existingControls.find('[data-action="reset"]').on('click', () => {
+                    window.Gaigai.foldOffset = 0;
+                    applyUiFold();
+                });
+            } else {
+                // No buttons needed, remove controls
+                $existingControls.remove();
+            }
+        } else {
+            // Create new controls if needed
+            if (controlsHTML) {
+                const $ctrlDiv = $('<div>', {
+                    id: 'g-fold-controls',
+                    html: controlsHTML
+                });
+
+                // Bind event handlers
+                $ctrlDiv.find('[data-action="load-more"]').on('click', () => {
+                    window.Gaigai.foldOffset += STEP;
+                    applyUiFold();
+                });
+
+                $ctrlDiv.find('[data-action="reset"]').on('click', () => {
+                    window.Gaigai.foldOffset = 0;
+                    applyUiFold();
+                });
+
+                // ✨ 关键修复：插入到 #chat 容器的最前面
+                $chat.prepend($ctrlDiv);
+            }
         }
+
+        // ✅ Update state tracker
+        window.Gaigai.lastHideCount = hideCount;
     }
 
     // ========================================================================
@@ -8089,6 +8708,22 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                 let totalTokens = 0; // 初始化计数器
                 let listHtml = '';
 
+                // 🌙 夜间模式适配：根据 UI.darkMode 定义颜色变量
+                let itemBg, summaryBg, contentBg, borderColor;
+                if (UI.darkMode) {
+                    // 夜间模式：深灰色背景
+                    itemBg = 'rgba(40, 40, 40, 0.9)';
+                    summaryBg = 'rgba(50, 50, 50, 0.9)';
+                    contentBg = 'rgba(30, 30, 30, 0.5)';
+                    borderColor = 'rgba(255, 255, 255, 0.1)';
+                } else {
+                    // 白天模式：白色半透明
+                    itemBg = 'rgba(255, 255, 255, 0.5)';
+                    summaryBg = 'rgba(255, 255, 255, 0.8)';
+                    contentBg = 'rgba(255, 255, 255, 0.3)';
+                    borderColor = 'rgba(0, 0, 0, 0.1)';
+                }
+
                 // 生成列表并计算 Token
                 chat.forEach((msg, idx) => {
                     const content = msg.content || '';
@@ -8111,24 +8746,24 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                     }
 
                     listHtml += `
-                <details class="g-probe-item" style="margin-bottom:8px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; background:rgba(255,255,255,0.5);">
-                    <summary style="padding:10px; background:rgba(255,255,255,0.8); cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; user-select:none; outline:none;">
+                <details class="g-probe-item" style="margin-bottom:8px; border:1px solid ${borderColor}; border-radius:6px; background:${itemBg};">
+                    <summary style="padding:10px; background:${summaryBg}; cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; user-select:none; outline:none;">
                         <div style="font-weight:bold; color:${roleColor}; font-size:12px; display:flex; align-items:center; gap:6px;">
                             <span>${icon}</span>
                             <span>${roleName}</span>
-                            <span style="background:rgba(0,0,0,0.05); color:#666; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:normal;">#${idx}</span>
+                            <span style="background:rgba(0,0,0,0.05); color:${UI.tc}; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:normal;">#${idx}</span>
                         </div>
-                        <div style="font-size:11px; font-family:monospace; color:#555; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">
+                        <div style="font-size:11px; font-family:monospace; color:${UI.tc}; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">
                             ${tokens} TK
                         </div>
                     </summary>
-                    <div class="g-probe-content" style="padding:10px; font-size:12px; line-height:1.6; color:${UI.tc}; border-top:1px solid rgba(0,0,0,0.05); white-space:pre-wrap; font-family:'Segoe UI', monospace; word-break:break-word; max-height: 500px; overflow-y: auto; background: rgba(255,255,255,0.3);">${esc(content)}</div>
+                    <div class="g-probe-content" style="padding:10px; font-size:12px; line-height:1.6; color:${UI.tc}; border-top:1px solid ${borderColor}; white-space:pre-wrap; font-family:'Segoe UI', monospace; word-break:break-word; max-height: 500px; overflow-y: auto; background: ${contentBg};">${esc(content)}</div>
                 </details>`;
                 });
 
                 const h = `
             <div class="g-p" style="padding:15px; height:100%; display:flex; flex-direction:column;">
-                <div style="flex:0 0 auto; background: linear-gradient(135deg, ${UI.c}EE, ${UI.c}99); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.25); color:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
+                <div style="flex:0 0 auto; background: linear-gradient(135deg, ${UI.c}EE, ${UI.c}99); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.25); color:${UI.tc}; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                         <div>
                             <div style="font-size:12px; opacity:0.9;">Total Tokens</div>
@@ -8140,8 +8775,8 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         </div>
                     </div>
                     <div style="position:relative;">
-                        <input type="text" id="g-probe-search-input" placeholder="搜索..." 
-                            style="width:100%; padding:8px 10px; padding-left:30px; border:1px solid rgba(255,255,255,0.3); border-radius:4px; background:rgba(0,0,0,0.2); color:#fff; font-size:12px; outline:none;">
+                        <input type="text" id="g-probe-search-input" placeholder="搜索..."
+                            style="width:100%; padding:8px 10px; padding-left:30px; border:1px solid rgba(255,255,255,0.3); border-radius:4px; background:rgba(0,0,0,0.2); color:${UI.tc}; font-size:12px; outline:none;">
                         <i class="fa-solid fa-search" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:rgba(255,255,255,0.6); font-size:12px;"></i>
                     </div>
                 </div>
@@ -8157,7 +8792,7 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                                 const $details = $(this);
                                 const text = $details.find('.g-probe-content').text().toLowerCase();
                                 if (!val) {
-                                    $details.show().removeAttr('open').css('border', '1px solid rgba(0,0,0,0.1)');
+                                    $details.show().removeAttr('open').css('border', `1px solid ${borderColor}`);
                                 } else if (text.includes(val)) {
                                     $details.show().attr('open', true).css('border', `2px solid ${UI.c}`);
                                 } else {

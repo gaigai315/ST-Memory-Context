@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.3.5
+ * @version 1.3.6
  * @author Gaigai Team
  */
 
@@ -82,37 +82,60 @@
 
                 <!-- 🆕 目标表格选择 -->
                 <div style="margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px; color:${UI.tc};">🎯 目标表格</label>
-                    <select id="bf-target-table" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:12px; background:#fff; color:${UI.tc};">
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">🎯 目标表格</label>
+                    <select id="bf-target-table" style="width:100%; padding:6px; border-radius:4px; font-size:12px;">
                         ${tableOptions}
                     </select>
-                    <div style="font-size:9px; color:${UI.tc}; opacity:0.7; margin-top:4px;">
+                    <div style="font-size:9px; opacity:0.7; margin-top:4px;">
                         💡 选择"全部表格"或指定单个表格进行追溯
+                    </div>
+                </div>
+
+                <!-- 🆕 功能模式选择 -->
+                <div style="margin-bottom:10px; background: rgba(0,0,0,0.05); border-radius: 6px; padding: 10px; border: 1px solid rgba(0,0,0,0.1);">
+                    <label style="font-size:11px; display:block; margin-bottom:8px; font-weight:bold; color:${UI.tc};">⚙️ 功能模式</label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-bottom: 6px;">
+                        <input type="radio" id="bf-mode-chat" name="bf-mode" value="chat" checked style="transform: scale(1.1);">
+                        <span style="color:${UI.tc};">💬 聊天记录填表</span>
+                    </label>
+                    <div style="font-size:9px; opacity:0.7; margin-left:24px; margin-bottom:8px;">
+                        读取历史对话，让AI分析并生成表格内容
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+                        <input type="radio" id="bf-mode-table" name="bf-mode" value="table" style="transform: scale(1.1);">
+                        <span style="color:${UI.tc};">📊 现有表格优化</span>
+                    </label>
+                    <div style="font-size:9px; opacity:0.7; margin-left:24px;">
+                        读取当前表格内容，让AI进行合并、删减、润色
                     </div>
                 </div>
 
                 <!-- 🆕 自定义建议输入框 -->
                 <div style="margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px; color:${UI.tc};">💬 重点建议 (可选)</label>
-                    <textarea id="bf-custom-prompt" placeholder="例如：重点关注角色情感变化；记录时间和地点；注意特殊道具..." style="width:100%; height:60px; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px; resize:vertical; font-family:inherit; background:#fff; color:${UI.tc};"></textarea>
-                    <div style="font-size:9px; color:${UI.tc}; opacity:0.7; margin-top:4px;">
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">💬 重点建议 (可选)</label>
+                    <textarea id="bf-custom-prompt" placeholder="例如：重点关注角色情感变化；记录时间和地点；注意特殊道具..." style="width:100%; height:60px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;"></textarea>
+                    <div style="font-size:9px; opacity:0.7; margin-top:4px;">
                         💡 输入您希望AI重点关注的内容，将作为高优先级指令
                     </div>
                 </div>
 
                 <!-- ✨ 分批执行选项 -->
                 <div style="background: rgba(255,255,255,0.1); border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.15);">
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-bottom: 6px;">
-                        <input type="checkbox" id="bf-batch-mode" style="transform: scale(1.2);">
-                        <span style="color:${UI.tc}; font-weight: 600;">📦 分批执行（推荐范围 > 50 层）</span>
-                    </label>
-                    <div id="bf-batch-options" style="display: none; margin-top: 8px; padding-left: 8px;">
-                        <label style="font-size: 11px; display: block; margin-bottom: 4px; color:${UI.tc}; opacity: 0.9;">每批处理楼层数：</label>
-                        <input type="number" id="bf-step" value="20" min="5" max="100" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;">
-                        <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-top: 4px;">
-                            💡 建议值：20-30层。批次间会自动冷却5秒，避免API限流。
+                    <!-- 分批执行部分（仅聊天模式显示） -->
+                    <div id="bf-batch-section">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-bottom: 6px;">
+                            <input type="checkbox" id="bf-batch-mode" style="transform: scale(1.2);">
+                            <span style="color:${UI.tc}; font-weight: 600;">📦 分批执行（推荐范围 > 50 层）</span>
+                        </label>
+                        <div id="bf-batch-options" style="display: none; margin-top: 8px; padding-left: 8px;">
+                            <label style="font-size: 11px; display: block; margin-bottom: 4px; color:${UI.tc}; opacity: 0.9;">每批处理楼层数：</label>
+                            <input type="number" id="bf-step" value="20" min="5" max="100" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;">
+                            <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-top: 4px;">
+                                💡 建议值：20-30层。批次间会自动冷却5秒，避免API限流。
+                            </div>
                         </div>
                     </div>
+                    <!-- 静默执行选项（两种模式都显示） -->
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-top: 8px;">
                         <input type="checkbox" id="bf-silent-mode" ${window.Gaigai.config_obj.autoBackfillSilent ? 'checked' : ''} style="transform: scale(1.2);">
                         <span style="color:${UI.tc};">🤫 静默执行 (不弹窗确认，直接写入)</span>
@@ -226,6 +249,40 @@
                     }
                 });
 
+                 // ✅✅✅ 重构：模式切换时的 UI 联动 (聊天填表 vs 表格优化)
+                $('input[name="bf-mode"]').on('change', function () {
+                    const mode = $(this).val();
+                    const $rangeContainer = $('#bf-start, #bf-end').closest('div').parent(); // 起始/结束范围的容器
+                    const $batchSection = $('#bf-batch-section'); // 分批执行区块
+                    const $targetSelect = $('#bf-target-table');
+
+                    if (mode === 'table') {
+                        // 📊 表格优化模式
+                        // 1. 隐藏起始/结束行号输入框（优化是全表处理，不需要范围）
+                        $rangeContainer.hide();
+
+                        // 2. 隐藏"分批执行"区块（表格优化按表切分，不需要楼层步长）
+                        $batchSection.hide();
+
+                        // 3. 启用"全部表格"选项
+                        $targetSelect.find('option[value="-1"]').prop('disabled', false);
+
+                    } else {
+                        // 💬 聊天记录填表模式
+                        // 1. 显示起始/结束楼层输入框
+                        $rangeContainer.show();
+
+                        // 2. 显示"分批执行"区块
+                        $batchSection.show();
+
+                        // 3. （可选）禁用"全部表格"选项，如果需要的话
+                        // $targetSelect.find('option[value="-1"]').prop('disabled', true);
+                    }
+                });
+
+                // 🚀 初始化触发一次，确保打开时的状态正确
+                $('input[name="bf-mode"]:checked').trigger('change');
+
                 // ✅ 范围变化时智能提示
                 $('#bf-start, #bf-end').on('change', function () {
                     const start = parseInt($('#bf-start').val()) || 0;
@@ -245,19 +302,63 @@
 
                 // ✅ 主按钮点击事件
                 $('#bf-gen').off('click').on('click', async function () {
-                    const start = parseInt($('#bf-start').val());
-                    const end = parseInt($('#bf-end').val());
-                    const isBatchMode = $('#bf-batch-mode').is(':checked');
-                    const step = parseInt($('#bf-step').val()) || 20;
+                    const mode = $('input[name="bf-mode"]:checked').val() || 'chat'; // 🆕 获取功能模式
                     const targetIndex = parseInt($('#bf-target-table').val()); // 🆕 获取目标表格
                     const customNote = $('#bf-custom-prompt').val().trim(); // 🆕 获取自定义建议
 
-                    if (isNaN(start) || isNaN(end) || start >= end) {
-                        await window.Gaigai.customAlert('请输入有效的楼层范围 (起始 < 结束)', '错误');
-                        return;
-                    }
+                    let start, end, range, isBatchMode, step;
 
-                    const range = end - start;
+                    // 根据模式进行不同的验证和参数读取
+                    if (mode === 'table') {
+                        // 📊 表格优化模式：不需要验证楼层范围
+                        // 验证目标表格是否有效
+                        if (targetIndex === -1) {
+                            // 优化全部表格，检查是否有非空表格
+                            const hasNonEmptyTable = m.s.slice(0, 8).some(sheet => sheet && sheet.r && sheet.r.length > 0);
+                            if (!hasNonEmptyTable) {
+                                await window.Gaigai.customAlert('⚠️ 所有表格都为空，无法进行优化！', '错误');
+                                return;
+                            }
+                        } else {
+                            // 优化单个表格，检查表格是否存在且非空
+                            const sheet = m.s[targetIndex];
+                            if (!sheet || !sheet.r || sheet.r.length === 0) {
+                                await window.Gaigai.customAlert(`⚠️ 表${targetIndex}为空，无法进行优化！`, '错误');
+                                return;
+                            }
+                        }
+                        // 表格优化模式下，start/end/step等参数不需要
+                        start = 0;
+                        end = 0;
+                        step = 0;
+                        isBatchMode = (targetIndex === -1); // 全部表格时自动启用批量模式
+                    } else {
+                        // 💬 聊天记录填表模式：需要验证楼层范围
+                        start = parseInt($('#bf-start').val());
+                        end = parseInt($('#bf-end').val());
+                        isBatchMode = $('#bf-batch-mode').is(':checked');
+                        step = parseInt($('#bf-step').val()) || 20;
+
+                        if (isNaN(start) || isNaN(end) || start >= end) {
+                            await window.Gaigai.customAlert('请输入有效的楼层范围 (起始 < 结束)', '错误');
+                            return;
+                        }
+
+                        range = end - start;
+
+                        // ✨ 智能决策：超过50层且未勾选分批，弹窗建议
+                        if (range > 50 && !isBatchMode) {
+                            const confirmed = await window.Gaigai.customConfirm(
+                                `检测到范围较大（${range} 层）。\n\n建议使用"分批执行"模式，避免超时或内容丢失。\n\n是否切换为分批模式？`,
+                                '⚠️ 建议'
+                            );
+                            if (confirmed) {
+                                $('#bf-batch-mode').prop('checked', true).trigger('change');
+                                await window.Gaigai.customAlert('已启用分批模式，请再次点击"开始"按钮执行。', '提示');
+                                return;
+                            }
+                        }
+                    }
 
                     // 🛑 检测是否正在运行批量任务
                     if (window.Gaigai.isBatchBackfillRunning) {
@@ -265,19 +366,6 @@
                         window.Gaigai.stopBatchBackfill = true;
                         console.log('🛑 [用户操作] 请求停止批量追溯');
                         return;
-                    }
-
-                    // ✨ 智能决策：超过50层且未勾选分批，弹窗建议
-                    if (range > 50 && !isBatchMode) {
-                        const confirmed = await window.Gaigai.customConfirm(
-                            `检测到范围较大（${range} 层）。\n\n建议使用"分批执行"模式，避免超时或内容丢失。\n\n是否切换为分批模式？`,
-                            '⚠️ 建议'
-                        );
-                        if (confirmed) {
-                            $('#bf-batch-mode').prop('checked', true).trigger('change');
-                            await window.Gaigai.customAlert('已启用分批模式，请再次点击"开始"按钮执行。', '提示');
-                            return;
-                        }
                     }
 
                     const $btn = $(this);
@@ -289,8 +377,8 @@
                         $btn.text('⏳ 正在执行...').prop('disabled', true).css('opacity', 0.7);
                         $('#bf-status').text('初始化分批任务...').css('color', UI.tc);
 
-                        console.log(`📊 [分批追溯] 启动：${start}-${end}，步长 ${step}，目标表格：${targetIndex}, 自定义建议：${customNote ? '有' : '无'}`);
-                        await self.runBatchBackfill(start, end, step, true, targetIndex, customNote);
+                        console.log(`📊 [分批追溯] 启动：${start}-${end}，步长 ${step}，目标表格：${targetIndex}, 自定义建议：${customNote ? '有' : '无'}, 模式：${mode}`);
+                        await self.runBatchBackfill(start, end, step, true, targetIndex, customNote, mode);
 
                         // ✅ 执行完毕后，恢复按钮状态
                         $btn.text(oldText).prop('disabled', false).css('opacity', 1);
@@ -306,7 +394,7 @@
                         $btn.text('⏳ AI正在阅读...').prop('disabled', true).css('opacity', 0.7);
                         $('#bf-status').text('正在请求AI...').css('color', UI.tc);
 
-                        await self.autoRunBackfill(start, end, true, targetIndex, customNote);
+                        await self.autoRunBackfill(start, end, true, targetIndex, customNote, mode);
 
                         // 恢复按钮状态
                         $btn.text(oldText).prop('disabled', false).css('opacity', 1);
@@ -323,37 +411,62 @@
         }
 
         /**
-         * 批量追溯填表函数 (升级版：支持目标表格和自定义建议)
-         * @param {number} start - 起始楼层
-         * @param {number} end - 结束楼层
-         * @param {number} step - 每批次的楼层数（默认20）
+         * 批量追溯填表函数 (完全重构版：按表格对象切分 vs 按楼层切分)
+         * @param {number} start - 起始楼层（chat 模式）
+         * @param {number} end - 结束楼层（chat 模式）
+         * @param {number} step - 每批次的楼层数（chat 模式，默认20）
          * @param {boolean} isManual - 是否手动模式
          * @param {number} targetIndex - 目标表格索引（-1表示全部表格）
          * @param {string} customNote - 用户自定义建议
+         * @param {string} mode - 功能模式：'chat'=基于聊天记录追溯, 'table'=基于现有表格优化
          */
-        async runBatchBackfill(start, end, step = 20, isManual = false, targetIndex = -1, customNote = '') {
-            const totalRange = end - start;
-            const batches = [];
+        /**
+         * 批量执行入口 (修复版：即时响应停止 + 指针隔离)
+         */
+        async runBatchBackfill(start, end, step = 20, isManual = false, targetIndex = -1, customNote = '', mode = 'chat') {
             const API_CONFIG = window.Gaigai.config;
+            const m = window.Gaigai.m;
+            const batches = [];
 
-            // 切分任务
-            for (let i = start; i < end; i += step) {
-                const batchEnd = Math.min(i + step, end);
-                batches.push({ start: i, end: batchEnd });
+            // 1. 任务队列生成
+            if (mode === 'table') {
+                if (targetIndex === -1) {
+                    for (let i = 0; i <= 7; i++) {
+                        const sheet = m.s[i];
+                        if (sheet && sheet.r && sheet.r.length > 0) {
+                            batches.push({ type: 'table', index: i, name: sheet.n });
+                        }
+                    }
+                } else {
+                    const sheet = m.s[targetIndex];
+                    if (sheet && sheet.r && sheet.r.length > 0) {
+                        batches.push({ type: 'table', index: targetIndex, name: sheet.n });
+                    }
+                }
+                console.log(`📊 [表级优化] 任务队列：${batches.length} 个表格`);
+            } else {
+                for (let i = start; i < end; i += step) {
+                    const batchEnd = Math.min(i + step, end);
+                    batches.push({ type: 'chat', start: i, end: batchEnd });
+                }
+                console.log(`💬 [聊天追溯] 任务队列：${batches.length} 批`);
             }
 
-            console.log(`📊 [分批追溯] 开始: ${batches.length} 批，每批 ${step} 层，目标表格：${targetIndex === -1 ? '全部' : '表' + targetIndex}`);
+            if (batches.length === 0) {
+                if (typeof toastr !== 'undefined') toastr.info('没有需要处理的内容', '提示');
+                return;
+            }
 
-            // ✨ 1. 初始化全局状态
+            // 2. 执行循环
             window.Gaigai.stopBatchBackfill = false;
-            window.Gaigai.isBatchBackfillRunning = true; // 标记正在运行
+            window.Gaigai.isBatchBackfillRunning = true;
 
             let successCount = 0;
             let failedBatches = [];
-            let isUserCancelled = false; // 标记是否用户主动取消
-            let actualProgress = start; // ✅ 记录实际完成的进度位置
+            let isUserCancelled = false;
+            let actualProgress = (mode === 'chat') ? start : 0; 
 
-            // 辅助函数：更新按钮外观
+            // 辅助函数
             const updateBtn = (text, isRunning) => {
                 const $btn = $('#bf-gen');
                 if ($btn.length > 0) {
@@ -363,110 +476,97 @@
                         .prop('disabled', false);
                 }
             };
-
-            // 辅助函数：更新状态文字
             const updateStatus = (text, color = null) => {
                 const $status = $('#bf-status');
                 if ($status.length > 0) {
-                    $status.text(text);
-                    if (color) $status.css('color', color);
+                    $status.text(text).css(color ? {color} : {});
                 }
             };
 
-            if (typeof toastr !== 'undefined') toastr.info(`开始执行 ${batches.length} 个批次`, '批量追溯启动');
+            if (typeof toastr !== 'undefined') toastr.info(`开始执行 ${batches.length} 个任务`, mode === 'table' ? '表格优化' : '批量追溯');
 
-            // 依次执行每一批
+            // --- 循环开始 ---
             for (let i = 0; i < batches.length; i++) {
-                // 🛑 循环内检测刹车
-                if (window.Gaigai.stopBatchBackfill) {
-                    console.log('🛑 [分批追溯] 用户手动停止');
-                    isUserCancelled = true;
-                    break;
-                }
+                // 🛑 检查点 1：任务开始前
+                if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
-                // ⏳ 冷却逻辑 (第一批不冷却)
+                // 冷却逻辑
                 if (i > 0) {
                     for (let d = 5; d > 0; d--) {
-                        if (window.Gaigai.stopBatchBackfill) break;
+                        if (window.Gaigai.stopBatchBackfill) break; // 🛑 检查点 2：冷却期间
                         updateBtn(`⏳ 冷却 ${d}s... (点此停止)`, true);
                         updateStatus(`批次间冷却... ${d}秒`, '#ffc107');
                         await new Promise(r => setTimeout(r, 1000));
                     }
                 }
-
-                if (window.Gaigai.stopBatchBackfill) {
-                    isUserCancelled = true;
-                    break;
-                }
+                if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
                 const batch = batches[i];
                 const batchNum = i + 1;
-
                 updateBtn(`🛑 停止 (${batchNum}/${batches.length})`, true);
-                updateStatus(`正在处理批次 ${batchNum}/${batches.length} (楼层 ${batch.start}-${batch.end})`, '#17a2b8');
 
                 try {
-                    console.log(`🔄 [分批追溯 ${batchNum}/${batches.length}] 正在处理楼层 ${batch.start}-${batch.end}...`);
+                    let result;
+                    if (batch.type === 'table') {
+                        // 📊 表格优化
+                        const sheet = m.s[batch.index];
+                        const totalRows = sheet.r.length;
+                        updateStatus(`正在优化：表${batch.index} ${batch.name} (${totalRows}行)`, '#17a2b8');
+                        
+                        result = await this.handleTableOptimization(0, totalRows, true, batch.index, customNote);
+                    } else {
+                        // 💬 聊天追溯
+                        updateStatus(`正在追溯：${batch.start}-${batch.end}层`, '#17a2b8');
+                        result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat');
+                    }
 
-                    // ✨✨✨ 传递 targetIndex 和 customNote ✨✨✨
-                    const result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote);
+                    // 🛑 检查点 3：API返回后立即检查
+                    // 如果在生成过程中点了停止，这里马上生效，不再记录成功状态
+                    if (window.Gaigai.stopBatchBackfill) {
+                         console.warn(`🛑 [批量任务] 任务 ${batchNum} 执行期间被中止`);
+                         isUserCancelled = true;
+                         break;
+                    }
 
-                    // 🛑 [熔断检测] 只有用户明确放弃时才终止
                     if (!result || result.success === false) {
-                        console.warn(`🛑 [分批追溯] 批次 ${batchNum} 用户选择放弃，任务熔断终止。`);
-                        updateStatus(`🛑 批次 ${batchNum} 用户选择放弃，任务已终止`, '#dc3545');
-                        // 标记为用户取消，以便后续不弹"全部完成"的提示
-                        isUserCancelled = true;
-                        break; // <--- 用户放弃：跳出循环
+                        updateStatus(`🛑 任务 ${batchNum} 失败/取消`, '#dc3545');
+                        // 失败了通常意味着用户在弹窗里点了取消，视为手动停止
+                        isUserCancelled = true; 
+                        break;
                     }
 
-                    // ✅ 成功（可能是一次成功，也可能是重试后成功）
                     successCount++;
-                    actualProgress = batch.end; // ✅ 更新实际完成的进度
-
-                    // 更新进度
-                    API_CONFIG.lastBackfillIndex = actualProgress; // ✅ 修复：使用实际进度
-                    localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
-
-                    if (typeof toastr !== 'undefined') {
-                        toastr.success(`批次 ${batchNum}/${batches.length} 已完成`, '分批追溯');
+                    
+                    // ✅ 仅聊天模式更新进度条 (修复你的担心)
+                    if (batch.type === 'chat') {
+                        actualProgress = batch.end;
+                        API_CONFIG.lastBackfillIndex = actualProgress;
+                        try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch(e){}
                     }
+
+                    if (typeof toastr !== 'undefined') toastr.success(`任务 ${batchNum}/${batches.length} 完成`, '进度');
 
                 } catch (error) {
-                    console.error(`❌ [分批追溯失败] 批次 ${batchNum}:`, error);
+                    console.error(error);
                     failedBatches.push({ batch: batchNum, error: error.message });
-
-                    // 🛑 [异常熔断] 遇到未捕获异常时询问用户
-                    updateStatus(`⚠️ 批次 ${batchNum} 发生异常，等待用户选择...`, '#ff9800');
                     const userChoice = await window.Gaigai.customConfirm(
-                        `第 ${batchNum} 批执行时发生异常：\n${error.message}\n\n是否继续执行后续批次？`,
-                        '异常处理',
-                        '继续',
-                        '停止'
+                        `任务 ${batchNum} 发生异常：\n${error.message}\n\n是否继续后续任务？`,
+                        '异常处理', '继续', '停止'
                     );
-
-                    if (!userChoice) {
-                        console.warn(`🛑 [分批追溯] 用户选择停止，任务终止。`);
-                        updateStatus(`🛑 用户选择停止，任务已终止`, '#dc3545');
-                        isUserCancelled = true;
-                        break; // 用户选择停止
-                    }
-                    // 用户选择继续：不 break，继续下一批次
-                    console.log(`⚠️ [分批追溯] 批次 ${batchNum} 失败但用户选择继续`);
-                    updateStatus(`⚠️ 批次 ${batchNum} 失败，继续下一批...`, '#ffc107');
+                    if (!userChoice) { isUserCancelled = true; break; }
                 }
+                
+                // 🛑 检查点 4：落盘等待前
+                if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
-                // ⏳ [稳定性等待] 强制等待 5 秒，确保上一批数据已完全写入硬盘且流式解码彻底结束
-                console.log(`⏳ [批次缓冲] 等待数据落盘...`);
-                await new Promise(r => setTimeout(r, 5000));
+                // ⏳ 只有在没按停止的时候，才等待落盘
+                console.log(`⏳ [IO缓冲] 等待写入完成...`);
+                await new Promise(r => setTimeout(r, 3000));
             }
 
-            // ✅ 任务结束：重置状态
+            // 3. 结束收尾
             window.Gaigai.isBatchBackfillRunning = false;
             window.Gaigai.stopBatchBackfill = false;
-
-            // ❌ 已移除：不在内部恢复按钮，由外层调用者统一处理
-            // updateBtn('🚀 开始分析并生成', false);
 
             if (isUserCancelled) {
                 if (!isManual) await window.Gaigai.customAlert('批量任务已手动停止或取消', '已中止');
@@ -474,46 +574,62 @@
                 return;
             }
 
-            // 结果汇报
+            // 保存最终状态
             if (successCount > 0) {
-                API_CONFIG.lastBackfillIndex = actualProgress; // ✅ 修复：使用实际完成的进度而不是目标 end
-                localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
                 window.Gaigai.m.save();
-                updateStatus('✅ 所有批次已完成！', '#28a745');
             }
 
             const msg = failedBatches.length > 0
-                ? `⚠️ 完成 ${successCount}/${batches.length} 批，有 ${failedBatches.length} 批失败。`
-                : `✅ 分批追溯全部完成！共处理 ${batches.length} 批。`;
+                ? `⚠️ 完成，但有 ${failedBatches.length} 个任务失败。`
+                : `✅ 全部完成！共处理 ${successCount} 个任务。`;
 
-            if (typeof toastr !== 'undefined') toastr.success(msg, '批量追溯完成');
-
-            // ✨✨✨ 修复：静默模式下不弹窗，只有非静默模式才弹窗 ✨✨✨
-            const isSilentMode = $('#bf-silent-mode').length > 0 && $('#bf-silent-mode').is(':checked');
-
-            // 只有当"没勾选静默"或者"有失败批次(可选)"时才弹窗
+            const isSilentMode = $('#bf-silent-mode').is(':checked');
             if (!isSilentMode) {
                 await window.Gaigai.customAlert(msg, '完成');
+            } else {
+                if (typeof toastr !== 'undefined') toastr.success(msg);
             }
 
+            updateStatus('✅ 就绪', '#28a745');
             setTimeout(() => updateStatus('', null), 3000);
+            
+            if ($('#g-pop').length > 0) window.Gaigai.shw();
         }
 
         /**
-         * 自动追溯填表核心函数 (升级版：支持单表模式和自定义建议)
-         * @param {number} start - 起始楼层
-         * @param {number} end - 结束楼层
+         * 自动追溯填表核心函数 (升级版：支持单表模式、自定义建议和表格优化模式)
+         * @param {number} start - 起始楼层（或起始行索引，取决于模式）
+         * @param {number} end - 结束楼层（或结束行索引，取决于模式）
          * @param {boolean} isManual - 是否手动模式
          * @param {number} targetIndex - 目标表格索引（-1表示全部表格，0-7表示特定表格）
          * @param {string} customNote - 用户自定义建议
+         * @param {string} mode - 功能模式：'chat'=基于聊天记录追溯, 'table'=基于现有表格优化
          */
-        async autoRunBackfill(start, end, isManual = false, targetIndex = -1, customNote = '') {
+        async autoRunBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', mode = 'chat') {
             const loadConfig = window.loadConfig || (() => Promise.resolve());
             await loadConfig();
 
             const ctx = window.SillyTavern.getContext();
             if (!ctx || !ctx.chat) return { success: false, reason: 'no_context' };
+
+            // 🆕 根据模式分支处理
+            if (mode === 'table') {
+                // 📊 基于现有表格优化模式
+                return this.handleTableOptimization(start, end, isManual, targetIndex, customNote);
+            } else {
+                // 💬 基于聊天记录追溯模式（原逻辑）
+                return this.handleChatBackfill(start, end, isManual, targetIndex, customNote);
+            }
+        }
+
+        /**
+         * 处理聊天记录追溯模式（原 autoRunBackfill 的逻辑）
+         * @private
+         */
+        async handleChatBackfill(start, end, isManual = false, targetIndex = -1, customNote = '') {
+            const ctx = window.SillyTavern.getContext();
+            const m = window.Gaigai.m;
 
             // 🛑 新增：空卡熔断保护
             if (ctx.chat.length === 0) {
@@ -522,7 +638,6 @@
             }
 
             console.log(`🔍 [追溯] 正在读取数据源，全量总楼层: ${ctx.chat.length}，目标表格：${targetIndex === -1 ? '全部' : '表' + targetIndex}`);
-            const m = window.Gaigai.m;
             m.load();
 
             let userName = ctx.name1 || 'User';
@@ -606,17 +721,18 @@
             messages[0].content = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('nsfwPrompt'), ctx) + '\n\n' + contextBlock;
 
             let insertIndex = 1;
-            if (m.sm.has()) {
-                const summaryArray = m.sm.loadArray();
-                const recentSummaries = summaryArray.slice(-15);
-                recentSummaries.forEach((item) => {
-                    messages.splice(insertIndex, 0, { role: 'system', content: `【前情提要 - ${item.type || '历史'}】\n${item.content}` });
-                    insertIndex++;
-                });
-            } else {
-                messages.splice(insertIndex, 0, { role: 'system', content: '【前情提要】\n（暂无历史总结）' });
-                insertIndex++;
-            }
+            // ❌ 追溯模式不需要发送总结内容
+            // if (m.sm.has()) {
+            //     const summaryArray = m.sm.loadArray();
+            //     const recentSummaries = summaryArray.slice(-15);
+            //     recentSummaries.forEach((item) => {
+            //         messages.splice(insertIndex, 0, { role: 'system', content: `【前情提要 - ${item.type || '历史'}】\n${item.content}` });
+            //         insertIndex++;
+            //     });
+            // } else {
+            //     messages.splice(insertIndex, 0, { role: 'system', content: '【前情提要】\n（暂无历史总结）' });
+            //     insertIndex++;
+            // }
 
             // 🆕 根据 targetIndex 决定插入哪些表格状态
             if (targetIndex === -1) {
@@ -704,7 +820,7 @@
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
                 const errorMsg = `批量填表失败：${e.message}\n\n是否重新尝试？`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
-                if (shouldRetry) return this.autoRunBackfill(start, end, isManual, targetIndex, customNote);
+                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote);
                 return { success: false, reason: 'api_error' };
             } finally {
                 window.isSummarizing = false;
@@ -799,9 +915,453 @@
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
                 const errorMsg = `批量填表失败：${result.error || '未知错误'}\n\n是否重新尝试？`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
-                if (shouldRetry) return this.autoRunBackfill(start, end, isManual, targetIndex, customNote);
+                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote);
                 return { success: false, reason: 'api_failed' };
             }
+        }
+
+        /**
+         * 处理基于现有表格优化模式（使用 <Memory> 标签和脚本指令）
+         * @private
+         * @param {number} startRow - 起始行索引（0-based）
+         * @param {number} endRow - 结束行索引（不包含，类似 slice）
+         * @param {boolean} isManual - 是否手动模式
+         * @param {number} targetIndex - 目标表格索引（必须指定单个表格，不支持 -1）
+         * @param {string} customNote - 用户自定义建议
+         */
+        async handleTableOptimization(startRow, endRow, isManual = false, targetIndex = -1, customNote = '') {
+            const ctx = window.SillyTavern.getContext();
+            const m = window.Gaigai.m;
+            const API_CONFIG = window.Gaigai.config;
+            const C = window.Gaigai.config_obj;
+
+            // 🛑 验证：表格优化模式必须指定单个表格
+            if (targetIndex === -1 || targetIndex < 0 || targetIndex > 7) {
+                await window.Gaigai.customAlert('⚠️ 表格优化模式必须选择单个表格！', '错误');
+                return { success: false, reason: 'invalid_target' };
+            }
+
+            const sheet = m.s[targetIndex];
+            if (!sheet || sheet.r.length === 0) {
+                await window.Gaigai.customAlert('⚠️ 目标表格为空，无法优化！', '提示');
+                return { success: false, reason: 'empty_table' };
+            }
+
+            // ✅ 智能修正行范围 (全表优化模式强制修正)
+            if (startRow < 0 || startRow >= sheet.r.length) startRow = 0;
+            if (endRow <= startRow || endRow > sheet.r.length) endRow = sheet.r.length;
+
+            // 二次确认：如果修正后还是空的（比如表本来就是空的），拦截
+            if (endRow <= startRow) {
+                // 通常不会走到这里，因为前面 showUI 已经拦截了空表
+                console.warn('⚠️ 表格为空，无需优化');
+                return { success: true }; 
+            }
+
+            console.log(`📊 [表格优化] 目标: 表${targetIndex}，行范围: ${startRow}-${endRow} (全表优化)`);
+
+            // 构建 Prompt
+            const messages = [];
+
+            // 1. System Prompt (NSFW)
+            messages.push({
+                role: 'system',
+                content: window.Gaigai.PromptManager.resolveVariables(
+                    window.Gaigai.PromptManager.get('nsfwPrompt'),
+                    ctx
+                )
+            });
+
+            // 2. 背景资料（可选）
+            let contextText = '';
+            let userName = ctx.name1 || 'User';
+            let charName = 'Character';
+            if (ctx.characterId !== undefined && ctx.characters && ctx.characters[ctx.characterId]) {
+                charName = ctx.characters[ctx.characterId].name || ctx.name2 || 'Character';
+                const char = ctx.characters[ctx.characterId];
+                if (char.description) contextText += `[人物简介]\n${char.description}\n`;
+                if (char.personality) contextText += `[性格/设定]\n${char.personality}\n`;
+            }
+            if (contextText) {
+                messages.push({
+                    role: 'system',
+                    content: `【背景资料】\n角色: ${charName}\n用户: ${userName}\n\n${contextText}`
+                });
+            }
+
+            // 3. 表格数据（使用 sheet.txt() 而不是 JSON）
+            const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+            const tableContent = sheet.txt(targetIndex);
+            messages.push({
+                role: 'system',
+                content: `【当前的表格内容 - ${sheetName}】\n这是当前需要优化的表格内容：\n\n${tableContent}`
+            });
+
+            // 4. 用户自定义建议
+            if (customNote && customNote.trim()) {
+                messages.push({
+                    role: 'system',
+                    content: `💬 【用户重点建议】\n${customNote.trim()}\n\n请优先遵循以上建议进行优化。`
+                });
+            }
+
+            // 5. 核心指令（使用 <Memory> 标签和 insertRow 指令）
+            let optimizePrompt = window.Gaigai.PromptManager.get('tableOptimizePrompt');
+            if (!optimizePrompt || !optimizePrompt.trim()) {
+                // 如果提示词不存在，使用默认指令
+                optimizePrompt = `你现在需要对上述表格内容进行优化（合并、精简、润色）。
+请直接输出优化后的结果，使用标准 <Memory> 标签包裹 insertRow 指令。
+
+**注意**：
+1. 你只需要输出**最终应该保留的内容**。
+2. 系统在执行时，会先**清空**该表格的旧数据，然后填入你输出的新内容。
+3. 因此，请完整输出优化后的所有行，不要遗漏。
+4. 使用 insertRow(${targetIndex}, {0:"列0内容", 1:"列1内容", ...}) 的格式。
+5. 表格索引为 ${targetIndex}，请确保所有指令都使用这个索引。`;
+            }
+            optimizePrompt = window.Gaigai.PromptManager.resolveVariables(optimizePrompt, ctx);
+
+            messages.push({ role: 'user', content: optimizePrompt });
+
+            // 调用 API
+            window.Gaigai.lastRequestData = {
+                chat: JSON.parse(JSON.stringify(messages)),
+                timestamp: Date.now(),
+                model: API_CONFIG.useIndependentAPI ? API_CONFIG.model : 'Tavern(Direct)'
+            };
+
+            let result;
+            window.isSummarizing = true;
+            try {
+                const callIndependentAPI = window.callIndependentAPI;
+                const callTavernAPI = window.callTavernAPI;
+                if (API_CONFIG.useIndependentAPI) {
+                    result = await callIndependentAPI(messages);
+                } else {
+                    result = await callTavernAPI(messages);
+                }
+            } catch (e) {
+                console.error('❌ [表格优化] API 请求失败', e);
+                const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
+                const errorMsg = `表格优化失败：${e.message}\n\n是否重新尝试？`;
+                const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
+                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote);
+                return { success: false, reason: 'api_error' };
+            } finally {
+                window.isSummarizing = false;
+            }
+
+            if (result && result.success) {
+                const unesc = window.Gaigai.esc ? window.unesc || ((s) => s) : ((s) => s);
+                let aiOutput = unesc(result.summary || result.text || '').trim();
+
+                // 移除思考过程
+                if (aiOutput.includes('<think>')) {
+                    aiOutput = aiOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                }
+
+                // ✨ 提取 <Memory> 标签内容（复用 autoRunBackfill 的逻辑）
+                const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);
+                let finalOutput = '';
+
+                if (tagMatch) {
+                    finalOutput = tagMatch[0];
+                } else {
+                    // 如果没有标签，尝试自动包裹
+                    let cleanContent = aiOutput
+                        .replace(/<\/?Memory>/gi, '')  // 去除可能存在的残缺标签
+                        .replace(/<!--/g, '')          // 去除 HTML 注释头
+                        .replace(/-->/g, '')           // 去除 HTML 注释尾
+                        .replace(/```[a-z]*\n?/gi, '') // 去除 Markdown 代码块头
+                        .replace(/```/g, '')           // 去除 Markdown 代码块尾
+                        .trim();
+
+                    // 去除 AI 的客套话
+                    cleanContent = cleanContent
+                        .replace(/^(好的|明白|收到|了解|理解|根据|分析|总结|以下是)[^<\n]*\n*/gim, '')
+                        .replace(/^.*?(根据|基于|查看|阅读|分析).*?([，,：:]|之后)[^\n]*\n*/gim, '')
+                        .trim();
+
+                    // 重新包裹
+                    if (cleanContent.includes('insertRow') || cleanContent.includes('updateRow')) {
+                        finalOutput = `<Memory><!-- ${cleanContent} --></Memory>`;
+                    } else {
+                        finalOutput = cleanContent; // 实在没识别到指令，原样返回方便用户修改
+                    }
+                }
+
+                if (!finalOutput) {
+                    await window.Gaigai.customAlert('⚠️ AI 返回的内容为空！', '解析失败');
+                    return { success: false, reason: 'empty_output' };
+                }
+
+                // ✨ 解析指令（使用 prs 解析器）
+                const prs = window.prs;
+                const exe = window.exe;
+
+                // 先剥离标签和注释，提取纯指令文本
+                let innerText = finalOutput
+                    .replace(/<\/?Memory>/gi, '') // 移除 <Memory> 标签
+                    .replace(/<!--/g, '')         // 移除 HTML 注释头
+                    .replace(/-->/g, '')          // 移除 HTML 注释尾
+                    .trim();
+
+                const cs = prs(innerText);
+
+                if (cs.length === 0) {
+                    await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
+                    return { success: false, reason: 'no_commands' };
+                }
+
+                console.log(`✅ [表格优化] 成功解析 ${cs.length} 条指令`);
+
+                // 🔒 安全检查：验证所有指令的表索引是否正确
+                let hasInvalidIndex = false;
+                for (let i = 0; i < cs.length; i++) {
+                    const cmd = cs[i];
+                    if (cmd && typeof cmd.ti === 'number') {
+                        if (cmd.ti !== targetIndex) {
+                            console.error(`🛑 [表索引不匹配] 指令 ${i} 的表索引 ${cmd.ti} 不匹配目标表索引 ${targetIndex}`);
+                            hasInvalidIndex = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasInvalidIndex) {
+                    await window.Gaigai.customAlert(`🛑 安全拦截：检测到表索引不匹配，已取消操作\n\n请确保 AI 输出的所有指令都使用表索引 ${targetIndex}`, '错误');
+                    return { success: false, reason: 'invalid_table_index' };
+                }
+
+                // ✨ 弹出确认框（如果不是静默模式）
+                const isSilentMode = isManual ? ($('#bf-silent-mode').length > 0 && $('#bf-silent-mode').is(':checked')) : C.autoBackfillSilent;
+
+                if (isSilentMode) {
+                    // 静默模式：直接执行
+                    await this._applyTableOptimization(targetIndex, cs, m);
+                    return { success: true };
+                } else {
+                    // 非静默模式：弹窗确认
+                    const regenParams = { startRow, endRow, isManual, targetIndex, customNote };
+                    const userAction = await this._showTableOptimizationConfirm(finalOutput, targetIndex, cs, regenParams, m);
+                    return userAction;
+                }
+
+            } else if (result) {
+                const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
+                const errorMsg = `表格优化失败：${result.error || '未知错误'}\n\n是否重新尝试？`;
+                const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
+                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote);
+                return { success: false, reason: 'api_failed' };
+            }
+        }
+
+        /**
+         * 应用表格优化（先清空，后插入）
+         * @private
+         */
+        async _applyTableOptimization(targetIndex, commands, m) {
+            // 🔒 安全检查1：验证会话ID
+            const initialSessionId = m.gid();
+            if (!initialSessionId) {
+                console.error('🛑 [安全拦截] 无法获取会话标识');
+                return;
+            }
+
+            // 🔒 安全检查2：验证表索引
+            if (targetIndex < 0 || targetIndex > 7 || !m.s[targetIndex]) {
+                console.error(`🛑 [安全拦截] 表索引 ${targetIndex} 无效`);
+                return;
+            }
+
+            const sheet = m.s[targetIndex];
+
+            // 🔒 安全检查3：执行前再次验证会话ID
+            const currentSessionId = m.gid();
+            if (currentSessionId !== initialSessionId) {
+                console.error(`🛑 [安全拦截] 会话ID不一致！初始: ${initialSessionId}, 当前: ${currentSessionId}`);
+                return;
+            }
+
+            console.log(`🗑️ [表格优化] 清空表${targetIndex} (共 ${sheet.r.length} 行)`);
+
+            // 1. 清空表格
+            sheet.clear();
+
+            // 2. 执行指令
+            const exe = window.exe;
+            exe(commands);
+
+            console.log(`✅ [表格优化] 已写入 ${commands.length} 条指令到表${targetIndex}`);
+
+            // 3. 保存
+            window.lastManualEditTime = Date.now();
+            m.save();
+            const updateCurrentSnapshot = window.updateCurrentSnapshot || (() => {});
+            updateCurrentSnapshot();
+
+            if (typeof toastr !== 'undefined') {
+                toastr.success(`表格优化完成！已执行 ${commands.length} 条指令`, '表格优化', { timeOut: 2000 });
+            }
+
+            // 4. 刷新UI
+            if ($('#g-pop').length > 0) {
+                const refreshTable = window.refreshTable || (() => {});
+                const updateTabCount = window.updateTabCount || (() => {});
+                refreshTable(targetIndex);
+                m.s.forEach((_, i) => updateTabCount(i));
+            }
+        }
+
+        /**
+         * 显示表格优化确认弹窗
+         * @private
+         */
+        _showTableOptimizationConfirm(content, targetIndex, commands, regenParams, m) {
+            const self = this;
+            const UI = window.Gaigai.ui;
+            const esc = window.Gaigai.esc;
+
+            // 🔒 关键修复：记录弹窗打开时的会话ID
+            const initialSessionId = m.gid();
+            if (!initialSessionId) {
+                window.Gaigai.customAlert('🛑 安全拦截：无法获取会话标识', '错误');
+                return Promise.resolve({ success: false });
+            }
+            console.log(`🔒 [表格优化弹窗打开] 会话ID: ${initialSessionId}`);
+
+            return new Promise((resolve) => {
+                const sheetName = targetIndex === 1 ? '支线追踪' : m.s[targetIndex].n;
+                const h = `
+                <div class="g-p">
+                    <h4>📊 表格优化确认</h4>
+                    <p style="opacity:0.8; font-size:11px; margin-bottom:10px;">
+                        ✅ AI 已生成优化指令，请检查。<br>
+                        💡 点击 <strong>[确认]</strong> 将先清空表${targetIndex} (${sheetName})，然后写入优化后的内容。<br>
+                        ⚠️ 原始数据将被完全替换，请谨慎操作！
+                    </p>
+                    <textarea id="opt-popup-editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(content)}</textarea>
+                    <div style="margin-top:12px; display: flex; gap: 10px;">
+                        <button id="opt-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃</button>
+                        ${regenParams ? '<button id="opt-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
+                        <button id="opt-popup-confirm" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">🚀 确认并执行</button>
+                    </div>
+                </div>
+                `;
+
+                $('#g-table-opt-pop').remove();
+                const $o = $('<div>', { id: 'g-table-opt-pop', class: 'g-ov', css: { 'z-index': '10000007' } });
+                const $p = $('<div>', { class: 'g-w', css: { width: '700px', maxWidth: '92vw', height: 'auto' } });
+
+                const $hd = $('<div>', { class: 'g-hd' });
+                $hd.append(`<h3 style="color:${UI.tc}; flex:1;">📊 表格优化</h3>`);
+
+                const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' } }).on('click', () => {
+                    $o.remove();
+                    resolve({ success: false });
+                });
+                $hd.append($x);
+
+                const $bd = $('<div>', { class: 'g-bd', html: h });
+                $p.append($hd, $bd);
+                $o.append($p);
+                $('body').append($o);
+
+                setTimeout(() => {
+                    // 🚫 放弃按钮
+                    $('#opt-popup-cancel').on('click', () => {
+                        $o.remove();
+                        resolve({ success: false });
+                    });
+
+                    // 🔄 重新生成按钮
+                    if (regenParams) {
+                        $('#opt-popup-regen').on('click', async function () {
+                            const $btn = $(this);
+                            const originalText = $btn.text();
+
+                            $('#opt-popup-cancel, #opt-popup-regen, #opt-popup-confirm').prop('disabled', true);
+                            $btn.text('生成中...');
+
+                            try {
+                                console.log('🔄 [重新生成] 正在重新调用 handleTableOptimization...');
+                                const result = await self.handleTableOptimization(
+                                    regenParams.startRow,
+                                    regenParams.endRow,
+                                    regenParams.isManual,
+                                    regenParams.targetIndex,
+                                    regenParams.customNote
+                                );
+
+                                // 因为重新调用会打开新弹窗，这里直接关闭当前弹窗
+                                $o.remove();
+                                resolve(result);
+                            } catch (error) {
+                                console.error('❌ [重新生成失败]', error);
+                                await window.Gaigai.customAlert('重新生成失败: ' + error.message, '错误');
+                                $('#opt-popup-cancel, #opt-popup-regen, #opt-popup-confirm').prop('disabled', false);
+                                $btn.text(originalText);
+                            }
+                        });
+                    }
+
+                    // 🚀 确认并执行按钮
+                    $('#opt-popup-confirm').on('click', async function () {
+                        const finalContent = $('#opt-popup-editor').val().trim();
+                        if (!finalContent) {
+                            await window.Gaigai.customAlert('⚠️ 内容不能为空！', '提示');
+                            return;
+                        }
+
+                        // 🔒 安全检查1：验证会话ID是否一致
+                        const currentSessionId = m.gid();
+                        if (!currentSessionId) {
+                            await window.Gaigai.customAlert('🛑 安全拦截：无法获取会话标识', '错误');
+                            return;
+                        }
+
+                        if (currentSessionId !== initialSessionId) {
+                            console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 执行时: ${currentSessionId}`);
+                            await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，已取消操作\n\n请重新打开表格优化功能', '错误');
+                            return;
+                        }
+
+                        // 重新解析用户可能修改过的内容
+                        const prs = window.prs;
+                        let innerText = finalContent
+                            .replace(/<\/?Memory>/gi, '')
+                            .replace(/<!--/g, '')
+                            .replace(/-->/g, '')
+                            .trim();
+
+                        const newCs = prs(innerText);
+
+                        if (newCs.length === 0) {
+                            await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
+                            return;
+                        }
+
+                        // 🔒 安全检查2：验证指令的表索引
+                        for (let i = 0; i < newCs.length; i++) {
+                            const cmd = newCs[i];
+                            if (cmd && typeof cmd.ti === 'number' && cmd.ti !== targetIndex) {
+                                await window.Gaigai.customAlert(`🛑 安全拦截：指令 ${i} 的表索引 ${cmd.ti} 不匹配目标表索引 ${targetIndex}`, '错误');
+                                return;
+                            }
+                        }
+
+                        console.log(`🔒 [安全验证通过] 会话ID: ${currentSessionId}, 指令数: ${newCs.length}`);
+
+                        // 执行优化
+                        await self._applyTableOptimization(targetIndex, newCs, m);
+
+                        // 关闭弹窗
+                        $o.remove();
+
+                        resolve({ success: true });
+                    });
+                }, 100);
+            });
         }
 
         /**
@@ -831,13 +1391,13 @@
                 const progressText = newIndex !== null ? ` (进度: ${newIndex}层)` : '';
 
                 const h = `
-                <div class="g-p" style="background:#fff !important; color:${UI.tc} !important;">
+                <div class="g-p">
                     <h4>⚡ 剧情追溯确认${progressText}</h4>
-                    <p style="color:${UI.tc}; opacity:0.8; font-size:11px; margin-bottom:10px;">
+                    <p style="opacity:0.8; font-size:11px; margin-bottom:10px;">
                         ✅ AI 已生成指令，请检查。<br>
                         💡 点击 <strong>[确认]</strong> 将写入数据并继续，点击 <strong>[放弃]</strong> 将终止后续任务。
                     </p>
-                    <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background: #ffffff !important; color: #000000 !important;">${esc(content)}</textarea>
+                    <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(content)}</textarea>
                     <div style="margin-top:12px; display: flex; gap: 10px;">
                         <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃任务</button>
                         ${regenParams ? '<button id="bf-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
@@ -1095,16 +1655,17 @@
 
             // 插入表格状态和前情提要
             let insertIndex = 1;
-            if (m.sm.has()) {
-                const summaryArray = m.sm.loadArray();
-                summaryArray.slice(-15).forEach((item) => {
-                    messages.splice(insertIndex, 0, { role: 'system', content: `【前情提要 - ${item.type || '历史'}】\n${item.content}` });
-                    insertIndex++;
-                });
-            } else {
-                messages.splice(insertIndex, 0, { role: 'system', content: '【前情提要】\n（暂无历史总结）' });
-                insertIndex++;
-            }
+            // ❌ 追溯模式不需要发送总结内容
+            // if (m.sm.has()) {
+            //     const summaryArray = m.sm.loadArray();
+            //     summaryArray.slice(-15).forEach((item) => {
+            //         messages.splice(insertIndex, 0, { role: 'system', content: `【前情提要 - ${item.type || '历史'}】\n${item.content}` });
+            //         insertIndex++;
+            //     });
+            // } else {
+            //     messages.splice(insertIndex, 0, { role: 'system', content: '【前情提要】\n（暂无历史总结）' });
+            //     insertIndex++;
+            // }
 
             const targetIndex = regenParams.targetIndex || -1;
             const customNote = regenParams.customNote || '';

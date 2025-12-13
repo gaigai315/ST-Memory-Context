@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.3.5
+ * @version 1.3.6
  * @author Gaigai Team
  */
 
@@ -120,8 +120,8 @@
                 </div>
 
                 <div style="margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px; color:${UI.tc};">🎯 目标选择</label>
-                    <select id="opt-target" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:12px; background:#fff; color:${UI.tc};">
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">🎯 目标选择</label>
+                    <select id="opt-target" style="width:100%; padding:6px; border-radius:4px; font-size:12px;">
                         <option value="all">全部已有总结</option>
                         <option value="range">指定范围 (如 1-3)</option>
                         <option value="last">最后一条总结</option>
@@ -130,13 +130,13 @@
                 </div>
 
                 <div id="opt-specific-row" style="display: none; margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px; color:${UI.tc};">页码范围（支持 "5" 或 "2-6"）：</label>
-                    <input type="text" id="opt-range-input" value="1" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">页码范围（支持 "5" 或 "2-6"）：</label>
+                    <input type="text" id="opt-range-input" value="1" style="width:100%; padding:6px; border-radius:4px;">
                 </div>
 
                 <div style="margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px; color:${UI.tc};">💬 优化建议（可选）</label>
-                    <textarea id="opt-prompt" placeholder="例如：把流水账改写成史诗感、精简字数到200字以内、增加情感描写、用古文风格重写..." style="width:100%; height:80px; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px; resize:vertical; font-family:inherit; background:#fff; color:${UI.tc};"></textarea>
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">💬 优化建议（可选）</label>
+                    <textarea id="opt-prompt" placeholder="例如：把流水账改写成史诗感、精简字数到200字以内、增加情感描写、用古文风格重写..." style="width:100%; height:80px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;"></textarea>
                     <div style="font-size:9px; color:${UI.tc}; opacity:0.7; margin-top:4px;">
                         💡 输入您希望AI如何优化总结的具体要求（留空则使用默认优化策略）
                     </div>
@@ -729,20 +729,20 @@
                 const h = `
             <div class="g-p" style="display: flex; flex-direction: column; height: 100%;">
                 <h4 style="margin: 0 0 8px 0;">📝 记忆总结预览</h4>
-                <p style="color:${UI.tc}; opacity:0.8; font-size:11px; margin: 0 0 10px 0;">
+                <p style="opacity:0.8; font-size:11px; margin: 0 0 10px 0;">
                     ✅ 已生成总结建议<br>
                     💡 您可以直接编辑润色内容，满意后点击保存
                 </p>
-                <textarea id="summary-editor" style="flex: 1; width:100%; min-height: 0; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize: none; line-height:1.8; background-color: #ffffff !important; color: ${UI.tc} !important; margin-bottom: 10px;">${esc(summaryText)}</textarea>
+                <textarea id="summary-editor" style="flex: 1; width:100%; min-height: 0; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize: none; line-height:1.8; margin-bottom: 10px;">${esc(summaryText)}</textarea>
 
                 <div style="margin-bottom:12px; flex-shrink: 0;">
-                    <label for="summary-note" style="display:block; font-size:12px; color:${UI.tc}; opacity:0.8; margin-bottom:4px;">📌 备注/范围：</label>
+                    <label for="summary-note" style="display:block; font-size:12px; opacity:0.8; margin-bottom:4px;">📌 备注/范围：</label>
                     <input type="text"
                            id="summary-note"
                            value="${esc(rangeStr)}"
                            placeholder="例如：0-50、第1章、主线任务等"
-                           style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; font-size:12px; background-color: #ffffff !important; color: ${UI.tc} !important;">
-                    <div style="font-size:10px; color:${UI.tc}; opacity:0.6; margin-top:4px;">💡 提示：此备注会自动保存到总结表第3列（如果该列存在）</div>
+                           style="width:100%; padding:8px; border-radius:4px; font-size:12px;">
+                    <div style="font-size:10px; opacity:0.6; margin-top:4px;">💡 提示：此备注会自动保存到总结表第3列（如果该列存在）</div>
                 </div>
 
                 <div style="display: flex; gap: 10px; flex-shrink: 0;">
@@ -906,6 +906,11 @@
                             resolve({ success: true });
                         } else {
                             // 表格模式：弹出三选一操作框
+                            // 🌙 获取主题配置
+                            const isDark = window.Gaigai.ui.darkMode;
+                            const themeColor = window.Gaigai.ui.c;
+                            const textColor = window.Gaigai.ui.tc;
+
                             const dialogId = 'summary-action-' + Date.now();
                             const $dOverlay = $('<div>', {
                                 id: dialogId,
@@ -918,29 +923,53 @@
                             });
 
                             const $dBox = $('<div>', {
+                                class: 'summary-action-box',
                                 css: {
-                                    background: '#fff', borderRadius: '12px', padding: '24px',
+                                    background: isDark ? '#1e1e1e' : '#fff',
+                                    color: textColor,
+                                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                                    borderRadius: '12px', padding: '24px',
                                     boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '360px',
                                     display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'center'
                                 }
                             });
 
-                            $dBox.append('<div style="font-size:18px; margin-bottom:8px;">🎉 总结已保存！</div>');
-                            $dBox.append(`<div style="font-size:13px; color:${UI.tc}; opacity:0.8; margin-bottom:12px;">请选择如何处理<strong>原始表格数据</strong>：</div>`);
-
-                            const btnCss = "padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#fff; transition:0.2s;";
+                            $dBox.append(`<div style="font-size:18px; margin-bottom:8px; color:${textColor};">🎉 总结已保存！</div>`);
+                            $dBox.append(`<div style="font-size:13px; opacity:0.8; margin-bottom:12px; color:${textColor};">请选择如何处理<strong>原始表格数据</strong>：</div>`);
 
                             const $btnDel = $('<button>', {
+                                class: 'summary-action-btn summary-action-delete',
                                 html: '🗑️ 删除已总结内容<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(清空表格，防止重复)</span>',
-                                css: btnCss + "background:#dc3545;"
+                                css: {
+                                    background: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    color: textColor,
+                                    border: `1px solid ${themeColor}`,
+                                    borderRadius: '8px',
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s'
+                                }
                             }).on('click', () => {
                                 sourceTables.forEach(t => t.clear());
                                 finish('✅ 原始数据已清空，总结已归档。');
                             });
 
                             const $btnHide = $('<button>', {
+                                class: 'summary-action-btn summary-action-hide',
                                 html: '🙈 仅隐藏 (变绿)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(保留内容但标记为已处理)</span>',
-                                css: btnCss + "background:#28a745;"
+                                css: {
+                                    background: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                    color: textColor,
+                                    border: `1px solid ${themeColor}`,
+                                    borderRadius: '8px',
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s'
+                                }
                             }).on('click', () => {
                                 sourceTables.forEach(table => {
                                     const ti = m.all().indexOf(table);
@@ -952,8 +981,19 @@
                             });
 
                             const $btnKeep = $('<button>', {
+                                class: 'summary-action-btn summary-action-keep',
                                 html: '👁️ 保留 (不变)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(不做任何修改，保持白色)</span>',
-                                css: btnCss + "background:#17a2b8;"
+                                css: {
+                                    background: themeColor,
+                                    color: '#fff',
+                                    border: `1px solid ${themeColor}`,
+                                    borderRadius: '8px',
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.2s'
+                                }
                             }).on('click', () => {
                                 finish('✅ 原始数据已保留（未做标记）。');
                             });
@@ -1118,6 +1158,10 @@
                 if ($('#man-start').length) $('#man-start').val(API_CONFIG.lastSummaryIndex);
                 if ($('#sum-chat-start').length) $('#sum-chat-start').val(API_CONFIG.lastSummaryIndex);
             }
+
+            // ⏳ 【最终缓冲】等待数据完全落盘（防止 UI 刷新时读取到旧数据）
+            console.log('⏳ [最终缓冲] 等待数据完全写入硬盘...');
+            await new Promise(r => setTimeout(r, 2000));
 
             if (!silent && !window.Gaigai.stopBatch) {
                 const msg = failedBatches.length > 0
@@ -1323,21 +1367,21 @@
 
             return new Promise((resolve) => {
                 const h = `
-                <div class="g-p" style="background:#fff !important; color:${UI.tc} !important;">
+                <div class="g-p">
                     <h4>✨ 优化结果确认</h4>
-                    <p style="color:${UI.tc}; opacity:0.8; font-size:11px; margin-bottom:10px;">
+                    <p style="opacity:0.8; font-size:11px; margin-bottom:10px;">
                         AI已完成总结优化，请确认无误后选择保存方式。<br>
                         支持手动修改内容。
                     </p>
 
                     <div style="margin-bottom: 10px;">
-                        <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px; color:${UI.tc};">📝 原始内容：</label>
-                        <textarea readonly style="width:100%; height:120px; padding:8px; border:1px solid #ddd; border-radius:4px; font-size:11px; resize:vertical; background-color: #f5f5f5 !important; color: ${UI.tc} !important; opacity:0.7;">${esc(originalContent)}</textarea>
+                        <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px;">📝 原始内容：</label>
+                        <textarea readonly style="width:100%; height:120px; padding:8px; border-radius:4px; font-size:11px; resize:vertical; opacity:0.7;">${esc(originalContent)}</textarea>
                     </div>
 
                     <div style="margin-bottom: 10px;">
-                        <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px; color:${UI.tc};">✨ 优化后内容：</label>
-                        <textarea id="opt-result-editor" style="width:100%; height:250px; padding:10px; border:1px solid #ddd; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; background-color: #ffffff !important; color: ${UI.tc} !important;">${esc(optimizedContent)}</textarea>
+                        <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px;">✨ 优化后内容：</label>
+                        <textarea id="opt-result-editor" style="width:100%; height:250px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(optimizedContent)}</textarea>
                     </div>
 
                     <div style="margin-top:12px; display: flex; gap: 10px;">
