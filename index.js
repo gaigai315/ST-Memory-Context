@@ -6469,73 +6469,99 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
                 };
 
                 // ========================================
-                // 4. 执行逻辑
+                // 4. 执行逻辑 (双通道自动降级版 - 修复 400/500 错误)
                 // ========================================
-                try {
-                    // 🚀 路径 A: 强制代理
-                    if (forceProxy) {
+                let proxyErrorMsg = null;
+
+                // --- 阶段一：尝试后端代理 (优先) ---
+                // 对于 强制代理组(DeepSeek/OpenAI等) 或 兼容端点，先试酒馆后端转发
+                // 这能解决跨域问题，是你目前能用的方式
+                if (forceProxy || provider === 'compatible') {
+                    try {
                         await runProxyRequest();
+                        return; // ✅ 成功则直接结束，不往下走了
+                    } catch (e) {
+                        console.warn(`⚠️ [自动降级] 后端代理请求失败: ${e.message}，正在尝试浏览器直连...`);
+                        // 记录错误信息，但不弹窗，继续往下走，去试阶段二
+                        proxyErrorMsg = e.message;
+                    }
+                }
+
+                // --- 阶段二：尝试浏览器直连 (备用/救命稻草) ---
+                // 场景：如果上面的代理没跑(Gemini)，或者跑了但失败了(DeepSeek 400错误)，走这里
+                // 这一步会绕过酒馆后端，直接从浏览器发请求，解决因酒馆版本老旧导致的 400 问题
+                try {
+                    console.log('🌍 [尝试] 浏览器直连模式...');
+                    let directUrl = `${apiUrl}/models`;
+                    let headers = { 'Content-Type': 'application/json' };
+
+                    // 针对不同厂商处理 Key 和 URL
+                    if (provider === 'gemini') {
+                        if (apiUrl.includes('googleapis.com')) {
+                            directUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+                        } else {
+                            if (authHeader) headers['Authorization'] = authHeader;
+                        }
+                    } else {
+                        // 兼容端点/DeepSeek/OpenAI 直连
+                        // 关键：确保带上 Bearer Token
+                        if (authHeader) headers['Authorization'] = authHeader;
+                    }
+
+                    const resp = await fetch(directUrl, { method: 'GET', headers: headers });
+                    
+                    // 如果直连也失败，抛出错误进入 catch
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+
+                    const data = await resp.json();
+
+                    if (provider === 'gemini' && data.models) {
+                        models = data.models.map(m => ({ id: m.name.replace('models/', ''), name: m.displayName || m.name }));
+                    } else {
+                        models = parseOpenAIModelsResponse(data);
+                    }
+
+                    if (models.length > 0) {
+                        console.log(`✅ [浏览器直连] 成功获取 ${models.length} 个模型`);
+                        
+                        // 如果是降级成功的，给个轻提示
+                        if (proxyErrorMsg) {
+                            if (typeof toastr !== 'undefined') toastr.success('后端连接受阻，已自动切换直连模式并成功！', '自动降级');
+                        }
+                        
+                        finish(models);
                         return;
                     }
+                    throw new Error('解析结果为空');
 
-                    // 🚀 路径 B: 尝试直连 (带自动降级)
-                    if (tryDirect) {
-                        try {
-                            console.log('🌍 [尝试] 浏览器直连模式...');
-                            let directUrl = `${apiUrl}/models`;
-                            let headers = { 'Content-Type': 'application/json' };
-
-                            // 针对不同厂商处理 Key
-                            if (provider === 'gemini') {
-                                if (apiUrl.includes('googleapis.com')) {
-                                    directUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-                                } else {
-                                    if (authHeader) headers['Authorization'] = authHeader;
-                                }
-                            } else {
-                                // 兼容端点/DeepSeek
-                                if (authHeader) headers['Authorization'] = authHeader;
-                            }
-
-                            const resp = await fetch(directUrl, { method: 'GET', headers: headers });
-                            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                            
-                            const data = await resp.json();
-                            
-                            if (provider === 'gemini' && data.models) {
-                                models = data.models.map(m => ({ id: m.name.replace('models/', ''), name: m.displayName || m.name }));
-                            } else {
-                                models = parseOpenAIModelsResponse(data);
-                            }
-
-                            if (models.length > 0) {
-                                console.log(`✅ [浏览器直连] 成功获取 ${models.length} 个模型`);
-                                finish(models);
-                                return;
-                            }
-                            throw new Error('解析结果为空');
-
-                        } catch (directErr) {
-                            console.warn(`⚠️ [直连失败] ${directErr.message}`);
-
-                            // ⚡⚡⚡ 核心逻辑：Compatible 失败后自动呼叫后端救兵 ⚡⚡⚡
-                            if (provider === 'compatible') {
-                                console.log('🔄 [自动降级] 直连失败，正在切换到酒馆后端代理...');
-                                if (typeof toastr !== 'undefined') toastr.warning('浏览器直连失败，尝试后端转发...', '自动降级', { timeOut: 2000 });
-                                
-                                await runProxyRequest(); // <--- 调用带Header的后端请求
-                                return;
-                            }
-                            
-                            throw directErr; 
-                        }
+                } catch (directErr) {
+                    // === 最终判决：两个通道都挂了 ===
+                    console.error('❌ 拉取失败 (双通道均失败):', directErr);
+                    
+                    let errorBody = `无法获取模型列表。`;
+                    
+                    // 只有在后端代理尝试过且失败时，才显示详细对比
+                    if (proxyErrorMsg) {
+                        errorBody += `\n\n1. 后端代理: ${proxyErrorMsg}`;
+                        errorBody += `\n2. 浏览器直连: ${directErr.message}`;
+                    } else {
+                        errorBody += `\n错误信息: ${directErr.message}`;
                     }
 
-                } catch (e) {
-                    console.error('❌ 拉取失败:', e);
-                    let msg = `拉取失败: ${e.message}`;
-                    if (e.message.includes('Failed to fetch')) msg += '\n\n💡 可能是跨域(CORS)问题，且后端代理也无法连接。';
-                    toastrOrAlert(msg, '错误', 'error');
+                    if (directErr.message.includes('Failed to fetch')) {
+                        errorBody += '\n(可能是跨域 CORS 问题)';
+                    }
+
+                    // ✨ 安抚性文案：告诉用户手写也能用
+                    errorBody += `\n\n💡 **别担心！这不影响使用。**\n拉取列表只是辅助功能。您可以直接在“模型名称”框中 **手动填写** (例如 deepseek-chat) 并点击保存即可。`;
+
+                    // 使用自定义弹窗而不是简单的 toastr，确保用户能看到解决方法
+                    if (typeof customAlert === 'function') {
+                        customAlert(errorBody, '⚠️ 拉取失败 (可手动填写)');
+                    } else {
+                        alert(errorBody);
+                    }
+                    
                     btn.text(originalText).prop('disabled', false);
                 }
 
