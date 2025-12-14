@@ -1,6 +1,6 @@
 // ========================================================================
 // 提示词管理器 - Prompt Manager for Memory Table Extension
-// 版本: 1.3.6
+// 版本: 1.3.7
 // ========================================================================
 (function() {
     'use strict';
@@ -15,7 +15,7 @@
 
     // ===== 常量定义 =====
     const PROFILE_KEY = 'gg_profiles';  // 预设数据存储键
-    const PROMPT_VERSION = 1.4;         // 提示词版本号
+    const PROMPT_VERSION = 1.5;         // 提示词版本号
 
     // ========================================================================
     // 默认提示词定义区（从 index.js 迁移）
@@ -187,19 +187,19 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
    - 忽略无剧情推动作用的流水账（如单纯的菜单描述、普通起居）。
    - 强制保留：若在交互中达成了【口头承诺】、【交易约定】或设定了【具体条件】（即使发生在吃饭/闲聊场景），必须完整记录约定的具体内容（如"答应了xx换取xx"）。
    - 强制保留：关键冲突、重要决策或剧烈的情感波动。
-   - 杜绝重复：主线和支线剧情严禁记录同一事件，当同一个剧情涉及多方，并根据规则判定为主线或支线后需记录清晰，另外一条线无需重复。
+   - 杜绝重复：主线和支线剧情严禁记录同一事件，当同一个剧情涉及多方，并根据规则判定为主线或支线后进行记录，另外一条线无需重复。
 4. 纯文本格式：严禁使用 Markdown 列表符（如 -、*、#），严禁使用加粗。每条记录之间仅用换行分隔。
 
 【总结内容分类】
 1. 主线剧情：
-   - 仅记录 {{char}} 与 {{user}} 的直接交互核心。
+   - 仅记录 主角与 {{user}} 的直接交互核心。
    - 格式：\`x年x月x日·HH:mm [地点] 角色名 事件描述（必须包含事件导致的状态/关系变更结果）。\`
    - 示例：2838年02月15日·09:00 [张氏大厦] 张三与李四达成和解，张三承诺"永远不再踏入赌坊"作为交换条件，双方关系由"敌对"转为"暂时盟友"。
 
 2. 支线剧情：
-   - 记录 {{char}}/{{user}}和NPC 互动剧情或NPC的独立行动。
+   - 记录 主角/{{user}}和NPC 互动剧情或NPC的独立行动。
    - 记录主角视角之外的关键信息（如某人暗中销毁了证据）。
-   - 格式：\`x年x月x日·HH:mm [地点] 角色名 行动描述。\`
+   - 格式：\`x年x月x日·HH:mm [地点] 角色名 精简事件描述（但必须包含事件导致的状态/关系变更结果）。\`
 
 【记忆总结·双轨聚合规则】
 请严格执行"按日归档、时空聚合"的逻辑，将【主线】与【支线】分开记录：
@@ -230,7 +230,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
 4. 🚫 禁止事项：
    - 严禁将同一天的剧情拆分成零散的流水账。
-   - 严禁在支线剧情中混入主角（{{char}}与{{user}}）的直接互动（那是主线）。
+   - 严禁在支线剧情中混入主角与{{user}}）的直接互动（那是主线）。
    - 严禁使用"表达了爱意"、"宣示主权"等抽象情感描述，只记录客观行为（如"赠送物品"、"强行带离"）。
 
 【输出格式】
@@ -240,16 +240,13 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 支线剧情：
 （在此处输出内容...）
 
-新增设定/世界观更新：
-（在此处输出内容，若无新设定则留空...）
-
 ⚡ 立即开始执行：请从头到尾记录并分析上述所有剧情，请按照规则生成剧情总结。`;
 
     // ----- 4. 批量/追溯填表提示词 -----
     const DEFAULT_BACKFILL_PROMPT = `🔴🔴🔴 历史记录填表指南 🔴🔴🔴
 
-你现在处于【历史补全模式】。你的任务是将一段"未被记录的剧情切片"整理入库。
-你的目标是：能合并的行绝对不新增！能追加的字绝对不分行！
+你现在处于【历史补全模式】。你的任务是将上面所有剧情从头到尾的"未被记录的剧情切片"整理入库。
+你的目标是：绝不遗漏新增时的初始日期及开始时间内容，能合并的行绝对不新增！能追加的字绝对不分行！
 
 【核心工作范围定义】
 1. 参考资料：System 消息中的【前情提要】和【当前表格状态】为已被总结及记录的已知过去剧情，严禁重复记录！
@@ -1191,7 +1188,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     <div class="g-p">
                         <div style="margin-bottom:12px; color:#666; font-size:12px;">请勾选需要恢复默认的项目：</div>
 
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
                             <input type="checkbox" id="rst-nsfw" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">🔓 史官破限提示词</div>
@@ -1199,7 +1196,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                             </div>
                         </label>
 
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
                             <input type="checkbox" id="rst-table" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">📋 实时填表提示词</div>
@@ -1207,7 +1204,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                             </div>
                         </label>
 
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
                             <input type="checkbox" id="rst-sum-table" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">📊 表格总结提示词</div>
@@ -1215,7 +1212,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                             </div>
                         </label>
 
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
                             <input type="checkbox" id="rst-sum-chat" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">💬 聊天总结提示词</div>
@@ -1223,7 +1220,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                             </div>
                         </label>
 
-                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:rgba(255,255,255,0.5); padding:8px; border-radius:6px;">
+                        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
                             <input type="checkbox" id="rst-backfill" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">⚡ 批量填表提示词</div>
