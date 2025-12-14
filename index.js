@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.7
+// 记忆表格 v1.3.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,13 +15,13 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.7 启动');
+    console.log('🚀 记忆表格 v1.3.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.7';
+    const V = 'v1.3.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -6523,12 +6523,7 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
 
                     if (models.length > 0) {
                         console.log(`✅ [浏览器直连] 成功获取 ${models.length} 个模型`);
-                        
-                        // 如果是降级成功的，给个轻提示
-                        if (proxyErrorMsg) {
-                            if (typeof toastr !== 'undefined') toastr.success('后端连接受阻，已自动切换直连模式并成功！', '自动降级');
-                        }
-                        
+
                         finish(models);
                         return;
                     }
@@ -7898,23 +7893,33 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
                     // 模块 A-2: 自动批量填表
                     // ============================================================
                     if (C.autoBackfill && !isInitCooling) { // ✨ 只有冷却期过才允许触发
+                        // 🔧 修复1：强制加载最新数据，防止读取到过期的 lastBackfillIndex
+                        m.load();
+
                         const lastBfIndex = API_CONFIG.lastBackfillIndex || 0;
                         const currentCount = x.chat.length;
                         const diff = currentCount - lastBfIndex;
 
+                        // 🔧 修复2：强制类型转换，防止字符串拼接错误
+                        const bfInterval = parseInt(C.autoBackfillFloor) || 10;
+
+                        // 🔧 修复3：严格布尔值检查，防止延时设置被忽略
+                        const bfDelay = (C.autoBackfillDelay === true) ? (parseInt(C.autoBackfillDelayCount) || 0) : 0;
+
                         // 计算有效阈值
-                        const bfInterval = C.autoBackfillFloor || 10;
-                        // 如果开启延迟，则阈值 = 间隔 + 延迟层数；否则阈值 = 间隔
-                        const bfDelay = C.autoBackfillDelay ? (C.autoBackfillDelayCount || 0) : 0;
                         const bfThreshold = bfInterval + bfDelay;
+
+                        // 🔧 修复4：详细的调试日志
+                        console.log(`🔍 [Auto Backfill 触发检查] 当前:${currentCount}, 上次:${lastBfIndex}, 差值:${diff}`);
+                        console.log(`🔍 [阈值计算] 间隔:${bfInterval}, 延迟:${bfDelay}, 阈值:${bfThreshold}, 延迟开关:${C.autoBackfillDelay}`);
 
                         if (diff >= bfThreshold) {
                             // 计算目标结束点 (Target End Floor)
                             // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
                             // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
-                            const targetEndIndex = C.autoBackfillDelay ? (lastBfIndex + bfInterval) : currentCount;
+                            const targetEndIndex = (C.autoBackfillDelay === true) ? (lastBfIndex + bfInterval) : currentCount;
 
-                            console.log(`⚡ [Auto Backfill] 触发逻辑! 当前:${currentCount}, 上次:${lastBfIndex}, 间隔:${bfInterval}, 延迟:${bfDelay}, 阈值:${bfThreshold}, 目标结束点:${targetEndIndex}`);
+                            console.log(`⚡ [Auto Backfill] 触发! 填表范围: ${lastBfIndex}-${targetEndIndex}`);
 
                             // ✨ 发起模式逻辑（与完成模式一致）：勾选=静默，未勾选=弹窗
                             if (!C.autoBackfillPrompt) {
@@ -8850,10 +8855,8 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong> 增加总结的目录功能：</strong>新增总结表单的目录功能</li>
-                        <li><strong> 重绘复选框：</strong>优化复选框或单选在某些主题不适配的情况</li>
-                        <li><strong> 优化追溯功能：</strong>总结功能及追溯填表的优化功能</li>
-                        <li><strong> 优化提示词：</strong>优化部分提示词，将总结提示词内对世界设定去除，统一由世界设定表单进行记录</li>
+                        <li><strong> 优化延迟功能：</strong>优化批量填表延迟楼层失效问题</li>
+                        <li><strong> 优化自动总结功能：</strong>去除自动总结调取世界书的内容</li>
                     </ul>
                 </div>
 

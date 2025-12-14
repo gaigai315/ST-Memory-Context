@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.3.7
+ * @version 1.3.8
  * @author Gaigai Team
  */
 
@@ -458,8 +458,11 @@
                     if (char.personality) charInfo += `[性格/设定]\n${char.personality}\n`;
                 }
                 if (charInfo) contextText += `\n【背景资料】\n角色: ${charName}\n用户: ${userName}\n\n${charInfo}\n`;
+                if (contextText) messages.push({ role: 'system', content: contextText });
 
-                // 3. 世界书
+                // 3. 世界书 - 已禁用
+                // ✅ [优化] 停止在总结时读取世界书，防止设定被错误写入总结导致双重上下文
+                /*
                 let scanTextForWorldInfo = '';
                 const targetSlice = ctx.chat.slice(startIndex, endIndex);
                 targetSlice.forEach(msg => scanTextForWorldInfo += (msg.mes || msg.content || '') + '\n');
@@ -485,7 +488,9 @@
                     });
                 }
                 if (triggeredLore.length > 0) contextText += `\n【相关世界设定】\n${triggeredLore.join('\n')}\n`;
-                if (contextText) messages.push({ role: 'system', content: contextText });
+                */
+
+                console.log('📊 [优化] 总结时不读取世界书，防止设定污染');
 
                 // 4. 前情提要 - 已删除
                 // ✅ [优化] 彻底不发送前情提要，避免内容重复和 Token 浪费
