@@ -8653,26 +8653,29 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
     // ========== 插件启动入口 (动态加载依赖) ==========
     // ========================================================================
 
-    // 🔧 自动获取 index.js 所在的目录路径（解决文件夹名称不匹配问题）
+    // 🔧 自动获取 index.js 所在的目录路径（终极动态版）
     function getExtensionPath() {
-    const scripts = document.getElementsByTagName('script');
-    for (let i = 0; i < scripts.length; i++) {
-        const src = scripts[i].getAttribute('src');
-        // 只要路径以 /ST-Memory-Context/index.js 结尾，就提取其目录
-        if (src && src.includes('ST-Memory-Context/index.js')) {
-            return src.replace('/index.js', '');
+        // 方案 A: 使用 currentScript (最准确，直接获取当前正在运行脚本的 URL)
+        if (document.currentScript && document.currentScript.src) {
+            // 无论 URL 是什么，去掉末尾的文件名就是目录路径
+            return document.currentScript.src.replace(/\/index\.js$/i, '').replace(/\\index\.js$/i, '');
         }
-    }
-    // 如果还没找到，尝试更宽泛的匹配（匹配当前文件名）
-    for (let i = 0; i < scripts.length; i++) {
-        const src = scripts[i].getAttribute('src');
-        if (src && src.endsWith('index.js') && src.includes('extensions')) {
-             return src.replace('/index.js', '');
+
+        // 方案 B: 遍历脚本标签 (兼容性兜底，防止 currentScript 失效)
+        const scripts = document.getElementsByTagName('script');
+        for (let i = 0; i < scripts.length; i++) {
+            const src = scripts[i].getAttribute('src');
+            if (!src) continue;
+
+            // 只要路径包含插件文件夹名，就认为是它
+            if (src.includes('ST-Memory-Context/index.js')) {
+                return src.replace(/\/index\.js$/i, '').replace(/\\index\.js$/i, '');
+            }
         }
+
+        console.error('❌ [Gaigai] 无法定位插件路径，依赖加载将失败！请检查文件夹名称是否为 ST-Memory-Context');
+        return '';
     }
-    // 最后的兜底
-    return 'scripts/extensions/third-party/ST-Memory-Context';
-}
 
 const EXTENSION_PATH = getExtensionPath();
 console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
