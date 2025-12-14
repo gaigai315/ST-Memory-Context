@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.3.6
+ * @version 1.3.7
  * @author Gaigai Team
  */
 
@@ -110,6 +110,18 @@
                     </label>
                     <div style="font-size:9px; opacity:0.7; margin-left:24px;">
                         读取当前表格内容，让AI进行合并、删减、润色
+                    </div>
+                </div>
+
+                <!-- ✅ [新增] 重构模式（覆盖）复选框 -->
+                <div id="bf-overwrite-section" style="display:none; margin-bottom:10px; background: rgba(220,53,69,0.1); border-radius: 6px; padding: 10px; border: 2px solid rgba(220,53,69,0.3);">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-bottom: 6px;">
+                        <input type="checkbox" id="bf-overwrite-mode" style="transform: scale(1.2);">
+                        <span style="color: #dc3545; font-weight: 600;">🔥 重构模式 (覆盖原数据)</span>
+                    </label>
+                    <div style="font-size:10px; color:#dc3545; line-height:1.4; padding-left:24px;">
+                        ⚠️ <strong>慎用！</strong>这将清空目标表格的旧数据，完全基于本次选取的聊天记录重新生成。<br>
+                        💡 只有在AI成功生成指令且您点击确认后，旧数据才会被清空。
                     </div>
                 </div>
 
@@ -286,6 +298,29 @@
                 // 🚀 初始化触发一次，确保打开时的状态正确
                 $('input[name="bf-mode"]:checked').trigger('change');
 
+                // ✅✅✅ [新增] 控制"重构模式"复选框的显示/隐藏
+                const updateOverwriteVisibility = function() {
+                    const mode = $('input[name="bf-mode"]:checked').val() || 'chat';
+                    const targetIndex = parseInt($('#bf-target-table').val());
+                    const $overwriteSection = $('#bf-overwrite-section');
+                    const $overwriteCheckbox = $('#bf-overwrite-mode');
+
+                    // 显示条件：聊天模式 且 选择了特定表格（非全部）
+                    if (mode === 'chat' && targetIndex !== -1) {
+                        $overwriteSection.slideDown(200);
+                    } else {
+                        // 隐藏并取消勾选
+                        $overwriteSection.slideUp(200);
+                        $overwriteCheckbox.prop('checked', false);
+                    }
+                };
+
+                // 监听模式和目标表格的变化
+                $('input[name="bf-mode"], #bf-target-table').on('change', updateOverwriteVisibility);
+
+                // 初始化时调用一次
+                updateOverwriteVisibility();
+
                 // ✅ 范围变化时智能提示
                 $('#bf-start, #bf-end').on('change', function () {
                     const start = parseInt($('#bf-start').val()) || 0;
@@ -308,6 +343,7 @@
                     const mode = $('input[name="bf-mode"]:checked').val() || 'chat'; // 🆕 获取功能模式
                     const targetIndex = parseInt($('#bf-target-table').val()); // 🆕 获取目标表格
                     const customNote = $('#bf-custom-prompt').val().trim(); // 🆕 获取自定义建议
+                    const isOverwrite = $('#bf-overwrite-mode').is(':checked'); // 🆕 获取重构模式状态
 
                     let start, end, range, isBatchMode, step;
 
@@ -380,8 +416,8 @@
                         $btn.text('⏳ 正在执行...').prop('disabled', true).css('opacity', 0.7);
                         $('#bf-status').text('初始化分批任务...').css('color', UI.tc);
 
-                        console.log(`📊 [分批追溯] 启动：${start}-${end}，步长 ${step}，目标表格：${targetIndex}, 自定义建议：${customNote ? '有' : '无'}, 模式：${mode}`);
-                        await self.runBatchBackfill(start, end, step, true, targetIndex, customNote, mode);
+                        console.log(`📊 [分批追溯] 启动：${start}-${end}，步长 ${step}，目标表格：${targetIndex}, 自定义建议：${customNote ? '有' : '无'}, 模式：${mode}, 重构模式：${isOverwrite}`);
+                        await self.runBatchBackfill(start, end, step, true, targetIndex, customNote, mode, isOverwrite);
 
                         // ✅ 执行完毕后，恢复按钮状态
                         $btn.text(oldText).prop('disabled', false).css('opacity', 1);
@@ -397,7 +433,7 @@
                         $btn.text('⏳ AI正在阅读...').prop('disabled', true).css('opacity', 0.7);
                         $('#bf-status').text('正在请求AI...').css('color', UI.tc);
 
-                        await self.autoRunBackfill(start, end, true, targetIndex, customNote, mode);
+                        await self.autoRunBackfill(start, end, true, targetIndex, customNote, mode, isOverwrite);
 
                         // 恢复按钮状态
                         $btn.text(oldText).prop('disabled', false).css('opacity', 1);
@@ -422,11 +458,12 @@
          * @param {number} targetIndex - 目标表格索引（-1表示全部表格）
          * @param {string} customNote - 用户自定义建议
          * @param {string} mode - 功能模式：'chat'=基于聊天记录追溯, 'table'=基于现有表格优化
+         * @param {boolean} isOverwrite - 重构模式（仅chat模式且单表有效）
          */
         /**
          * 批量执行入口 (修复版：即时响应停止 + 指针隔离)
          */
-        async runBatchBackfill(start, end, step = 20, isManual = false, targetIndex = -1, customNote = '', mode = 'chat') {
+        async runBatchBackfill(start, end, step = 20, isManual = false, targetIndex = -1, customNote = '', mode = 'chat', isOverwrite = false) {
             const API_CONFIG = window.Gaigai.config;
             const m = window.Gaigai.m;
             const batches = [];
@@ -520,7 +557,7 @@
                     } else {
                         // 💬 聊天追溯
                         updateStatus(`正在追溯：${batch.start}-${batch.end}层`, '#17a2b8');
-                        result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat');
+                        result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat', isOverwrite);
                     }
 
                     // 🛑 检查点 3：API返回后立即检查
@@ -563,8 +600,9 @@
                 if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
                 // ⏳ 只有在没按停止的时候，才等待落盘
-                console.log(`⏳ [IO缓冲] 等待写入完成...`);
-                await new Promise(r => setTimeout(r, 3000));
+                // ✅ [修复截断] 增加等待时间从 3 秒到 6 秒，适配 thinking 模型和云同步
+                console.log(`⏳ [IO缓冲] 等待数据完全写入 (6秒)...`);
+                await new Promise(r => setTimeout(r, 6000));
             }
 
             // 3. 结束收尾
@@ -608,8 +646,9 @@
          * @param {number} targetIndex - 目标表格索引（-1表示全部表格，0-7表示特定表格）
          * @param {string} customNote - 用户自定义建议
          * @param {string} mode - 功能模式：'chat'=基于聊天记录追溯, 'table'=基于现有表格优化
+         * @param {boolean} isOverwrite - 重构模式（仅chat模式且单表有效）
          */
-        async autoRunBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', mode = 'chat') {
+        async autoRunBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', mode = 'chat', isOverwrite = false) {
             const loadConfig = window.loadConfig || (() => Promise.resolve());
             await loadConfig();
 
@@ -622,15 +661,17 @@
                 return this.handleTableOptimization(start, end, isManual, targetIndex, customNote);
             } else {
                 // 💬 基于聊天记录追溯模式（原逻辑）
-                return this.handleChatBackfill(start, end, isManual, targetIndex, customNote);
+                return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, 0, isOverwrite);
             }
         }
 
         /**
          * 处理聊天记录追溯模式（原 autoRunBackfill 的逻辑）
          * @private
+         * @param {number} retryCount - 当前重试次数（防止递归爆炸）
+         * @param {boolean} isOverwrite - 重构模式（清空原表数据）
          */
-        async handleChatBackfill(start, end, isManual = false, targetIndex = -1, customNote = '') {
+        async handleChatBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', retryCount = 0, isOverwrite = false) {
             const ctx = window.SillyTavern.getContext();
             const m = window.Gaigai.m;
 
@@ -663,8 +704,14 @@
             const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
             const filterContentByTags = window.Gaigai.tools.filterContentByTags; // ✅ 修复：使用正确的引用路径
 
-            chatSlice.forEach(msg => {
-                if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
+            // ✅ [性能优化] 分块处理大量消息，防止UI卡死
+            const CHUNK_SIZE = 30; // 每 30 条消息让浏览器喘息一次
+            console.log(`🔄 [消息处理] 开始处理 ${chatSlice.length} 条消息，分块大小: ${CHUNK_SIZE}`);
+
+            for (let i = 0; i < chatSlice.length; i++) {
+                const msg = chatSlice[i];
+                if (msg.isGaigaiData || msg.isGaigaiPrompt) continue;
+
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
                 content = filterContentByTags(content);
@@ -675,7 +722,15 @@
                     messages.push({ role: role, content: `${name}: ${content}` });
                     validCount++;
                 }
-            });
+
+                // ✅ [UI喘息] 每处理 30 条消息，让浏览器渲染一次
+                if ((i + 1) % CHUNK_SIZE === 0) {
+                    await new Promise(r => setTimeout(r, 0));
+                    console.log(`⏸️ [进度] 已处理 ${i + 1}/${chatSlice.length} 条消息`);
+                }
+            }
+
+            console.log(`✅ [消息处理] 完成，有效消息数: ${validCount}`);
 
             if (validCount === 0) {
                 const C = window.Gaigai.config_obj;
@@ -771,13 +826,6 @@
                     messages.splice(insertIndex, 0, { role: 'system', content: `【当前表格状态 - ${sheetName}】\n${sheetContent}${statusInfo}` });
                     insertIndex++;
 
-                    // 🆕 注入单表模式指令
-                    messages.splice(insertIndex, 0, {
-                        role: 'system',
-                        content: `🎯 【单表追溯模式】\n本次追溯只关注【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，忽略其他表格。`
-                    });
-                    insertIndex++;
-
                     console.log(`🎯 [单表模式] 只处理表${targetIndex} - ${sheetName}`);
                 }
             }
@@ -792,8 +840,28 @@
                 console.log(`💬 [自定义建议] 已注入：${customNote.trim()}`);
             }
 
+            // ✅✅✅ [新增] 重构模式指令（清空原数据）
+            if (isOverwrite && targetIndex >= 0 && targetIndex <= 7) {
+                const sheet = m.s[targetIndex];
+                const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                messages.splice(insertIndex, 0, {
+                    role: 'system',
+                    content: `🔥 【重构模式启用】\n⚠️ 用户已启用「重构模式」！\n\n📌 核心要求：\n1. **忽略上述表格的所有旧数据**，它们仅供参考，不是你的填写目标。\n2. 本次追溯将完全基于聊天历史（第 ${start}-${end} 层）重新生成【表${targetIndex} - ${sheetName}】。\n3. 所有指令必须使用 **insertRow(${targetIndex}, {...})**，不要使用 updateRow。\n4. 行索引从 0 开始递增（0, 1, 2, 3...），无需考虑旧数据的索引。\n5. 请完整、系统地提取聊天记录中的所有关键信息，生成全新的表格内容。\n\n💡 提示：这是一次「全新建表」，而不是「增量填表」。`
+                });
+                insertIndex++;
+                console.log(`🔥 [重构模式] 已注入特殊指令：目标表${targetIndex}，行范围 ${start}-${end}`);
+            }
+
             let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
-            const finalInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
+            let finalInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
+
+            // 🎯 [关键修复] 单表模式指令直接拼接到 finalInstruction 后面
+            if (targetIndex >= 0 && targetIndex < 8 && m.s[targetIndex]) {
+                const sheet = m.s[targetIndex];
+                const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                finalInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
+                console.log(`🎯 [单表模式] 最终提醒已追加到指令末尾`);
+            }
 
             const lastMsg = messages[messages.length - 1];
             if (lastMsg && lastMsg.role === 'user') {
@@ -820,10 +888,18 @@
                 }
             } catch (e) {
                 console.error('请求失败', e);
+
+                // ✅ [防递归爆炸] 限制最大重试次数为 3 次
+                if (retryCount >= 3) {
+                    console.warn(`⚠️ [重试限制] 已达到最大重试次数 (3 次)，停止重试`);
+                    if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查网络或 API 配置', '重试失败');
+                    return { success: false, reason: 'max_retry_reached' };
+                }
+
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
-                const errorMsg = `批量填表失败：${e.message}\n\n是否重新尝试？`;
+                const errorMsg = `批量填表失败：${e.message}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
-                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote);
+                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite);
                 return { success: false, reason: 'api_error' };
             } finally {
                 window.isSummarizing = false;
@@ -880,6 +956,17 @@
                             .trim();
                         const cs = prs(innerText);
                         if (cs.length > 0) {
+                            // ✅✅✅ [重构模式] 静默模式下的事务性安全清空
+                            if (isOverwrite && targetIndex >= 0 && targetIndex <= 7) {
+                                const targetSheet = m.s[targetIndex];
+                                if (targetSheet) {
+                                    const oldRowCount = targetSheet.r.length;
+                                    console.log(`🔥 [重构模式-静默] 开始清空表${targetIndex}，原有 ${oldRowCount} 行数据`);
+                                    targetSheet.clear();
+                                    console.log(`✅ [重构模式-静默] 表${targetIndex} 已清空，准备写入 ${cs.length} 条新指令`);
+                                }
+                            }
+
                             exe(cs);
                             window.lastManualEditTime = Date.now();
                             window.Gaigai.config.lastBackfillIndex = end;
@@ -902,23 +989,30 @@
                             console.warn('⚠️ [静默中断] AI输出格式无效，自动降级为手动确认窗口');
                             if (typeof toastr !== 'undefined') toastr.warning('AI未按格式输出，转为手动确认', '静默中断', { timeOut: 3000 });
 
-                            const regenParams = { start, end, isManual, targetIndex, customNote };
+                            const regenParams = { start, end, isManual, targetIndex, customNote, isOverwrite };
                             const userAction = await this.showBackfillEditPopup(finalOutput, end, regenParams);
                             if (!userAction.success) return { success: false, reason: 'fallback_to_manual' };
                             return { success: true };
                         }
                     } else {
-                        const regenParams = { start, end, isManual, targetIndex, customNote };
+                        const regenParams = { start, end, isManual, targetIndex, customNote, isOverwrite };
                         const userAction = await this.showBackfillEditPopup(finalOutput, end, regenParams);
                         return userAction;
                     }
                 }
                 return { success: false, reason: 'no_output' };
             } else if (result) {
+                // ✅ [防递归爆炸] 限制最大重试次数为 3 次
+                if (retryCount >= 3) {
+                    console.warn(`⚠️ [重试限制] 已达到最大重试次数 (3 次)，停止重试`);
+                    if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查 API 配置或提示词', '重试失败');
+                    return { success: false, reason: 'max_retry_reached' };
+                }
+
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
-                const errorMsg = `批量填表失败：${result.error || '未知错误'}\n\n是否重新尝试？`;
+                const errorMsg = `批量填表失败：${result.error || '未知错误'}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
-                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote);
+                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite);
                 return { success: false, reason: 'api_failed' };
             }
         }
@@ -931,8 +1025,9 @@
          * @param {boolean} isManual - 是否手动模式
          * @param {number} targetIndex - 目标表格索引（必须指定单个表格，不支持 -1）
          * @param {string} customNote - 用户自定义建议
+         * @param {number} retryCount - 当前重试次数（防止递归爆炸）
          */
-        async handleTableOptimization(startRow, endRow, isManual = false, targetIndex = -1, customNote = '') {
+        async handleTableOptimization(startRow, endRow, isManual = false, targetIndex = -1, customNote = '', retryCount = 0) {
             const ctx = window.SillyTavern.getContext();
             const m = window.Gaigai.m;
             const API_CONFIG = window.Gaigai.config;
@@ -1045,10 +1140,18 @@
                 }
             } catch (e) {
                 console.error('❌ [表格优化] API 请求失败', e);
+
+                // ✅ [防递归爆炸] 限制最大重试次数为 3 次
+                if (retryCount >= 3) {
+                    console.warn(`⚠️ [重试限制] 已达到最大重试次数 (3 次)，停止重试`);
+                    if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查网络或 API 配置', '重试失败');
+                    return { success: false, reason: 'max_retry_reached' };
+                }
+
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
-                const errorMsg = `表格优化失败：${e.message}\n\n是否重新尝试？`;
+                const errorMsg = `表格优化失败：${e.message}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
-                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote);
+                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1);
                 return { success: false, reason: 'api_error' };
             } finally {
                 window.isSummarizing = false;
@@ -1151,10 +1254,17 @@
                 }
 
             } else if (result) {
+                // ✅ [防递归爆炸] 限制最大重试次数为 3 次
+                if (retryCount >= 3) {
+                    console.warn(`⚠️ [重试限制] 已达到最大重试次数 (3 次)，停止重试`);
+                    if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查 API 配置或提示词', '重试失败');
+                    return { success: false, reason: 'max_retry_reached' };
+                }
+
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
-                const errorMsg = `表格优化失败：${result.error || '未知错误'}\n\n是否重新尝试？`;
+                const errorMsg = `表格优化失败：${result.error || '未知错误'}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
-                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote);
+                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1);
                 return { success: false, reason: 'api_failed' };
             }
         }
@@ -1456,7 +1566,9 @@
                                     regenParams.end,
                                     regenParams.isManual,
                                     regenParams.targetIndex || -1,
-                                    regenParams.customNote || ''
+                                    regenParams.customNote || '',
+                                    'chat',
+                                    regenParams.isOverwrite || false
                                 );
 
                                 if (result && result.success && result.content) {
@@ -1535,6 +1647,17 @@
                         }
 
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 指令数: ${cs.length}`);
+
+                        // ✅✅✅ [重构模式] 事务性安全清空：只在解析成功、用户确认后才清空
+                        if (regenParams && regenParams.isOverwrite && regenParams.targetIndex >= 0 && regenParams.targetIndex <= 7) {
+                            const targetSheet = m.s[regenParams.targetIndex];
+                            if (targetSheet) {
+                                const oldRowCount = targetSheet.r.length;
+                                console.log(`🔥 [重构模式] 开始清空表${regenParams.targetIndex}，原有 ${oldRowCount} 行数据`);
+                                targetSheet.clear();
+                                console.log(`✅ [重构模式] 表${regenParams.targetIndex} 已清空，准备写入 ${cs.length} 条新指令`);
+                            }
+                        }
 
                         // 执行写入
                         exe(cs);
@@ -1702,12 +1825,6 @@
                     const nextIndex = sheet.r.length;
                     messages.splice(insertIndex, 0, { role: 'system', content: `【当前表格状态 - ${sheetName}】\n${sheetContent}\n⏭️ 新增请用索引 ${nextIndex}` });
                     insertIndex++;
-
-                    messages.splice(insertIndex, 0, {
-                        role: 'system',
-                        content: `🎯 【单表追溯模式】\n本次追溯只关注【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，忽略其他表格。`
-                    });
-                    insertIndex++;
                 }
             }
 
@@ -1722,7 +1839,14 @@
 
             // User 指令
             let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
-            const finalInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
+            let finalInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
+
+            // 🎯 [关键修复] 单表模式指令直接拼接到 finalInstruction 后面（重新生成时也保持一致）
+            if (targetIndex >= 0 && targetIndex < 8 && m.s[targetIndex]) {
+                const sheet = m.s[targetIndex];
+                const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                finalInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
+            }
 
             const lastMsg = messages[messages.length - 1];
             if (lastMsg && lastMsg.role === 'user') {

@@ -1,4 +1,4 @@
-/* Gaigai v1.3.6 */
+/* Gaigai v1.3.7 */
 
 :root {
     --g-c: #888888;
@@ -985,28 +985,6 @@
     color: var(--g-c);
 }
 
-/* ✅✅✅ 强制修复复选框显示和选中状态 ✅✅✅ */
-input[type="checkbox"].g-row-select,
-input[type="checkbox"].g-select-all {
-    -webkit-appearance: checkbox !important;
-    -moz-appearance: checkbox !important;
-    appearance: checkbox !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    display: block !important;
-    position: relative !important;
-    z-index: 99999 !important;
-    pointer-events: auto !important;
-    cursor: pointer !important;
-}
-
-/* 确保勾选状态可见 */
-input[type="checkbox"].g-row-select:checked,
-input[type="checkbox"].g-select-all:checked {
-    background-color: var(--g-c) !important;
-    border-color: var(--g-c) !important;
-}
-
 /* 选中行的背景色 */
 .g-row.g-selected {
     background-color: rgba(136, 136, 136, 0.15) !important;
@@ -1045,36 +1023,178 @@ input[type="checkbox"].g-select-all:checked {
     100% { background: rgba(136, 136, 136, 0.3); }
 }
 
-/* ========== 复选框 (原生回归版) ========== */
-#g-pop input[type="checkbox"] {
-    /* 1. 核心：告诉浏览器使用原生样式，不要隐藏 */
-    appearance: auto !important;
-    -webkit-appearance: checkbox !important;
-    
-    /* 2. 核心：强制指定“强调色”为你的主题色 (红色) */
-    /* 这行代码会自动让对勾变成红色底，同时保留原生的白色勾 */
-    accent-color: var(--g-c) !important; 
-    
-    /* 3. 未选中时：强制白底 (解决灰底问题) */
-    background-color: #ffffff !important;
-    border: 1px solid #ccc !important;
-    
-    /* 4. 尺寸稍微统一一下，防止太小 */
+/* ==========================================
+   ✅ 复选框终极重构 (强制颜色跟随主题)
+   ========================================== */
+
+/* 1. 选中所有插件内的复选框 */
+#g-pop input[type="checkbox"],
+.g-w input[type="checkbox"],
+.g-p input[type="checkbox"] {
+    /* 清除浏览器原生默认样式 */
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    outline: none !important;
+
+    /* 定义盒子尺寸 */
     width: 18px !important;
     height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+
+    /* 默认边框：跟随字体颜色，但半透明 */
+    border: 1px solid var(--g-tc) !important;
+    border-radius: 4px !important;
+
+    /* 默认背景：轻微透明白，适配深色底 */
+    background-color: rgba(255, 255, 255, 0.1) !important;
+
     cursor: pointer !important;
-    
-    /* 5. 清除多余样式，防止错位 */
+    position: relative !important;
     margin: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    transition: all 0.2s ease-in-out !important;
     box-shadow: none !important;
-    position: static !important; /* 恢复默认定位 */
 }
 
-/* ⚠️ 必须删除所有 ::before 和 ::after 的代码，防止重影！ */
-#g-pop input[type="checkbox"]::before,
-#g-pop input[type="checkbox"]::after {
-    display: none !important;
-    content: none !important;
+/* 2. 选中状态 (Checked) */
+#g-pop input[type="checkbox"]:checked,
+.g-w input[type="checkbox"]:checked,
+.g-p input[type="checkbox"]:checked {
+    /* 🔥 背景色：跟随表头/按钮主题色 */
+    background-color: var(--g-c) !important;
+    /* 边框色：同主题色 */
+    border-color: var(--g-c) !important;
+    opacity: 1 !important;
+}
+
+/* 3. 绘制对勾 (Checkmark) - 使用伪元素 */
+#g-pop input[type="checkbox"]::after,
+.g-w input[type="checkbox"]::after,
+.g-p input[type="checkbox"]::after {
+    content: '' !important;
+    position: absolute !important;
+
+    /* 对勾位置微调 */
+    left: 5px !important;
+    top: 2px !important;
+
+    /* 对勾大小 */
+    width: 5px !important;
+    height: 9px !important;
+
+    /* 🔥 对勾颜色：强制跟随字体颜色 */
+    border: solid var(--g-tc) !important;
+    border-width: 0 2px 2px 0 !important;
+
+    /* 动画初始状态：旋转45度但缩放为0 (隐藏) */
+    transform: rotate(45deg) scale(0) !important;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    display: block !important;
+}
+
+/* 4. 选中时显示对勾 */
+#g-pop input[type="checkbox"]:checked::after,
+.g-w input[type="checkbox"]:checked::after,
+.g-p input[type="checkbox"]:checked::after {
+    /* 放大显示 */
+    transform: rotate(45deg) scale(1) !important;
+}
+
+/* 5. 修复表格和配置页中的布局对齐 */
+.g-col-num input[type="checkbox"],
+.g-n input[type="checkbox"] {
+    display: block !important;
+    margin: 0 auto !important; /* 表格内居中 */
+}
+
+.g-p label input[type="checkbox"] {
+    margin-right: 8px !important; /* 配置页文字间距 */
+    margin-top: -2px !important; /* 垂直微调 */
+}
+
+/* ==========================================
+   🔘 单选按钮重构 (圆形选择器)
+   ========================================== */
+
+/* 1. 选中所有插件内的单选按钮 */
+#g-pop input[type="radio"],
+.g-w input[type="radio"],
+.g-p input[type="radio"] {
+    /* 清除浏览器原生默认样式 */
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    outline: none !important;
+
+    /* 定义盒子尺寸 (圆形) */
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+
+    /* 圆形边框 */
+    border: 1px solid var(--g-tc) !important;
+    border-radius: 50% !important; /* 圆形！ */
+
+    /* 默认背景 */
+    background-color: rgba(255, 255, 255, 0.1) !important;
+
+    cursor: pointer !important;
+    position: relative !important;
+    margin: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    transition: all 0.2s ease-in-out !important;
+    box-shadow: none !important;
+}
+
+/* 2. 选中状态 */
+#g-pop input[type="radio"]:checked,
+.g-w input[type="radio"]:checked,
+.g-p input[type="radio"]:checked {
+    /* 边框加粗并变为主题色 */
+    border: 2px solid var(--g-c) !important;
+    background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* 3. 绘制内圆 (选中时显示) */
+#g-pop input[type="radio"]::after,
+.g-w input[type="radio"]::after,
+.g-p input[type="radio"]::after {
+    content: '' !important;
+    position: absolute !important;
+
+    /* 居中定位 */
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) scale(0) !important;
+
+    /* 内圆大小 */
+    width: 8px !important;
+    height: 8px !important;
+
+    /* 内圆颜色：主题色 */
+    background: var(--g-c) !important;
+    border-radius: 50% !important;
+
+    /* 动画 */
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+/* 4. 选中时显示内圆 */
+#g-pop input[type="radio"]:checked::after,
+.g-w input[type="radio"]:checked::after,
+.g-p input[type="radio"]:checked::after {
+    transform: translate(-50%, -50%) scale(1) !important;
+}
+
+/* 5. 修复布局对齐 */
+.g-p label input[type="radio"] {
+    margin-right: 8px !important;
+    margin-top: -2px !important;
 }
 
 /* ==========================================

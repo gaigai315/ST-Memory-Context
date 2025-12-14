@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.6
+// 记忆表格 v1.3.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,10 +15,10 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.6 启动');
+    console.log('🚀 记忆表格 v1.3.7 启动');
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.6';
+    const V = 'v1.3.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -241,9 +241,11 @@
             $overlay.append($dialog);
             $('body').append($overlay);
 
-            $overlay.on('click', (e) => {
-                if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
-            });
+            // ✅ [修复] 移除点击遮罩层关闭弹窗的功能，防止误操作
+            // 只允许通过点击按钮或 ESC/Enter 键关闭
+            // $overlay.on('click', (e) => {
+            //     if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
+            // });
 
             $(document).on('keydown.' + id, (e) => {
                 if (e.key === 'Escape' || e.key === 'Enter') {
@@ -680,9 +682,11 @@
             $overlay.append($dialog);
             $('body').append($overlay);
 
-            $overlay.on('click', (e) => {
-                if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
-            });
+            // ✅ [修复] 移除点击遮罩层关闭弹窗的功能，防止误操作
+            // 只允许通过点击按钮或 ESC/Enter 键关闭
+            // $overlay.on('click', (e) => {
+            //     if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
+            // });
 
             $(document).on('keydown.' + id, (e) => {
                 if (e.key === 'Escape') { $(document).off('keydown.' + id); $overlay.remove(); resolve(false); }
@@ -776,13 +780,132 @@
             $overlay.append($dialog);
             $('body').append($overlay);
 
-            $overlay.on('click', (e) => {
-                if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
-            });
+            // ✅ [修复] 移除点击遮罩层关闭弹窗的功能，防止误操作
+            // 只允许通过点击按钮或 ESC 键关闭
+            // $overlay.on('click', (e) => {
+            //     if (e.target === $overlay[0]) { $overlay.remove(); resolve(false); }
+            // });
 
             $(document).on('keydown.' + id, (e) => {
                 if (e.key === 'Escape') { $(document).off('keydown.' + id); $overlay.remove(); resolve(false); }
                 else if (e.key === 'Enter') { $(document).off('keydown.' + id); $overlay.remove(); resolve(true); }
+            });
+        });
+    }
+
+    // ✅✅✅ [新增] 总结表删除选项弹窗
+    /**
+     * 总结表删除选项弹窗
+     * @param {number} currentPage - 当前页码（从1开始）
+     * @param {number} totalPages - 总页数
+     * @returns {Promise<string|null>} - 'current'=删除当前页, 'all'=删除全部, null=取消
+     */
+    function showDeleteOptionsDialog(currentPage, totalPages) {
+        return new Promise((resolve) => {
+            const id = 'delete-options-' + Date.now();
+
+            // 🌙 Dark Mode: 动态颜色
+            const isDark = UI.darkMode;
+            const dialogBg = isDark ? '#1e1e1e' : '#fff';
+            const bodyColor = isDark ? '#e0e0e0' : '#333';
+            const borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#eee';
+
+            const $overlay = $('<div>', {
+                id: id,
+                css: {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.6)', zIndex: 20000005,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px', margin: 0
+                }
+            });
+
+            const $dialog = $('<div>', {
+                css: {
+                    background: dialogBg, borderRadius: '12px',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    maxWidth: '500px', width: '90%',
+                    maxHeight: '80vh', overflow: 'auto'
+                }
+            });
+
+            const $header = $('<div>', {
+                css: {
+                    background: '#dc3545', // 红色警告背景
+                    color: '#ffffff',
+                    padding: '16px 20px', borderRadius: '12px 12px 0 0',
+                    fontSize: '16px', fontWeight: '600'
+                },
+                text: '🗑️ 删除总结'
+            });
+
+            const $body = $('<div>', {
+                css: {
+                    padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
+                    color: bodyColor
+                }
+            });
+
+            const infoText = $('<div>', {
+                css: { marginBottom: '16px', whiteSpace: 'pre-wrap' },
+                text: `当前第 ${currentPage} 页，共 ${totalPages} 页总结\n\n请选择删除范围：`
+            });
+
+            const $footer = $('<div>', {
+                css: {
+                    padding: '12px 20px', borderTop: `1px solid ${borderColor}`, textAlign: 'right',
+                    display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap'
+                }
+            });
+
+            const $cancelBtn = $('<button>', {
+                text: '✖️ 取消',
+                css: {
+                    background: '#6c757d', color: '#ffffff',
+                    border: 'none', padding: '8px 20px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
+                }
+            }).on('click', () => { $overlay.remove(); resolve(null); });
+
+            const $currentBtn = $('<button>', {
+                text: `📄 删除当前页 (第${currentPage}页)`,
+                css: {
+                    background: '#ff9800', color: '#ffffff',
+                    border: 'none', padding: '8px 20px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s',
+                    fontWeight: '600'
+                }
+            }).on('click', () => { $overlay.remove(); resolve('current'); });
+
+            const $allBtn = $('<button>', {
+                text: `🗑️ 删除全部 (${totalPages}页)`,
+                css: {
+                    background: '#dc3545', color: '#ffffff',
+                    border: 'none', padding: '8px 20px', borderRadius: '6px',
+                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s',
+                    fontWeight: '600'
+                }
+            }).on('click', () => { $overlay.remove(); resolve('all'); });
+
+            // 悬停效果
+            $cancelBtn.hover(function () { $(this).css('filter', 'brightness(0.9)') }, function () { $(this).css('filter', 'brightness(1)') });
+            $currentBtn.hover(function () { $(this).css('filter', 'brightness(1.1)') }, function () { $(this).css('filter', 'brightness(1)') });
+            $allBtn.hover(function () { $(this).css('filter', 'brightness(1.1)') }, function () { $(this).css('filter', 'brightness(1)') });
+
+            $body.append(infoText);
+            $footer.append($cancelBtn, $currentBtn, $allBtn);
+            $dialog.append($header, $body, $footer);
+            $overlay.append($dialog);
+            $('body').append($overlay);
+
+            // ✅ 不允许点击遮罩层关闭，防止误操作
+            $(document).on('keydown.' + id, (e) => {
+                if (e.key === 'Escape') {
+                    $(document).off('keydown.' + id);
+                    $overlay.remove();
+                    resolve(null);
+                }
             });
         });
     }
@@ -3086,6 +3209,124 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 color: #ccc !important;
             }
         ` : ''}
+
+        /* ========== 📚 侧边目录样式 ========== */
+        /* 目录容器 */
+        .g-book-toc-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 260px;
+            background: ${bg_window};
+            z-index: 100;
+            box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            transform: translateX(-100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(10px);
+            border-right: 1px solid ${color_border};
+        }
+
+        /* 展开状态 */
+        .g-book-toc-panel.active {
+            transform: translateX(0);
+        }
+
+        /* 目录头部 */
+        .g-toc-header {
+            padding: 15px;
+            border-bottom: 1px solid ${color_border};
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: ${color_text};
+            flex-shrink: 0;
+        }
+
+        /* 目录列表区 */
+        .g-toc-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        /* 单个目录项 */
+        .g-toc-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            background: ${bg_table_cell};
+            cursor: pointer;
+            border: 1px solid ${color_border};
+            transition: all 0.2s;
+        }
+
+        .g-toc-item:hover {
+            background: ${bg_header};
+            transform: translateX(4px);
+            border-color: ${color_text};
+        }
+
+        /* 当前页高亮 */
+        .g-toc-item.active {
+            background: ${bg_header};
+            border: 2px solid ${color_text};
+            filter: brightness(1.1);
+            color: ${color_text};
+            font-weight: bold;
+        }
+
+        .g-toc-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: ${color_text};
+        }
+
+        .g-toc-meta {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-bottom: 4px;
+            display: inline-block;
+            background: rgba(0,0,0,0.1);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .g-toc-preview {
+            font-size: 11px;
+            opacity: 0.7;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 遮罩层 (点击空白关闭) */
+        .g-toc-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 99;
+            display: none;
+        }
+
+        .g-toc-overlay.active {
+            display: block;
+        }
+
+        /* 📱 移动端适配 */
+        @media (max-width: 768px) {
+            .g-book-toc-panel {
+                width: 80vw;
+                max-width: 300px;
+            }
+        }
     `;
         
         $('#gaigai-theme').remove();
@@ -3314,6 +3555,36 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (currentBookPage >= sheet.r.length) currentBookPage = sheet.r.length - 1;
         if (currentBookPage < 0) currentBookPage = 0;
 
+        // ✨✨✨ 生成目录 HTML ✨✨✨
+        let tocItems = '';
+        sheet.r.forEach((r, idx) => {
+            const tTitle = r[0] || '无标题';
+            const tContent = (r[1] || '').substring(0, 30);
+            const tContentDisplay = tContent ? tContent + (r[1].length > 30 ? '...' : '') : '(暂无内容)';
+            const tNote = r[2] ? `<div class="g-toc-meta">📌 ${esc(r[2])}</div>` : '';
+            const activeClass = idx === currentBookPage ? ' active' : '';
+
+            tocItems += `
+                <div class="g-toc-item${activeClass}" data-page="${idx}" data-ti="${tableIndex}">
+                    <div class="g-toc-title">${idx + 1}. ${esc(tTitle)}</div>
+                    ${tNote}
+                    <div class="g-toc-preview">${esc(tContentDisplay)}</div>
+                </div>`;
+        });
+
+        const tocHtml = `
+            <div class="g-toc-overlay" id="g-toc-overlay-${tableIndex}"></div>
+            <div class="g-book-toc-panel" id="g-book-toc-${tableIndex}">
+                <div class="g-toc-header">
+                    <span>📚 目录导航</span>
+                    <button id="g-toc-close-${tableIndex}" style="background:none;border:none;cursor:pointer;font-size:20px;color:inherit;padding:0;">×</button>
+                </div>
+                <div class="g-toc-list">
+                    ${tocItems}
+                </div>
+            </div>
+        `;
+
         const isHidden = isSummarized(tableIndex, currentBookPage);
         const row = sheet.r[currentBookPage];
         const title = row[0] || '无标题';
@@ -3361,6 +3632,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         const controlsHtml = `
             <div class="g-book-controls">
+                <button class="g-book-btn g-book-toc-toggle" data-ti="${tableIndex}" style="margin-right:auto;">
+                    <i class="fa-solid fa-list"></i> 目录
+                </button>
+
                 <button class="g-book-btn g-book-prev" data-ti="${tableIndex}" ${!canPrev ? 'disabled' : ''}>
                     <i class="fa-solid fa-arrow-left"></i> 上一篇
                 </button>
@@ -3380,7 +3655,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 6. 组合HTML：注意 controlsHtml 被放到了 g-book-header 里面
         return `<div class="g-tbc" data-i="${tableIndex}" style="${v}">
-            <div class="g-book-view" style="${hiddenStyle}">
+            <div class="g-book-view" style="${hiddenStyle}; position: relative;">
+                ${tocHtml}
                 ${watermark}
                 
                 <!-- 头部：标题 + 按钮 -->
@@ -3550,6 +3826,58 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 e.stopPropagation();
                 $(this).blur(); // 触发 change 事件
             }
+        });
+
+        // =========================================================
+        // 📚 侧边目录事件绑定
+        // =========================================================
+        // 1. 打开目录：点击"目录"按钮
+        $('#g-pop').off('click', '.g-book-toc-toggle').on('click', '.g-book-toc-toggle', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const ti = parseInt($(this).data('ti'));
+            $(`#g-book-toc-${ti}`).addClass('active');
+            $(`#g-toc-overlay-${ti}`).addClass('active');
+        });
+
+        // 2. 关闭目录：点击遮罩层
+        $('#g-pop').off('click', '.g-toc-overlay').on('click', '.g-toc-overlay', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $overlay = $(this);
+            const overlayId = $overlay.attr('id');
+            const ti = overlayId.replace('g-toc-overlay-', '');
+            $(`#g-book-toc-${ti}`).removeClass('active');
+            $overlay.removeClass('active');
+        });
+
+        // 3. 关闭目录：点击关闭按钮
+        $('#g-pop').off('click', '[id^="g-toc-close-"]').on('click', '[id^="g-toc-close-"]', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const closeId = $(this).attr('id');
+            const ti = closeId.replace('g-toc-close-', '');
+            $(`#g-book-toc-${ti}`).removeClass('active');
+            $(`#g-toc-overlay-${ti}`).removeClass('active');
+        });
+
+        // 4. 跳转页面：点击目录项
+        $('#g-pop').off('click', '.g-toc-item').on('click', '.g-toc-item', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const targetPage = parseInt($(this).data('page'));
+            const ti = parseInt($(this).data('ti'));
+
+            // 更新当前页码
+            currentBookPage = targetPage;
+
+            // 刷新笔记本视图
+            refreshBookView(ti);
+
+            // 自动关闭目录（移动端体验优化）
+            $(`#g-book-toc-${ti}`).removeClass('active');
+            $(`#g-toc-overlay-${ti}`).removeClass('active');
         });
 
         // 辅助函数：刷新笔记本视图
@@ -3961,32 +4289,66 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 获取当前页码
                     const pageToDelete = currentBookPage;
+                    const totalPages = sh.r.length;
 
                     // 边界检查
-                    if (pageToDelete < 0 || pageToDelete >= sh.r.length) {
+                    if (totalPages === 0) {
+                        await customAlert('⚠️ 总结表为空，无需删除', '提示');
+                        return;
+                    }
+
+                    if (pageToDelete < 0 || pageToDelete >= totalPages) {
                         await customAlert('⚠️ 当前页码无效', '错误');
                         return;
                     }
 
-                    // 弹出确认框
-                    if (!await customConfirm(`确定删除第 ${pageToDelete + 1} 页的内容吗？`, '确认删除')) {
-                        return;
+                    // ✅ [新增] 弹出选择框：删除当前页 还是 删除全部
+                    const deleteOption = await showDeleteOptionsDialog(pageToDelete + 1, totalPages);
+
+                    if (deleteOption === null) {
+                        return; // 用户取消
                     }
 
-                    // 删除指定行
-                    sh.del(pageToDelete);
+                    if (deleteOption === 'current') {
+                        // 删除当前页
+                        sh.del(pageToDelete);
 
-                    // ✅ 关键：同步更新 summarizedRows[8]
-                    if (summarizedRows[8]) {
-                        summarizedRows[8] = summarizedRows[8]
-                            .filter(ri => ri !== pageToDelete)  // 移除被删除的索引
-                            .map(ri => ri > pageToDelete ? ri - 1 : ri);  // 大于删除索引的都 -1（行号前移）
-                        saveSummarizedRows();
-                    }
+                        // ✅ 关键：同步更新 summarizedRows[8]
+                        if (summarizedRows[8]) {
+                            summarizedRows[8] = summarizedRows[8]
+                                .filter(ri => ri !== pageToDelete)  // 移除被删除的索引
+                                .map(ri => ri > pageToDelete ? ri - 1 : ri);  // 大于删除索引的都 -1（行号前移）
+                            saveSummarizedRows();
+                        }
 
-                    // ✅ 边界处理：删除后，如果当前页超过了新的总页数，将其减 1
-                    if (currentBookPage >= sh.r.length && currentBookPage > 0) {
-                        currentBookPage--;
+                        // ✅ 边界处理：删除后，如果当前页超过了新的总页数，将其减 1
+                        if (currentBookPage >= sh.r.length && currentBookPage > 0) {
+                            currentBookPage--;
+                        }
+
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`第 ${pageToDelete + 1} 页已删除`, '删除成功', { timeOut: 1500, preventDuplicates: true });
+                        }
+
+                    } else if (deleteOption === 'all') {
+                        // 删除全部总结
+                        const originalCount = sh.r.length;
+
+                        // 清空总结表
+                        sh.r = [];
+
+                        // 清空已总结标记
+                        if (summarizedRows[8]) {
+                            summarizedRows[8] = [];
+                            saveSummarizedRows();
+                        }
+
+                        // 重置页码
+                        currentBookPage = 0;
+
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`已删除全部 ${originalCount} 页总结`, '删除成功', { timeOut: 2000, preventDuplicates: true });
+                        }
                     }
 
                     // 保存并刷新视图
@@ -3995,10 +4357,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     updateCurrentSnapshot();
                     refreshBookView(ti);
                     updateTabCount(ti);
-
-                    if (typeof toastr !== 'undefined') {
-                        toastr.success(`第 ${pageToDelete + 1} 页已删除`, '删除成功', { timeOut: 1500, preventDuplicates: true });
-                    }
 
                 } finally {
                     isDeletingRow = false;  // 解锁
@@ -8443,11 +8801,10 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong> 新增夜间模式：</strong>在主题内可切换夜间模式</li>
-                        <li><strong> 优化API稳定性：</strong>将Deepseek渠道改为酒馆后端，避免CORS限制。</li>
-                        <li><strong> 优化追溯功能：</strong>对已经记录的表单单独进行优化。主要用于可整理、删除、合并</li>
-                        <li><strong> 优化提示词：</strong>优化部分提示词</li>
-                        <li><strong> 优化数据丢失：</strong>加强数据隔离和污染,加强记录数据的稳定性防止丢失。</li>
+                        <li><strong> 增加总结的目录功能：</strong>新增总结表单的目录功能</li>
+                        <li><strong> 重绘复选框：</strong>优化复选框或单选在某些主题不适配的情况</li>
+                        <li><strong> 优化追溯功能：</strong>总结功能及追溯填表的优化功能</li>
+                        <li><strong> 优化提示词：</strong>优化部分提示词，将总结提示词内对世界设定去除，统一由世界设定表单进行记录</li>
                     </ul>
                 </div>
 
@@ -8526,8 +8883,10 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
             });
             checkForUpdates(cleanVer);
 
-            // ✅ 绑定一键更新按钮事件
-            $('#auto-update-plugin-btn').on('click', function () {
+            // ✅ [修复] 使用事件委托绑定更新按钮 (解决异步加载导致无法点击的问题)
+            $(document).off('click', '#auto-update-plugin-btn').on('click', '#auto-update-plugin-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
                 performPluginUpdate();
             });
         }, 100);
@@ -8609,11 +8968,16 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
         } catch (e) {
             // 步骤F: 错误处理
             console.error('[热更新] 失败:', e);
+
+            // ✅ [修复] 使用友好的弹窗提示，而不仅仅是 toastr
+            const errorMsg = `❌ 自动更新失败\n\n错误信息：${e.message}\n\n💡 解决方案：\n1. 检查网络连接\n2. 前往酒馆"扩展"页面手动更新\n3. 检查 CSRF Token 是否有效`;
+
+            await customAlert(errorMsg, '更新失败');
+
             if (typeof toastr !== 'undefined') {
                 toastr.error(e.message, '更新失败');
-            } else {
-                alert('更新失败: ' + e.message);
             }
+
             btn.text(oldText).prop('disabled', false);
         }
     }

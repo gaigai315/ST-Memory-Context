@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.3.6
+ * @version 1.3.7
  * @author Gaigai Team
  */
 
@@ -488,31 +488,41 @@
                 if (contextText) messages.push({ role: 'system', content: contextText });
 
                 // 4. 前情提要
-                if (m.sm.has()) {
-                    const summaryArray = m.sm.loadArray();
-                    const recentSummaries = summaryArray.slice(-15);
-                    recentSummaries.forEach((item) => {
-                        messages.push({
-                            role: 'system',
-                            content: `【前情提要 - ${item.type || '历史'}】\n${item.content}`
+                // ✅ [性能优化] 分批聊天模式下跳过前情提要，减少 token 消耗
+                if (!isBatch || isTableMode) {
+                    if (m.sm.has()) {
+                        const summaryArray = m.sm.loadArray();
+                        const recentSummaries = summaryArray.slice(-15);
+                        recentSummaries.forEach((item) => {
+                            messages.push({
+                                role: 'system',
+                                content: `【前情提要 - ${item.type || '历史'}】\n${item.content}`
+                            });
                         });
-                    });
+                    } else {
+                        messages.push({ role: 'system', content: '【前情提要】\n（暂无历史总结）' });
+                    }
                 } else {
-                    messages.push({ role: 'system', content: '【前情提要】\n（暂无历史总结）' });
+                    console.log('📊 [批量优化] 跳过前情提要，减少 token 消耗');
                 }
 
                 // 5. 当前表格状态
-                let hasTableContext = false;
-                m.s.slice(0, 8).forEach((sheet, i) => {
-                    if (sheet.r.length > 0) {
-                        hasTableContext = true;
-                        messages.push({
-                            role: 'system',
-                            content: `【当前表格状态 - ${sheet.n}】\n${sheet.txt(i)}`
-                        });
-                    }
-                });
-                if (!hasTableContext) messages.push({ role: 'system', content: `【当前表格状态】\n（表格为空）` });
+                // ✅ [性能优化] 分批聊天模式下跳过表格状态，减少 token 消耗
+                if (!isBatch || isTableMode) {
+                    let hasTableContext = false;
+                    m.s.slice(0, 8).forEach((sheet, i) => {
+                        if (sheet.r.length > 0) {
+                            hasTableContext = true;
+                            messages.push({
+                                role: 'system',
+                                content: `【当前表格状态 - ${sheet.n}】\n${sheet.txt(i)}`
+                            });
+                        }
+                    });
+                    if (!hasTableContext) messages.push({ role: 'system', content: `【当前表格状态】\n（表格为空）` });
+                } else {
+                    console.log('📊 [批量优化] 跳过表格状态，减少 token 消耗');
+                }
 
                 // 6. 聊天记录
                 const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
@@ -1130,9 +1140,9 @@
                     console.log(`⚠️ [分批总结] 批次 ${batchNum} 失败但用户选择继续`);
                 }
 
-                // ⏳ [稳定性等待] 强制等待 5 秒
-                console.log(`⏳ [批次缓冲] 等待数据落盘...`);
-                await new Promise(r => setTimeout(r, 5000));
+                // ⏳ [稳定性等待] 强制等待 6 秒（与追溯保持一致，适配 thinking 模型）
+                console.log(`⏳ [批次缓冲] 等待数据完全落盘 (6秒)...`);
+                await new Promise(r => setTimeout(r, 6000));
             }
 
             // 等待最后一批数据的世界书同步防抖结束
