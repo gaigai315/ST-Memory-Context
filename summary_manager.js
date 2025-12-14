@@ -488,8 +488,8 @@
                 if (contextText) messages.push({ role: 'system', content: contextText });
 
                 // 4. 前情提要
-                // ✅ [性能优化] 分批聊天模式下跳过前情提要，减少 token 消耗
-                if (!isBatch || isTableMode) {
+                // ✅ [优化] 单次手动总结不发送前情提要，只在批量模式下发送以减少 token 消耗
+                if (isBatch) {
                     if (m.sm.has()) {
                         const summaryArray = m.sm.loadArray();
                         const recentSummaries = summaryArray.slice(-15);
@@ -503,12 +503,12 @@
                         messages.push({ role: 'system', content: '【前情提要】\n（暂无历史总结）' });
                     }
                 } else {
-                    console.log('📊 [批量优化] 跳过前情提要，减少 token 消耗');
+                    console.log('📊 [单次总结] 跳过前情提要，减少 token 消耗');
                 }
 
                 // 5. 当前表格状态
-                // ✅ [性能优化] 分批聊天模式下跳过表格状态，减少 token 消耗
-                if (!isBatch || isTableMode) {
+                // ✅ [优化] 单次手动总结不发送表格状态，只在批量模式下发送以减少 token 消耗
+                if (isBatch) {
                     let hasTableContext = false;
                     m.s.slice(0, 8).forEach((sheet, i) => {
                         if (sheet.r.length > 0) {
@@ -521,7 +521,7 @@
                     });
                     if (!hasTableContext) messages.push({ role: 'system', content: `【当前表格状态】\n（表格为空）` });
                 } else {
-                    console.log('📊 [批量优化] 跳过表格状态，减少 token 消耗');
+                    console.log('📊 [单次总结] 跳过表格状态，减少 token 消耗');
                 }
 
                 // 6. 聊天记录
@@ -569,17 +569,22 @@
                 });
 
                 // 2. 写入历史总结
-                if (m.sm.has()) {
-                    const summaryArray = m.sm.loadArray();
-                    const recentSummaries = summaryArray.slice(-15);
-                    recentSummaries.forEach((item) => {
-                        messages.push({
-                            role: 'system',
-                            content: `【前情提要 - ${item.type || '历史'}】\n${item.content}`
+                // ✅ [优化] 单次手动总结不发送前情提要，只在批量模式下发送
+                if (isBatch) {
+                    if (m.sm.has()) {
+                        const summaryArray = m.sm.loadArray();
+                        const recentSummaries = summaryArray.slice(-15);
+                        recentSummaries.forEach((item) => {
+                            messages.push({
+                                role: 'system',
+                                content: `【前情提要 - ${item.type || '历史'}】\n${item.content}`
+                            });
                         });
-                    });
+                    } else {
+                        messages.push({ role: 'system', content: '【前情提要】\n（暂无历史总结）' });
+                    }
                 } else {
-                    messages.push({ role: 'system', content: '【前情提要】\n（暂无历史总结）' });
+                    console.log('📊 [单次表格总结] 跳过前情提要，减少 token 消耗');
                 }
 
                 // 3. 写入详情表格
