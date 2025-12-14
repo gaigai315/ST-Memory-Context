@@ -17,6 +17,9 @@
 
     console.log('🚀 记忆表格 v1.3.7 启动');
 
+    // ===== 防止配置被后台同步覆盖的标志 =====
+    window.isEditingConfig = false;
+
     // ==================== 全局常量定义 ====================
     const V = 'v1.3.7';
     const SK = 'gg_data';              // 数据存储键
@@ -3363,7 +3366,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const $x = $('<button>', {
             class: 'g-x',
             text: '×'
-        }).on('click', () => { $o.remove(); pageStack = []; });
+        }).on('click', () => {
+            window.isEditingConfig = false; // 关闭弹窗时重置编辑标志
+            $o.remove();
+            pageStack = [];
+        });
         $right.append($x);
 
         // 组装标题栏
@@ -3375,7 +3382,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // ❌ [已禁用] 点击遮罩关闭 - 防止编辑时误触
         // $o.on('click', e => { if (e.target === $o[0]) { $o.remove(); pageStack = []; } });
-        $(document).on('keydown.g', e => { if (e.key === 'Escape') { $o.remove(); pageStack = []; $(document).off('keydown.g'); } });
+        $(document).on('keydown.g', e => {
+            if (e.key === 'Escape') {
+                window.isEditingConfig = false; // Esc关闭时也重置编辑标志
+                $o.remove();
+                pageStack = [];
+                $(document).off('keydown.g');
+            }
+        });
 
         $('body').append($o);
         return $p;
@@ -6285,6 +6299,7 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
     </div>`;
 
         pop('🤖 AI总结配置', h, true);
+        window.isEditingConfig = true; // 标记开始编辑配置，防止后台同步覆盖用户输入
 
         setTimeout(() => {
 
@@ -6637,6 +6652,12 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
         // ✅ 检查全局保存标记，如果正在保存配置，则跳过加载
         if (window.isSavingConfig) {
             console.log('⏸️ [配置加载] 检测到正在保存配置，跳过本次加载以避免冲突');
+            return;
+        }
+
+        // ✅ 检查是否正在编辑配置UI，防止后台同步覆盖用户输入
+        if (window.isEditingConfig) {
+            console.log('⏸️ [配置加载] 检测到正在编辑配置，跳过本次加载以避免覆盖用户输入');
             return;
         }
 
@@ -7066,6 +7087,7 @@ const useDirect = (provider === 'compatible' || provider === 'gemini');
     </div>`;
 
         pop('⚙️ 配置', h, true);
+        window.isEditingConfig = true; // 标记开始编辑配置，防止后台同步覆盖用户输入
 
         setTimeout(() => {
             // ✅✅✅ 新增：重置追溯进度
