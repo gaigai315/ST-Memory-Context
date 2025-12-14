@@ -491,23 +491,9 @@
                 // ✅ [优化] 彻底不发送前情提要，避免内容重复和 Token 浪费
                 console.log('📊 [优化] 不发送前情提要，避免重复内容');
 
-                // 5. 当前表格状态
-                // ✅ [优化] 单次手动总结不发送表格状态，只在批量模式下发送以减少 token 消耗
-                if (isBatch) {
-                    let hasTableContext = false;
-                    m.s.slice(0, 8).forEach((sheet, i) => {
-                        if (sheet.r.length > 0) {
-                            hasTableContext = true;
-                            messages.push({
-                                role: 'system',
-                                content: `【当前表格状态 - ${sheet.n}】\n${sheet.txt(i)}`
-                            });
-                        }
-                    });
-                    if (!hasTableContext) messages.push({ role: 'system', content: `【当前表格状态】\n（表格为空）` });
-                } else {
-                    console.log('📊 [单次总结] 跳过表格状态，减少 token 消耗');
-                }
+                // 5. 当前表格状态 - 已删除
+                // ✅ [优化] 聊天总结时不发送表格状态，只专注于聊天记录本身
+                console.log('📊 [优化] 聊天总结不发送表格状态，专注聊天记录');
 
                 // 6. 聊天记录
                 const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
