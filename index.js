@@ -577,7 +577,6 @@
 
                     console.log('⚡ [世界书同步] 触发前端刷新');
                     $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
-                    $fileInput.trigger('change');
                 }
 
                 // 更新缓存
@@ -7764,7 +7763,6 @@ let useDirect = (provider === 'gemini');
                     // 触发导入
                     console.log('⚡ [强制覆盖] 触发前端模拟导入...');
                     $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
-                    $fileInput.trigger('change');
 
                     // 6. 更新本地缓存 (防止后续自动任务冲突)
                     if (typeof globalWorldInfoEntriesCache !== 'undefined') {
