@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.3.9
+ * @version 1.4.0
  * @author Gaigai Team
  */
 
@@ -1503,21 +1503,22 @@
                 // 🎯 根据 newIndex 构造标题
                 const progressText = newIndex !== null ? ` (进度: ${newIndex}层)` : '';
 
-                const h = `
-                <div class="g-p">
-                    <h4>⚡ 剧情追溯确认${progressText}</h4>
-                    <p style="opacity:0.8; font-size:11px; margin-bottom:10px;">
-                        ✅ AI 已生成指令，请检查。<br>
-                        💡 点击 <strong>[确认]</strong> 将写入数据并继续，点击 <strong>[放弃]</strong> 将终止后续任务。
-                    </p>
-                    <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(content)}</textarea>
-                    <div style="margin-top:12px; display: flex; gap: 10px;">
-                        <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃任务</button>
-                        ${regenParams ? '<button id="bf-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
-                        <button id="bf-popup-confirm" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">🚀 确认并执行</button>
-                    </div>
+                // ✨ 修复：显式指定文字颜色，防止被酒馆默认样式覆盖导致看不清
+            const h = `
+            <div class="g-p" style="display: flex; flex-direction: column; height: 100%;">
+                <h4 style="margin: 0 0 8px 0; color: ${UI.tc};">⚡ 剧情追溯确认${progressText}</h4>
+                <p style="opacity:0.8; font-size:11px; margin: 0 0 10px 0; color: ${UI.tc};">
+                    ✅ AI 已生成指令，请检查。<br>
+                    💡 点击 <strong>[确认]</strong> 将写入数据并继续，点击 <strong>[放弃]</strong> 将终止后续任务。
+                </p>
+                <textarea id="bf-popup-editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; color: ${UI.tc}; background: transparent;">${esc(content)}</textarea>
+                <div style="margin-top:12px; display: flex; gap: 10px; flex-shrink: 0;">
+                    <button id="bf-popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃任务</button>
+                    ${regenParams ? '<button id="bf-popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
+                    <button id="bf-popup-confirm" style="padding:8px 16px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 2; font-weight:bold;">🚀 确认并执行</button>
                 </div>
-                `;
+            </div>
+            `;
 
                 $('#g-backfill-pop').remove();
                 const $o = $('<div>', { id: 'g-backfill-pop', class: 'g-ov', css: { 'z-index': '10000005' } });

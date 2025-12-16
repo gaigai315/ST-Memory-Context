@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.3.9
+// 记忆表格 v1.4.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,13 +15,13 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.3.9 启动');
+    console.log('🚀 记忆表格 v1.4.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.3.9';
+    const V = 'v1.4.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2884,9 +2884,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         
         .g-e:focus { outline: 2px solid ${bg_header} !important; outline-offset: -2px; background: ${bg_edit_focus} !important; /* 🌙 动态背景 */ box-shadow: 0 4px 12px ${shadowColor} !important; z-index: 10; position: relative; overflow-y: auto !important; align-items: flex-start !important; }
         .g-e:hover { background: ${bg_edit_hover} !important; /* 🌙 动态背景 */ box-shadow: inset 0 0 0 1px var(--g-c); }
+        
+        /* 1. 基础状态：强制背景色和文字颜色 */
+        #g-pop input[type="number"], #g-pop input[type="text"], #g-pop input[type="password"], #g-pop select, #g-pop textarea { 
+            background: ${bg_input} !important; 
+            color: ${color_text} !important; 
+            border: 1px solid ${color_border} !important; 
+            font-size: var(--g-fs, 12px) !important; 
+            border-radius: 4px !important;
+            outline: none !important;
+            transition: border-color 0.2s, box-shadow 0.2s !important;
+        }
 
-        #g-pop input[type="number"], #g-pop input[type="text"], #g-pop input[type="password"], #g-pop select, #g-pop textarea { background: ${bg_input} !important; /* 🌙 动态背景 */ color: ${color_text} !important; border: 1px solid ${color_border} !important; font-size: var(--g-fs, 12px) !important; }
-        .g-p input[type="number"], .g-p input[type="text"], .g-p select, .g-p textarea { color: ${color_text} !important; }
+        /* 2. 强制锁死 Hover(悬停) 和 Focus(聚焦) 状态 */
+        #g-pop input:hover, #g-pop textarea:hover, #g-pop select:hover,
+        #g-pop input:focus, #g-pop textarea:focus, #g-pop select:focus {
+            background: ${bg_input} !important;
+            color: ${color_text} !important;
+            border-color: ${UI.c} !important;
+            box-shadow: 0 0 0 1px ${UI.c}af !important;
+            opacity: 1 !important;
+        }
+
+        /* 3. 辅助权重增强 */
+        .g-p input[type="number"], .g-p input[type="text"], .g-p select, .g-p textarea { 
+            color: ${color_text} !important; 
+            background: ${bg_input} !important;
+        }
         
         .g-col-num { position: sticky !important; left: 0 !important; z-index: 11 !important; background: ${bg_header} !important; border-right: 1px solid ${color_border} !important; }
         tbody .g-col-num { background: ${bg_row_num} !important; /* 🌙 动态背景 */ z-index: 9 !important; }
@@ -8938,8 +8962,8 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong> 优化延迟功能：</strong>优化批量填表延迟楼层失效问题</li>
-                        <li><strong> 优化自动总结功能：</strong>去除自动总结调取世界书的内容</li>
+                        <li><strong> 优化css：</strong>追溯的弹窗css在电脑端的错误显示</li>
+                        <li><strong> 优化指针问题：</strong>微调进度指针的逻辑</li>
                     </ul>
                 </div>
 
