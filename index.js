@@ -6473,10 +6473,10 @@ let useDirect = (provider === 'gemini');
                 btn.text('拉取中...').prop('disabled', true);
 
                 // ========================================
-                // 1. 获取参数
+                // 1. 获取参数 - 直接从 DOM 读取当前输入框的值
                 // ========================================
-                let apiUrl = $('#api-url').val().trim();
-                const apiKey = $('#api-key').val().trim();
+                let apiUrl = $('#api-url').val().trim().replace(/\/+$/, '');
+                let apiKey = $('#api-key').val().trim();
                 
                 // ✅ 核心修复：提前构造鉴权头 (Bearer sk-...)
                 // 这一点是之前漏掉的，导致部分中转站不认账
@@ -6728,12 +6728,15 @@ let useDirect = (provider === 'gemini');
                     const btn = $(this);
                     const originalText = btn.text();
 
-                    // ✅✅✅ [解耦修复] 直接读取 DOM 值，不触发保存按钮
-                    const currentUrl = $('#api-url').val().trim().replace(/\/+$/, ''); // 去除末尾斜杠
-                    const currentKey = $('#api-key').val().trim();
+                    // ========================================
+                    // 1. 直接从 DOM 读取当前输入框的值
+                    // ========================================
+                    let currentUrl = $('#api-url').val().trim().replace(/\/+$/, '');
+                    let currentKey = $('#api-key').val().trim();
                     const currentModel = $('#api-model').val().trim();
                     const currentMaxTokens = parseInt($('#api-max-tokens').val()) || 8192;
                     const currentProvider = $('#api-provider').val();
+                    const currentMode = $('input[name="api-mode"]:checked').val() === 'independent';
 
                     // 验证必填项
                     if (!currentModel) {
@@ -6741,13 +6744,29 @@ let useDirect = (provider === 'gemini');
                         return;
                     }
 
-                    // ✅ 临时更新配置对象（仅在内存中，用于本次测试）
-                    API_CONFIG.apiUrl = currentUrl;
-                    API_CONFIG.apiKey = currentKey;
-                    API_CONFIG.model = currentModel;
-                    API_CONFIG.maxTokens = currentMaxTokens;
-                    API_CONFIG.provider = currentProvider;
-                    API_CONFIG.useIndependentAPI = $('input[name="api-mode"]:checked').val() === 'independent';
+                    // 应用原有的 URL 处理逻辑
+                    if (currentUrl.includes('0.0.0.0')) {
+                        currentUrl = currentUrl.replace(/0\.0\.0\.0/g, '127.0.0.1');
+                    }
+                    if (typeof processApiUrl === 'function') {
+                        currentUrl = processApiUrl(currentUrl, currentProvider);
+                    } else {
+                        if (currentProvider !== 'gemini' && !currentUrl.includes('/v1') && !currentUrl.includes('/chat')) {
+                            currentUrl += '/v1';
+                        }
+                    }
+
+                    // ========================================
+                    // 2. 备份 API_CONFIG 的当前值
+                    // ========================================
+                    const backup = {
+                        apiUrl: API_CONFIG.apiUrl,
+                        apiKey: API_CONFIG.apiKey,
+                        model: API_CONFIG.model,
+                        maxTokens: API_CONFIG.maxTokens,
+                        provider: API_CONFIG.provider,
+                        useIndependentAPI: API_CONFIG.useIndependentAPI
+                    };
 
                     console.log('🧪 [API测试] 使用配置:', {
                         provider: currentProvider,
@@ -6759,6 +6778,16 @@ let useDirect = (provider === 'gemini');
                     btn.text('测试中...').prop('disabled', true);
 
                     try {
+                        // ========================================
+                        // 3. 临时覆盖 API_CONFIG（仅用于本次测试）
+                        // ========================================
+                        API_CONFIG.apiUrl = currentUrl;
+                        API_CONFIG.apiKey = currentKey;
+                        API_CONFIG.model = currentModel;
+                        API_CONFIG.maxTokens = currentMaxTokens;
+                        API_CONFIG.provider = currentProvider;
+                        API_CONFIG.useIndependentAPI = currentMode;
+
                         const testPrompt = "请简短回复：API连接测试是否成功？";
                         const result = await callIndependentAPI(testPrompt);
 
@@ -6790,6 +6819,16 @@ let useDirect = (provider === 'gemini');
                             return;
                         }
                     } finally {
+                        // ========================================
+                        // 4. 还原 API_CONFIG 到测试前的状态
+                        // ========================================
+                        API_CONFIG.apiUrl = backup.apiUrl;
+                        API_CONFIG.apiKey = backup.apiKey;
+                        API_CONFIG.model = backup.model;
+                        API_CONFIG.maxTokens = backup.maxTokens;
+                        API_CONFIG.provider = backup.provider;
+                        API_CONFIG.useIndependentAPI = backup.useIndependentAPI;
+
                         btn.text(originalText).prop('disabled', false);
                     }
                 };
