@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.4.0
+ * @version 1.4.1
  * @author Gaigai Team
  */
 
@@ -629,49 +629,87 @@
                     return { success: false, error: '总结内容过短或无效' };
                 }
 
-                if (!isTableMode && isSilent) {
+                // ✅✅✅ [核心修复] 无论是表格模式还是聊天模式，只要是自动(静默)执行，就必须推进指针，防止重复触发
+                if (isSilent && endIndex !== null && endIndex !== undefined) {
                     const currentLast = API_CONFIG.lastSummaryIndex || 0;
+                    // 只有当新位置比旧位置靠后时才更新
                     if (endIndex > currentLast) {
                         API_CONFIG.lastSummaryIndex = endIndex;
                         localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                        console.log(`✅ [自动进度更新] 指针已推进至: ${endIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
+
+                        // ✅ 同步到云端，防止被全局配置覆盖
+                        if (typeof window.saveAllSettingsToCloud === 'function') {
+                            window.saveAllSettingsToCloud().catch(err => {
+                                console.warn('⚠️ [指针同步] 云端同步失败:', err);
+                            });
+                        }
                     }
                 }
 
                 if (isSilent && !skipSave) {
+                    // 总是先保存总结内容
                     m.sm.save(cleanSummary, currentRangeStr);
                     await window.syncToWorldInfo(cleanSummary);
 
+                    // ✨✨✨ 关键修复：表格模式下，检查用户的静默配置
                     if (isTableMode && currentMode === 'table') {
-                        tables.forEach(table => {
-                            const ti = m.all().indexOf(table);
-                            if (ti !== -1) {
-                                for (let ri = 0; ri < table.r.length; ri++) window.markAsSummarized(ti, ri);
+                        if (!C.autoSummarySilent) {
+                            // 用户未勾选"完成后静默保存"，需要弹出三选一操作框
+                            // 不要在这里标记为绿色，让代码继续走到 showSummaryPreview
+                            console.log('📊 [表格总结] 用户未勾选静默保存，将弹出三选一操作框');
+                            // 什么都不做，让代码继续执行到下面的 else 分支
+                        } else {
+                            // 用户勾选了静默保存，自动标记为绿色并结束
+                            tables.forEach(table => {
+                                const ti = m.all().indexOf(table);
+                                if (ti !== -1) {
+                                    for (let ri = 0; ri < table.r.length; ri++) window.markAsSummarized(ti, ri);
+                                }
+                            });
+
+                            if (typeof window.saveAllSettingsToCloud === 'function') {
+                                window.saveAllSettingsToCloud().catch(err => {
+                                    console.warn('⚠️ [自动总结] 云端同步失败:', err);
+                                });
                             }
-                        });
+
+                            m.save();
+                            window.updateCurrentSnapshot();
+
+                            if ($('#g-pop').length > 0) window.Gaigai.shw();
+
+                            if (typeof toastr !== 'undefined') {
+                                if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
+                            }
+                            return { success: true };
+                        }
+                    } else {
+                        // 非表格模式（聊天总结），正常静默执行
+                        if (typeof window.saveAllSettingsToCloud === 'function') {
+                            window.saveAllSettingsToCloud().catch(err => {
+                                console.warn('⚠️ [自动总结] 云端同步失败:', err);
+                            });
+                        }
+
+                        m.save();
+                        window.updateCurrentSnapshot();
+
+                        if ($('#g-pop').length > 0) window.Gaigai.shw();
+
+                        if (typeof toastr !== 'undefined') {
+                            if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
+                        }
+                        return { success: true };
                     }
-
-                    if (typeof window.saveAllSettingsToCloud === 'function') {
-                        window.saveAllSettingsToCloud().catch(err => {
-                            console.warn('⚠️ [自动总结] 云端同步失败:', err);
-                        });
-                    }
-
-                    m.save();
-                    window.updateCurrentSnapshot();
-
-                    if ($('#g-pop').length > 0) window.Gaigai.shw();
-
-                    if (typeof toastr !== 'undefined') {
-                        if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
-                    }
-                    return { success: true };
                 } else if (isSilent && skipSave) {
                     return { success: true, summary: cleanSummary };
-                } else {
-                    const regenParams = { forceStart, forceEnd, forcedMode, isSilent };
-                    const res = await this.showSummaryPreview(cleanSummary, tables, isTableMode, endIndex, regenParams, currentRangeStr, isBatch);
-                    return res;
                 }
+
+                // ✨ 如果是表格模式且用户未勾选静默，会执行到这里，弹出预览窗口
+                const regenParams = { forceStart, forceEnd, forcedMode, isSilent };
+                const res = await this.showSummaryPreview(cleanSummary, tables, isTableMode, endIndex, regenParams, currentRangeStr, isBatch);
+                return res;
 
             } else {
                 // 失败重试

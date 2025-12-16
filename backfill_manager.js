@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.4.0
+ * @version 1.4.1
  * @author Gaigai Team
  */
 
@@ -619,6 +619,11 @@
             if (successCount > 0) {
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
                 window.Gaigai.m.save();
+
+                // ✅✅✅ 批量任务完成后，强制更新快照，确保与实时填表同步
+                const updateCurrentSnapshot = window.updateCurrentSnapshot || (() => {});
+                updateCurrentSnapshot();
+                console.log('📸 [批量填表完成] 已更新当前楼层快照');
             }
 
             const msg = failedBatches.length > 0
