@@ -365,13 +365,13 @@
                 css: {
                     width: '80px',
                     padding: '6px',
-                    border: `1px solid ${inputBorder}`,
-                    borderRadius: '4px',
-                    textAlign: 'center',
-                    fontSize: '14px',
                     // ✅✅✅ [强制覆盖] 使用 !important 确保不被酒馆全局样式污染
                     background: (isDark ? '#333333' : '#ffffff') + ' !important',
-                    color: (isDark ? '#e0e0e0' : '#333333') + ' !important'
+                    color: (isDark ? '#e0e0e0' : '#333333') + ' !important',
+                    border: `1px solid ${inputBorder} !important`,
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    fontSize: '14px'
                 }
             });
 
@@ -7993,8 +7993,8 @@ let useDirect = (provider === 'gemini');
                             exe(cs);
                             m.save(); // 保存到本地存储
 
-                            // ✅ [修复重复处理] 更新进度指针，防止自动总结和批量填表重复处理该楼层
-                            API_CONFIG.lastSummaryIndex = i;
+                            // ✅ [修复] 实时填表只更新填表指针，不更新总结指针
+                            // 原因：实时填表不应该阻止自动总结触发，两者是独立的功能
                             API_CONFIG.lastBackfillIndex = i;
                             localStorage.setItem(AK, JSON.stringify(API_CONFIG));
 
@@ -8005,7 +8005,7 @@ let useDirect = (provider === 'gemini');
                                 });
                             }
 
-                            console.log(`✅ [实时填表] 进度指针已更新至第 ${i} 楼`);
+                            console.log(`✅ [实时填表] 填表指针已更新至第 ${i} 楼`);
                         } else {
                             console.log(`Testing: 第 ${i} 楼无指令，保持基准状态。`);
                         }

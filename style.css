@@ -924,6 +924,33 @@
     border-radius: 4px;
     font-size: 11px;
     width: 100%;
+    /* ✅✅✅ [强制覆盖] 防止被 SillyTavern 全局样式污染 */
+    background: #ffffff !important;
+    color: #333333 !important;
+}
+
+/* ✅ 通用规则：所有插件弹窗中的输入框都强制覆盖样式 */
+.g-w input[type="number"],
+.g-w input[type="text"],
+.g-w input[type="password"],
+.g-w select,
+#g-pop input[type="number"],
+#g-pop input[type="text"],
+#g-pop input[type="password"],
+#g-pop select {
+    background: #ffffff !important;
+    color: #333333 !important;
+    border: 1px solid #ddd !important;
+}
+
+/* ✅ 夜间模式下的输入框样式 */
+.g-w.g-gl input[type="number"],
+.g-w.g-gl input[type="text"],
+.g-w.g-gl input[type="password"],
+.g-w.g-gl select {
+    background: #2a2a2a !important;
+    color: #e0e0e0 !important;
+    border-color: rgba(255,255,255,0.2) !important;
 }
 
 .g-p button {
