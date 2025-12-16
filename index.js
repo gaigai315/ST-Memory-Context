@@ -7960,10 +7960,17 @@ let useDirect = (provider === 'gemini');
 
                         // 🛡️ 基准快照检查
                         if (baseKey) {
-                            // ⚡ 强制回档！这一步非常关键
-                            // 无论当前表格是什么样，必须先回到上一楼的样子
-                            restoreSnapshot(baseKey);
-                            console.log(`↺ [同步] 基准重置成功：已回滚至快照 [${baseKey}]`);
+                            // 🛡️ [防清空补丁] 如果找到的是创世快照(-1)，但当前已经是聊天中途(i > 2)，
+                            // 说明中间快照丢失（通常是刷新后）。此时绝对禁止回滚到空状态，必须信任当前加载的数据。
+                            if (baseKey === '-1' && i > 2) {
+                                console.warn(`🛑 [智能保护] 第 ${i} 楼缺失前序快照，禁止回滚到创世快照(-1)，保留当前内存数据作为基准。`);
+                                // 不执行 restoreSnapshot，直接使用当前 m.s 中的数据
+                            } else {
+                                // ⚡ 强制回档！这一步非常关键
+                                // 无论当前表格是什么样，必须先回到上一楼的样子
+                                restoreSnapshot(baseKey);
+                                console.log(`↺ [同步] 基准重置成功：已回滚至快照 [${baseKey}]`);
+                            }
                         } else {
                             // [新增] 熔断机制：如果是非第一条消息且找不到基准快照，禁止继续写入
                             // 这通常发生在重Roll时丢失了上一个状态，继续写入会导致数据重复叠加
@@ -8420,11 +8427,22 @@ let useDirect = (provider === 'gemini');
 
                 // 3. ⏪ [核心步骤] 发送请求前，强制回滚表格！
                 if (baseKey) {
-                    restoreSnapshot(baseKey);
-                    console.log(`↺ [opmt] 成功回档: 表格已恢复至基准 [${baseKey}]`);
+                    // ✅ [安全补丁] 如果只找到了创世快照(-1)，但当前楼层较高(>5)，说明是刷新后丢失了中间快照。
+                    // 此时禁止回滚，防止将有数据的表格清空。
+                    if (baseKey === '-1' && targetIndex > 5) {
+                        console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高且缺失中间快照，禁止回滚到初始状态，保持当前数据。`);
+                    } else {
+                        restoreSnapshot(baseKey);
+                        console.log(`↺ [opmt] 成功回档: 表格已恢复至基准 [${baseKey}]`);
+                    }
                 } else if (baseIndex === -1 && snapshotHistory['-1']) {
-                    restoreSnapshot('-1');
-                    console.log(`↺ [opmt] 成功回档: 表格已恢复至创世状态`);
+                    // ✅ [安全补丁] 同样检查楼层高度
+                    if (targetIndex > 5) {
+                        console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高但只有创世快照，禁止回滚，保持当前数据。`);
+                    } else {
+                        restoreSnapshot('-1');
+                        console.log(`↺ [opmt] 成功回档: 表格已恢复至创世状态`);
+                    }
                 } else {
                     // ⚠️ 如果实在找不到存档，为了防止脏数据污染 Prompt，这里选择不做操作(保持现状)或清空
                     // 根据用户要求：保持现状可能导致AI不输出标签，但清空可能丢失手动数据。
@@ -8738,7 +8756,12 @@ let useDirect = (provider === 'gemini');
                         restoreSnapshot('-1'); // 第0楼回滚到创世快照
                         console.log(`↺ [Swipe] 第0楼回档至创世快照`);
                     } else {
-                        console.warn(`⚠️ [Swipe] 警告: 找不到上一楼的快照，无法回滚！`);
+                        // ✅ [安全补丁] 找不到上一楼快照时，检查是否是高楼层刷新后的情况
+                        if (id > 5 && snapshotHistory['-1']) {
+                            console.warn(`🛑 [安全拦截] 第 ${id} 楼缺失中间快照（可能是刷新后），禁止回滚到初始状态，保持当前数据。`);
+                        } else {
+                            console.warn(`⚠️ [Swipe] 警告: 找不到上一楼 [${prevKey}] 的快照，跳过回滚以保护数据。`);
+                        }
                     }
 
                     // 3. 🗑️ [第三步：清理现场] 销毁当前楼层的旧快照
