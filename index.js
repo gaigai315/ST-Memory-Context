@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.0
+// 记忆表格 v1.4.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,13 +15,13 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.0 启动');
+    console.log('🚀 记忆表格 v1.4.1 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.0';
+    const V = 'v1.4.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -369,8 +369,9 @@
                     borderRadius: '4px',
                     textAlign: 'center',
                     fontSize: '14px',
-                    background: inputBg,
-                    color: bodyColor
+                    // ✅✅✅ [强制覆盖] 使用 !important 确保不被酒馆全局样式污染
+                    background: (isDark ? '#333333' : '#ffffff') + ' !important',
+                    color: (isDark ? '#e0e0e0' : '#333333') + ' !important'
                 }
             });
 
@@ -6713,6 +6714,10 @@ let useDirect = (provider === 'gemini');
                 // 🌐 使用统一函数保存全量配置到服务端 (支持跨设备同步)
                 await saveAllSettingsToCloud();
 
+                // ✅✅✅ [双重备份] 将 API_CONFIG 同步到角色卡元数据
+                m.save();
+                console.log('✅ [API配置保存] 已同步到角色卡元数据');
+
                 await customAlert('✅ API配置已保存\n\n输出长度将根据模型自动优化', '成功');
             });
 
@@ -6720,14 +6725,35 @@ let useDirect = (provider === 'gemini');
                 const testAPIWithRetry = async () => {
                     const btn = $(this);
                     const originalText = btn.text();
-                    const testModel = $('#api-model').val().trim();
 
-                    if (!testModel) {
+                    // ✅✅✅ [解耦修复] 直接读取 DOM 值，不触发保存按钮
+                    const currentUrl = $('#api-url').val().trim().replace(/\/+$/, ''); // 去除末尾斜杠
+                    const currentKey = $('#api-key').val().trim();
+                    const currentModel = $('#api-model').val().trim();
+                    const currentMaxTokens = parseInt($('#api-max-tokens').val()) || 8192;
+                    const currentProvider = $('#api-provider').val();
+
+                    // 验证必填项
+                    if (!currentModel) {
                         await customAlert('请先填写模型名称！', '提示');
                         return;
                     }
 
-                    $('#save-api').click();
+                    // ✅ 临时更新配置对象（仅在内存中，用于本次测试）
+                    API_CONFIG.apiUrl = currentUrl;
+                    API_CONFIG.apiKey = currentKey;
+                    API_CONFIG.model = currentModel;
+                    API_CONFIG.maxTokens = currentMaxTokens;
+                    API_CONFIG.provider = currentProvider;
+                    API_CONFIG.useIndependentAPI = $('input[name="api-mode"]:checked').val() === 'independent';
+
+                    console.log('🧪 [API测试] 使用配置:', {
+                        provider: currentProvider,
+                        url: currentUrl,
+                        model: currentModel,
+                        maxTokens: currentMaxTokens
+                    });
+
                     btn.text('测试中...').prop('disabled', true);
 
                     try {
@@ -7891,6 +7917,15 @@ let useDirect = (provider === 'gemini');
                     console.warn('🛑 [安全拦截] 会话已变更，终止写入！');
                     return;
                 }
+
+                    // ✨✨✨ [防冲突] 检查是否正在执行总结，避免快照冲突
+                    if (window.isSummarizing) {
+                        console.log('⏸️ [实时填表] 检测到正在执行总结，延迟处理...');
+                        // 延迟 2 秒后重新尝试
+                        setTimeout(() => omsg(i), 2000);
+                        return;
+                    }
+
                     // ✅ [修复进度指针重置] 在核心计算前加载最新配置，防止 API_CONFIG.lastBackfillIndex 被后台同步重置
                     m.load();
 
@@ -8962,8 +8997,14 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong> 优化css：</strong>追溯的弹窗css在电脑端的错误显示</li>
-                        <li><strong> 优化指针问题：</strong>微调进度指针的逻辑</li>
+                        <li><strong>🔧 修复自动总结弹窗：</strong>表格总结现支持弹窗选择"变绿/删除/保留"（取消勾选"完成后静默保存"即可）</li>
+                        <li><strong>🔧 修复填表冲突：</strong>实时填表与自动总结不再互相干扰，快照同步更稳定</li>
+                        <li><strong>🔧 修复批量填表：</strong>批量任务完成后自动更新快照，确保数据一致性</li>
+                        <li><strong>🔧 修复API测试：</strong>解决"手动输入模型名称后测试提示为空"的问题，测试与保存逻辑完全解耦</li>
+                        <li><strong>🔧 修复表格模式指针：</strong>表格总结模式下进度指针现在会正常更新，不再出现死循环重复触发</li>
+                        <li><strong>🔧 修复顺延输入框：</strong>临时顺延输入框样式不再受酒馆全局样式污染，白天/夜间模式显示正常</li>
+                        <li><strong>✨ 优化CSS：</strong>追溯弹窗在电脑端的显示效果</li>
+                        <li><strong>✨ 优化指针：</strong>微调进度指针的同步逻辑</li>
                     </ul>
                 </div>
 
