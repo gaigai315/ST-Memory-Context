@@ -943,11 +943,19 @@
     border: 1px solid #ddd !important;
 }
 
+/* ✅ 专门针对顺延输入框的强制样式（双重保险） */
+#postpone-floors {
+    background: #ffffff !important;
+    color: #333333 !important;
+    border: 1px solid #ddd !important;
+}
+
 /* ✅ 夜间模式下的输入框样式 */
 .g-w.g-gl input[type="number"],
 .g-w.g-gl input[type="text"],
 .g-w.g-gl input[type="password"],
-.g-w.g-gl select {
+.g-w.g-gl select,
+.g-w.g-gl #postpone-floors {
     background: #2a2a2a !important;
     color: #e0e0e0 !important;
     border-color: rgba(255,255,255,0.2) !important;

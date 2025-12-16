@@ -283,6 +283,7 @@
             const bodyColor = isDark ? '#e0e0e0' : '#333';
             const borderColor = isDark ? 'rgba(255,255,255,0.1)' : '#eee';
             const inputBg = isDark ? '#333333' : '#ffffff';
+            const inputColor = isDark ? '#e0e0e0' : '#333333';
             const inputBorder = isDark ? 'rgba(255,255,255,0.2)' : '#ddd';
             const labelColor = isDark ? '#aaa' : '#666';
             const btnBg = isDark ? '#252525' : UI.c;
@@ -361,19 +362,20 @@
                 id: 'postpone-floors',
                 value: '0',
                 min: '0',
-                max: '100',
-                css: {
-                    width: '80px',
-                    padding: '6px',
-                    // ✅✅✅ [强制覆盖] 使用 !important 确保不被酒馆全局样式污染
-                    background: (isDark ? '#333333' : '#ffffff') + ' !important',
-                    color: (isDark ? '#e0e0e0' : '#333333') + ' !important',
-                    border: `1px solid ${inputBorder} !important`,
-                    borderRadius: '4px',
-                    textAlign: 'center',
-                    fontSize: '14px'
-                }
+                max: '100'
             });
+
+            // ✅✅✅ [强制覆盖] 使用 attr('style') 设置样式，才能保留 !important
+            $input.attr('style', `
+                width: 80px;
+                padding: 6px;
+                background: ${inputBg} !important;
+                color: ${inputColor} !important;
+                border: 1px solid ${inputBorder} !important;
+                border-radius: 4px;
+                text-align: center;
+                font-size: 14px;
+            `);
 
             const $inputLabel = $('<span>', {
                 css: { fontSize: '13px', color: labelColor },

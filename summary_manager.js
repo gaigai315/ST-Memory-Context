@@ -536,6 +536,10 @@
 
             } else {
                 // === 场景 B: 总结表格模式 (这里加上了 ELSE，修复了逻辑穿透问题) ===
+
+                // ✅✅✅ [修复] 表格模式下也需要设置 endIndex，用于进度指针更新
+                endIndex = (forceEnd !== null) ? parseInt(forceEnd) : (ctx && ctx.chat ? ctx.chat.length : 0);
+
                 // 1. 写入 NSFW 破限提示词
                 messages.push({
                     role: 'system',
@@ -879,12 +883,13 @@
                         m.sm.save(editedSummary, noteValue);
                         await window.syncToWorldInfo(editedSummary);
 
-                        if (!isTableMode && newIndex !== null) {
+                        // ✅✅✅ [修复] 删除 !isTableMode 限制，无论什么模式都应更新进度指针
+                        if (newIndex !== null && newIndex !== undefined) {
                             const currentLast = API_CONFIG.lastSummaryIndex || 0;
                             if (newIndex > currentLast) {
                                 API_CONFIG.lastSummaryIndex = newIndex;
                                 try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
-                                console.log(`✅ [进度更新] 总结进度已更新至: ${newIndex}`);
+                                console.log(`✅ [进度更新] 总结进度已更新至: ${newIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
                             }
                         }
 
