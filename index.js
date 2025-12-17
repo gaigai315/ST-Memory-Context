@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.1
+// 记忆表格 v1.4.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,13 +15,13 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.1 启动');
+    console.log('🚀 记忆表格 v1.4.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.1';
+    const V = 'v1.4.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2655,6 +2655,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const bg_edit_focus = isDark ? 'rgba(60, 60, 60, 0.9)' : 'rgba(255, 249, 230, 0.95)';
         const bg_edit_hover = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 251, 240, 0.9)';
         const bg_row_num = isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(200, 200, 200, 0.4)';
+        const bg_summarized = isDark ? 'rgba(40, 167, 69, 0.25)' : 'rgba(40, 167, 69, 0.15)';
 
 
 
@@ -2803,7 +2804,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             transform: translate3d(0, 0, 0);
             will-change: background-color;
         }
-        .g-row.g-summarized { background-color: rgba(0, 0, 0, 0.05) !important; }
+        .g-row.g-summarized { background-color: ${bg_summarized} !important; }
+        .g-row.g-summarized .g-e,
+        .g-row.g-summarized .g-n {
+            opacity: 0.5 !important;
+        }
 
         .g-hd { background: ${bg_header} !important; opacity: 0.98; border-bottom: 1px solid ${color_border} !important; padding: 0 16px !important; height: 50px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; flex-shrink: 0 !important; border-radius: 12px 12px 0 0 !important; }
 
@@ -4962,7 +4967,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             m.all().slice(0, 8).forEach(s => s.clear());
             clearSummarizedMarks();
             lastManualEditTime = Date.now(); // ✨ 新增
-            m.save();
+            m.save(true); // 传入 true 跳过熔断保护，因为这是用户主动的清空操作
 
             await customAlert(hasSummary ?
                 '✅ 表格已清空，总结已保留\n\n下次聊天时AI会看到总结，从第0行开始记录新数据。' :
@@ -7230,7 +7235,7 @@ let useDirect = (provider === 'gemini');
                     <label style="cursor:pointer;"><input type="radio" name="c-filter-mode" value="whitelist" ${C.filterMode === 'whitelist' ? 'checked' : ''}> ✅ 白名单(只留)</label>
                 </div>
             </div>
-            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:4px;">输入标签名，逗号分隔。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think, search</code></div>
+            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:4px;">输入标签名，逗号分隔。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think, search</code>。若要过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">&lt;!--注释--&gt;</code>，请填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
             <input type="text" id="c-filter-tags" value="${esc(C.filterTags || '')}" placeholder="标签名..." style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
             <div style="font-size:10px; color:#d63031; margin-top:4px;" id="filter-tip">
                 ${C.filterMode === 'whitelist' ?
@@ -8689,14 +8694,8 @@ let useDirect = (provider === 'gemini');
         }
 
         // ✨✨✨ 核心修改：精准定位顶部工具栏 ✨✨✨
-        // 策略：找到"高级格式化(A)"按钮或者"AI配置"按钮，把我们的按钮插在它们后面
-        let $anchor = $('#advanced-formatting-button');
-        if ($anchor.length === 0) $anchor = $('#ai-config-button');
-
-        // 如果还是找不到（极少数情况），回退到找扩展菜单
-        if ($anchor.length === 0) $anchor = $('#extensionsMenu');
-
-        console.log('✅ 工具栏定位点已找到:', $anchor.attr('id'));
+        // 策略：优先找到扩展设置按钮，把我们的按钮插在它后面
+        const $extBtn = $('#extensions-settings-button');
 
         // --- 加载设置 (异步加载配置以支持服务端同步) ---
         try { const sv = localStorage.getItem(UK); if (sv) UI = { ...UI, ...JSON.parse(sv) }; } catch (e) { }
@@ -8748,13 +8747,13 @@ let useDirect = (provider === 'gemini');
         $toggle.append($icon);
         $wrapper.append($toggle);
 
-        // 5. 插入到定位点后面 (即"A"图标或者"AI配置"图标的右边)
-        if ($anchor.length > 0) {
-            $anchor.after($wrapper);
-            console.log('✅ 按钮已成功插入到顶部工具栏');
+        // 5. 插入到扩展设置按钮后面，如果找不到则追加到工具栏末尾
+        if ($extBtn.length > 0) {
+            $extBtn.after($wrapper);
+            console.log('✅ 按钮已插入到扩展设置按钮之后');
         } else {
-            console.warn('⚠️ 未找到工具栏定位点，尝试追加到 body');
-            $('body').append($wrapper);
+            $('#top-settings-holder').append($wrapper);
+            console.log('⚠️ 未找到扩展按钮，追加到工具栏末尾');
         }
         // ✨✨✨ 修改结束 ✨✨✨
 
@@ -9061,14 +9060,11 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong>🔧 修复自动总结弹窗：</strong>表格总结现支持弹窗选择"变绿/删除/保留"（取消勾选"完成后静默保存"即可）</li>
-                        <li><strong>🔧 修复填表冲突：</strong>实时填表与自动总结不再互相干扰，快照同步更稳定</li>
-                        <li><strong>🔧 修复批量填表：</strong>批量任务完成后自动更新快照，确保数据一致性</li>
-                        <li><strong>🔧 修复API测试：</strong>解决"手动输入模型名称后测试提示为空"的问题，测试与保存逻辑完全解耦</li>
-                        <li><strong>🔧 修复表格模式指针：</strong>表格总结模式下进度指针现在会正常更新，不再出现死循环重复触发</li>
-                        <li><strong>🔧 修复顺延输入框：</strong>临时顺延输入框样式不再受酒馆全局样式污染，白天/夜间模式显示正常</li>
-                        <li><strong>✨ 优化CSS：</strong>追溯弹窗在电脑端的显示效果</li>
-                        <li><strong>✨ 优化指针：</strong>微调进度指针的同步逻辑</li>
+                        <li><strong>✨ 优化夜间模式：</strong>已总结行在夜间模式下显示更明显的绿色背景，白天模式保持淡绿色</li>
+                        <li><strong>✨ 优化视觉效果：</strong>已总结行的文字降低亮度（半透明），更容易区分已总结和未总结的内容</li>
+                        <li><strong>✨ 优化按钮位置：</strong>插件图标现在会优先插入到扩展设置按钮之后，位置更合理</li>
+                        <li><strong>✨ 优化提示文字：</strong>设置界面的标签过滤说明更清晰，新增HTML注释过滤用法示例</li>
+                        <li><strong>🔧 修复熔断提示：</strong>清空表格（保留总结）时不再弹出不必要的熔断警告</li>
                     </ul>
                 </div>
 

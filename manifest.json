@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "st_memory_table",
   "display_name": "记忆表格 & 隐藏楼层",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "全自动记忆表格记录 + 智能隐藏旧楼层",
   "author": "gaigai315",
   "homepage": "https://github.com/gaigai315/ST-Memory-Context",
