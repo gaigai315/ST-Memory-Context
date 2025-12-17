@@ -2333,7 +2333,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
         if (C.enabled && window.Gaigai.PromptManager.get('tablePrompt')) {
-            strPrompt = window.Gaigai.PromptManager.get('tablePrompt');
+            strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
         }
 
         // ============================================================
