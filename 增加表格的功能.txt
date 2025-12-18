@@ -1,0 +1,223 @@
+
+Model
+ThinkingThoughts
+Expand to view model thoughts
+
+chevron_right
+这是一个非常棒的功能提议！但这涉及到核心逻辑的变更，因为之前的代码里很多地方“死板”地写了 8（代表第9个表是总结表）和 slice(0, 8)（代表前8个是数据表）。
+要实现“无限加表”，核心思路是：不再认死数字 8，而是认准“最后一个表是总结，前面所有的都是数据”。
+你需要修改两个文件：index.js（核心逻辑）和 prompt_manager.js（编辑器UI）。
+以下是保姆级修改方案：
+第一步：修改 index.js (核心逻辑动态化)
+你需要把代码里所有写死 8 的地方，改成动态获取最后一项。
+1. 替换常量索引 (Index)
+打开 index.js，使用 Ctrl+F 搜索并替换以下逻辑：
+SM 类 (总结管理器)
+找到 class SM 下的 save 方法：
+原：const sumSheet = this.m.get(8);
+改：const sumSheet = this.m.get(this.m.s.length - 1);
+找到 load 和 loadArray 方法：
+原：const sumSheet = this.m.get(8);
+改：const sumSheet = this.m.get(this.m.s.length - 1);
+原：summarizedRows[8] (多处)
+改：summarizedRows[this.m.s.length - 1]
+M 类 (数据管理器)
+找到 getTableText 方法：
+原：return this.s.slice(0, 8).map...
+改：return this.s.slice(0, -1).map... ( -1 代表直到倒数第一个，不含最后一个)
+找到 pmt 方法：
+原：this.s.slice(0, 8).forEach... (两处)
+改：this.s.slice(0, -1).forEach...
+全局函数 (视图渲染部分)
+找到 saveSnapshot 函数：
+原：m.all().slice(0, 8)
+改：m.all().slice(0, -1)
+找到 restoreSnapshot 函数：
+原：m.s.slice(0, 8).forEach
+改：m.s.slice(0, -1).forEach
+原：snapshot.data.forEach((sd, i) => { if (i < 8 && m.s[i]) { ... } });
+改：snapshot.data.forEach((sd, i) => { if (i < m.s.length - 1 && m.s[i]) { ... } });
+找到 inj 函数：
+原：m.s.slice(0, 8).map 和 m.s.slice(0, 8).forEach
+改：m.s.slice(0, -1).map 和 m.s.slice(0, -1).forEach
+找到 gtb 函数 (表格渲染)：
+原：if (ti === 8) { return renderBookUI(s, ti); }
+改：if (ti === m.s.length - 1) { return renderBookUI(s, ti); }
+找到 bnd 函数 (事件绑定)：
+在 g-dr (删除) 和 g-ad (新增) 和 g-toggle-sum (显隐) 的逻辑里：
+原：if (ti === 8)
+改：if (ti === m.s.length - 1)
+找到 shw 函数 (显示主窗口)：
+原：if (activeTabIndex >= ss.length) (这行原本就有，不用动，但要确保逻辑通顺)
+找到 showExportOptions (导出)：
+导出详情按钮逻辑：m.all().slice(0, 8) -> m.all().slice(0, -1)
+仅导出总结按钮逻辑：m.get(8) -> m.get(m.s.length - 1)
+找到 import (导入) 逻辑：
+判断 sheetCount === 8 改为 sheetCount === m.s.length - 1 (大概逻辑，这里要灵活处理，或者不做严格限制)
+判断 importMode === 'details' 里的循环 i < 8 改为 i < m.s.length - 1
+找到 clear-tables 按钮逻辑：
+原：m.all().slice(0, 8)
+改：m.all().slice(0, -1)
+第二步：修改 prompt_manager.js (添加"新增表格"按钮)
+你需要改造 showTableEditor 函数，允许用户插入新表。
+请找到 showTableEditor 函数，用下面的代码逻辑替换掉原来的编辑器生成逻辑（主要是 editorRows 的生成和按钮部分）。
+核心修改逻辑：
+在渲染列表时，允许渲染所有表格。
+添加一个“➕ 添加新表”按钮。
+给每个非总结表添加“🗑️”删除按钮。
+修改后的 showTableEditor 核心代码片段参考：
+code
+JavaScript
+/**
+     * 显示表格编辑器（动态增删版）
+     */
+    function showTableEditor() {
+        const C = window.Gaigai.config_obj;
+        // ... (保持原有常量定义) ...
+        // ...
+        
+        // 获取当前表格结构
+        let currentTables = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
+            ? JSON.parse(JSON.stringify(C.customTables)) // 深拷贝，防止直接修改
+            : JSON.parse(JSON.stringify(DEFAULT_TABLES));
+
+        const renderEditor = () => {
+            let editorRows = '';
+            const summaryIndex = currentTables.length - 1; // 动态获取总结表索引
+
+            currentTables.forEach((tb, idx) => {
+                const isSummaryTable = (idx === summaryIndex);
+                const lockIcon = isSummaryTable ? '🔓📌 (总结表-锁定位置)' : '📝';
+                const nameDisabled = isSummaryTable ? 'disabled' : ''; // 总结表名不建议改，或者改了也没事
+                const deleteBtn = isSummaryTable 
+                    ? '' 
+                    : `<button class="btn-del-table" data-idx="${idx}" style="padding:4px 8px; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px;">🗑️</button>`;
+
+                editorRows += `
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span style="font-weight: bold; min-width: 30px; color: ${UI.tc};">${idx}.</span>
+                        <input type="text" class="tbl-name" data-index="${idx}" value="${window.Gaigai.esc(tb.n)}" placeholder="表名" ${nameDisabled} 
+                               style="flex: 1 1 80px; min-width: 80px; padding: 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px;">
+                        <input type="text" class="tbl-cols" data-index="${idx}" value="${window.Gaigai.esc(tb.c.join(', '))}" placeholder="列名（逗号分隔）" 
+                               style="flex: 2 1 180px; min-width: 180px; padding: 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px;">
+                        ${deleteBtn}
+                    </div>
+                `;
+            });
+            return editorRows;
+        };
+
+        const h = `
+            <div class="g-p" style="display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
+                <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0; margin-bottom: 12px;">
+                    <h4 style="margin: 0; color: ${UI.tc};">✏️ 表格结构编辑器</h4>
+                    <div style="font-size: 11px; opacity: 0.8; margin-top:5px;">
+                        支持自定义添加/删除表格。<br>
+                        <strong>最后一张表永远作为“总结表”处理。</strong>
+                    </div>
+                </div>
+
+                <div id="table-editor-list" style="flex: 1; overflow-x: auto; overflow-y: auto; background: rgba(0,0,0,0.05); border-radius: 8px; padding: 12px; border: 1px solid rgba(0,0,0,0.1);">
+                    ${renderEditor()}
+                </div>
+                
+                <!-- 新增表格按钮 -->
+                <button id="add-new-table-btn" style="margin-top:10px; width: 100%; padding: 8px; background: #17a2b8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                    ➕ 在总结表之前插入新表
+                </button>
+
+                <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); margin-top: 12px; flex-shrink: 0;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button id="save-table-structure-btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                            💾 保存结构
+                        </button>
+                        <button id="reset-table-structure-btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                            🔄 恢复默认
+                        </button>
+                    </div>
+                    <button id="copy-table-definition-btn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                        📋 复制表格定义到剪贴板
+                    </button>
+                </div>
+            </div>
+        `;
+
+        window.Gaigai.pop('✏️ 表格结构编辑器', h, true);
+
+        setTimeout(() => {
+            // 实时更新 input 数据到 currentTables
+            const updateCurrentData = () => {
+                $('.tbl-name').each(function() {
+                    const idx = $(this).data('index');
+                    currentTables[idx].n = $(this).val();
+                });
+                $('.tbl-cols').each(function() {
+                    const idx = $(this).data('index');
+                    currentTables[idx].c = $(this).val().split(/,|，/).map(s=>s.trim()).filter(s=>s);
+                });
+            };
+
+            // ➕ 添加新表逻辑
+            $('#add-new-table-btn').on('click', function() {
+                updateCurrentData();
+                // 在倒数第二的位置插入（即总结表之前）
+                const summaryTable = currentTables.pop(); // 拿出总结表
+                currentTables.push({ n: '新表格', c: ['列1', '列2'] }); // 插入新表
+                currentTables.push(summaryTable); // 放回总结表
+                
+                $('#table-editor-list').html(renderEditor());
+                // 重新绑定删除按钮事件（因为DOM重绘了）
+                bindDeleteEvents();
+            });
+
+            // 🗑️ 删除表格逻辑
+            const bindDeleteEvents = () => {
+                $('.btn-del-table').off('click').on('click', function() {
+                    const idx = $(this).data('idx');
+                    if(confirm('确定删除这个表格吗？保存后原数据将丢失！')) {
+                        updateCurrentData();
+                        currentTables.splice(idx, 1);
+                        $('#table-editor-list').html(renderEditor());
+                        bindDeleteEvents();
+                    }
+                });
+            };
+            bindDeleteEvents();
+
+            // 保存按钮 (保持原有逻辑，但要注意适配)
+            $('#save-table-structure-btn').on('click', async function() {
+                updateCurrentData();
+                // 验证
+                for (let i = 0; i < currentTables.length; i++) {
+                    if (!currentTables[i].n) { alert(`第${i+1}个表格没有名字！`); return; }
+                    if (currentTables[i].c.length === 0) { alert(`第${i+1}个表格没有列！`); return; }
+                }
+
+                C.customTables = currentTables;
+                localStorage.setItem('gg_config', JSON.stringify(C));
+                
+                // 重新初始化
+                window.Gaigai.m.initTables(currentTables, true); // true = 尝试保留数据
+                window.Gaigai.m.save(true);
+                window.Gaigai.shw(); // 刷新主界面
+                
+                // 自动更新提示词逻辑可能需要提示用户手动去复制新的定义
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud();
+                }
+                
+                await window.Gaigai.customAlert('✅ 表格结构已保存！\n\n请务必点击下方的【📋 复制表格定义】按钮，\n并去【提示词管理】更新提示词，否则AI不知道新表的存在！', '重要提醒');
+            });
+
+            // ... (其他按钮逻辑保持不变) ...
+        }, 100);
+    }
+第三步：修改 backfill_manager.js (追溯模块适配)
+backfill_manager.js 里也有硬编码的 8，特别是 handleChatBackfill 方法里的单表模式判断。
+查找：if (targetIndex >= 0 && targetIndex < 8 && m.s[targetIndex])
+改：if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) (意思是只要不是最后一个表)
+查找：m.s.slice(0, 8)
+改：m.s.slice(0, -1)
+总结
+其实修改的核心思想就一句话：只要看到代码里写着 8 的地方，如果是指代“总结表”，就改成 m.s.length-1；如果是指代“所有数据表范围”，就改成 slice(0, -1)。
+改完之后，用户就可以在表格编辑器里随意添加表格了，最后一张永远是总结表，前面不管加多少张，AI 都会（通过更新后的提示词）把它们当作数据表来填。

@@ -5072,12 +5072,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 获取当前主题状态，定义动态颜色变量
                 const isDark = UI.darkMode;
                 const dialogBg = isDark ? '#1e1e1e' : '#fff';
-                const textColor = UI.tc; // 跟随全局字体颜色
-                const subTextColor = isDark ? '#aaa' : '#666';
+                const borderColor = isDark ? 'rgba(255,255,255,0.2)' : '#ddd';
+                const inputBg = isDark ? '#2a2a2a' : '#fff';
+                const btnBg = UI.c; // 按钮背景跟随表头颜色
+                const btnColor = UI.tc; // 按钮文字跟随全局字体颜色
 
                 const $box = $('<div>', {
                     css: {
-                        background: dialogBg, color: textColor, borderRadius: '12px', padding: '20px',
+                        background: dialogBg, color: UI.tc, borderRadius: '12px', padding: '20px',
                         boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
                         width: '320px', maxWidth: '90vw', // ✨ 手机端自适应宽度
                         display: 'flex', flexDirection: 'column', gap: '10px'
@@ -5088,16 +5090,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const totalPages = sh.r.length;
                 const isCurrentHidden = isSummarized(8, currentBookPage);
 
-                $box.append(`<div style="font-weight:bold; font-size:15px; text-align:center; color:${textColor};">👁️ 总结显/隐控制</div>`);
-                $box.append(`<div style="font-size:12px; color:${subTextColor}; text-align:center; margin-bottom:5px;">当前：第 ${currentPageNum} / ${totalPages} 篇</div>`);
+                $box.append(`<div style="font-weight:bold; font-size:15px; text-align:center; color:${UI.tc};">👁️ 总结显/隐控制</div>`);
+                $box.append(`<div style="font-size:12px; color:${UI.tc}; opacity:0.6; text-align:center; margin-bottom:5px;">当前：第 ${currentPageNum} / ${totalPages} 篇</div>`);
 
-                // 按钮样式
-                const btnCss = "padding:10px; border:none; border-radius:6px; cursor:pointer; font-size:13px; color:#fff; font-weight:600; text-align:left; padding-left:15px;";
+                // 按钮样式对象：使用 UI.c 和 UI.tc 跟随表头颜色和全局字体色
+                const btnCss = {
+                    padding: '10px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: btnColor,
+                    fontWeight: '600',
+                    textAlign: 'left',
+                    paddingLeft: '15px',
+                    background: btnBg
+                };
 
                 // 1. 切换当前页
                 const $btnCurrent = $('<button>', {
                     html: isCurrentHidden ? '👁️ 显示当前页 (第' + currentPageNum + '篇)' : '🙈 隐藏当前页 (第' + currentPageNum + '篇)',
-                    css: btnCss + (isCurrentHidden ? "background:#17a2b8;" : "background:#ffc107; color:#333;")
+                    css: btnCss
                 }).on('click', () => {
                     toggleRow(8, currentBookPage);
                     finish(`第 ${currentPageNum} 篇状态已切换`);
@@ -5106,7 +5119,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 2. 隐藏/显示所有
                 const $btnAll = $('<button>', {
                     html: '📚 将所有页面设为【隐藏/已归档】',
-                    css: btnCss + "background:#28a745;"
+                    css: btnCss
                 }).on('click', () => {
                     if (!summarizedRows[8]) summarizedRows[8] = [];
                     summarizedRows[8] = Array.from({ length: totalPages }, (_, k) => k);
@@ -5122,10 +5135,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         flex: '1 1 auto',
                         minWidth: '0', // ✨ 关键：允许收缩到最小
                         padding: '6px 8px', // ✨ 减小内边距
-                        border: '1px solid #ddd',
+                        border: '1px solid ' + borderColor,
                         borderRadius: '6px',
                         fontSize: '12px',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        background: inputBg,
+                        color: UI.tc
                     }
                 });
                 const $rangeBtn = $('<button>', {
@@ -5133,8 +5148,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     css: {
                         flex: '0 0 auto', // ✨ 按钮不伸缩
                         padding: '6px 12px', // ✨ 减小内边距
-                        background: '#6c757d',
-                        color: '#fff',
+                        background: btnBg,
+                        color: btnColor,
                         border: 'none',
                         borderRadius: '6px',
                         cursor: 'pointer',
@@ -5150,7 +5165,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 const $cancelBtn = $('<button>', {
                     text: '取消',
-                    css: "padding:8px; background:transparent; border:1px solid #ddd; border-radius:6px; color:#666; margin-top:5px; cursor:pointer;"
+                    css: {
+                        padding: '8px',
+                        background: 'transparent',
+                        border: '1px solid ' + borderColor,
+                        borderRadius: '6px',
+                        color: UI.tc,
+                        opacity: '0.7',
+                        marginTop: '5px',
+                        cursor: 'pointer'
+                    }
                 }).on('click', () => $overlay.remove());
 
                 // --- 辅助逻辑 ---
