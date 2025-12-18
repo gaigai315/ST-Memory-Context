@@ -7626,7 +7626,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     return;
                 }
 
-                const $overlay = $('<div>', { css: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.6)', zIndex:20000020, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }});
+                const $overlay = $('<div>', { css: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.6)', zIndex:20000002, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }});
                 
                 const $box = $('<div>', {
                     css: {
