@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.2
+// 记忆表格 v1.4.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,13 +15,13 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.2 启动');
+    console.log('🚀 记忆表格 v1.4.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.2';
+    const V = 'v1.4.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1501,24 +1501,25 @@
     }
 
     // ✅✅✅ [核心修复] 强力回档函数 (最终逻辑修正版)
-    function restoreSnapshot(msgIndex) {
+   // ✅✅✅ [核心修复] 强力回档函数 (支持强制模式)
+    function restoreSnapshot(msgIndex, force = false) {
         try {
             const key = msgIndex.toString();
             const snapshot = snapshotHistory[key];
 
             // 1. 基础检查：快照是否存在
             if (!snapshot) {
-                // 允许静默失败，这在刚启动时很正常
                 return false;
             }
 
             // 🛡️ [过期保护 - 核心逻辑]
-            // 如果 "快照生成时间" 早于 "用户最后一次手动编辑/清空的时间"
-            // 说明这个快照已经过时了，不能用它来覆盖用户的最新操作
-            const currentManualEditTime = window.lastManualEditTime || lastManualEditTime;
-            if (snapshot.timestamp < currentManualEditTime) {
-                console.log(`🛡️ [保护] 检测到手动修改(或清空)，跳过过时快照回滚。快照时间:${snapshot.timestamp} < 操作时间:${currentManualEditTime}`);
-                return false;
+            // 只有在非强制模式(force=false)下才检查时间戳
+            if (!force) { // <--- 2. 这里加了判断
+                const currentManualEditTime = window.lastManualEditTime || lastManualEditTime;
+                if (snapshot.timestamp < currentManualEditTime) {
+                    console.log(`🛡️ [保护] 检测到手动修改，跳过回滚。`);
+                    return false;
+                }
             }
 
             // 2. 先彻底清空当前表格
@@ -1541,10 +1542,13 @@
                 summarizedRows = {};
             }
 
-            // 5. 强制锁定保存
+           // 5. 强制锁定保存
             // 既然回档成功了，就重置编辑时间，防止死循环
             lastManualEditTime = 0;
-            m.save(); // 保存到内存和云端
+            
+            // ✨✨✨ 修复：传入 true，强制绕过熔断保护 ✨✨✨
+            // 因为回档是把数据恢复到旧状态（可能是空的），这是有意为之，不是BUG
+            m.save(true); 
 
             const totalRecords = m.s.reduce((sum, s) => sum + s.r.length, 0);
             console.log(`✅ [完美回档] 快照${key}已恢复 - 当前行数:${totalRecords}`);
@@ -5065,9 +5069,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
                 });
 
+                // 获取当前主题状态，定义动态颜色变量
+                const isDark = UI.darkMode;
+                const dialogBg = isDark ? '#1e1e1e' : '#fff';
+                const textColor = UI.tc; // 跟随全局字体颜色
+                const subTextColor = isDark ? '#aaa' : '#666';
+
                 const $box = $('<div>', {
                     css: {
-                        background: '#fff', borderRadius: '12px', padding: '20px',
+                        background: dialogBg, color: textColor, borderRadius: '12px', padding: '20px',
                         boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
                         width: '320px', maxWidth: '90vw', // ✨ 手机端自适应宽度
                         display: 'flex', flexDirection: 'column', gap: '10px'
@@ -5078,8 +5088,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const totalPages = sh.r.length;
                 const isCurrentHidden = isSummarized(8, currentBookPage);
 
-                $box.append(`<div style="font-weight:bold; font-size:15px; text-align:center; color:#333;">👁️ 总结显/隐控制</div>`);
-                $box.append(`<div style="font-size:12px; color:#666; text-align:center; margin-bottom:5px;">当前：第 ${currentPageNum} / ${totalPages} 篇</div>`);
+                $box.append(`<div style="font-weight:bold; font-size:15px; text-align:center; color:${textColor};">👁️ 总结显/隐控制</div>`);
+                $box.append(`<div style="font-size:12px; color:${subTextColor}; text-align:center; margin-bottom:5px;">当前：第 ${currentPageNum} / ${totalPages} 篇</div>`);
 
                 // 按钮样式
                 const btnCss = "padding:10px; border:none; border-radius:6px; cursor:pointer; font-size:13px; color:#fff; font-weight:600; text-align:left; padding-left:15px;";
@@ -5381,9 +5391,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ========================================
         // 分流逻辑
         // ========================================
-const useProxy = (provider === 'local' || provider === 'openai' || provider === 'claude'|| provider === 'proxy_only' || provider === 'deepseek'|| provider === 'siliconflow' || provider === 'compatible');
-let useDirect = (provider === 'gemini');
-
+         const useProxy = (provider === 'local' || provider === 'openai' || provider === 'claude'|| provider === 'proxy_only' || provider === 'deepseek'|| provider === 'siliconflow' || provider === 'compatible' || provider === 'gemini');
+         let useDirect = false;
        // ==========================================
         // 🔴 通道 A: 后端代理 (local, openai, claude, proxy_only)
         // ==========================================
@@ -5395,6 +5404,51 @@ let useDirect = (provider === 'gemini');
                 let csrfToken = '';
                 try { csrfToken = await getCsrfToken(); } catch (e) { console.warn('⚠️ CSRF获取失败', e); }
 
+                // 🟢Gemini 官方专用通道 (Makersuite 协议)
+                if (provider === 'gemini') {
+                    console.log('🔧 [Gemini] 使用 MakerSuite 协议走酒馆后端...');
+                    const proxyPayload = {
+                        chat_completion_source: "makersuite", // 核心：告诉酒馆这是谷歌
+                        proxy_password: apiKey, 
+                        model: model,
+                        messages: cleanMessages,
+                        temperature: temperature,
+                        max_tokens: maxTokens,
+                        stream: false,
+                        // 🛡️ 强力注入安全设置，防止空回
+                        safety_settings: [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                        ]
+                    };
+
+                    const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        body: JSON.stringify(proxyPayload)
+                    });
+
+                    if (proxyResponse.ok) {
+                        const text = await proxyResponse.text();
+                        try {
+                            // 尝试解析各种可能的返回格式
+                            const data = JSON.parse(text);
+                            if (typeof data === 'string') return { success: true, summary: data };
+                            if (data.choices?.[0]?.message?.content) return { success: true, summary: data.choices[0].message.content };
+                            if (data.content) return { success: true, summary: data.content };
+                            // 通用解析兜底
+                            return parseApiResponse(data);
+                        } catch (e) { 
+                            // 如果不是JSON，可能是纯文本，直接返回
+                            if (text && text.length > 0) return { success: true, summary: text };
+                        }
+                    }
+                    const errText = await proxyResponse.text();
+                    throw new Error(`酒馆后端报错: ${errText.substring(0, 100)}`);
+                }
+            
                 // ✨✨✨【修复插入点：智能拦截】✨✨✨
                 // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路
                 // ✨ 修复：排除本地地址 (127.0.0.1/localhost)。
@@ -5567,7 +5621,7 @@ let useDirect = (provider === 'gemini');
                 console.error(`❌ [后端代理] 失败: ${e.message}`);
                 
                // ✨✨✨ 修复：兼容端点 AND OpenAI兼容模式 都支持自动降级 ✨✨✨
-            if (provider === 'compatible' || provider === 'openai') {
+           if (provider === 'compatible' || provider === 'openai' || provider === 'gemini') {
                     console.warn('⚠️ [自动降级] 后端代理失败，正在尝试浏览器直连...');
                     useDirect = true; // 打开直连开关
                     // 注意：这里不要 return，让代码继续向下执行，就会进入下面的 if (useDirect) 块
@@ -6127,7 +6181,7 @@ let useDirect = (provider === 'gemini');
         </div>
         <br>
 
-        < <div style="background:rgba(255,255,255,0.6); padding:10px; border-radius:4px; font-size:10px; margin-bottom:12px; color:#333333; border:1px solid rgba(0,0,0,0.1);">
+        <div style="background:rgba(255,255,255,0.6); padding:10px; border-radius:4px; font-size:10px; margin-bottom:12px; color:#333333; border:1px solid rgba(0,0,0,0.1);">
             <strong>💡 提示：</strong><br>
             • 如果主题色较浅，请将字体颜色设为深色（如黑色）<br>
             • 字体过大可能会导致表格内容显示不全，请酌情调整
@@ -6359,9 +6413,10 @@ let useDirect = (provider === 'gemini');
                     <option value="claude" ${API_CONFIG.provider === 'claude' ? 'selected' : ''}>Claude 官方</option>
                     <option value="deepseek" ${API_CONFIG.provider === 'deepseek' ? 'selected' : ''}>DeepSeek 官方</option>
                     <option value="siliconflow" ${API_CONFIG.provider === 'siliconflow' ? 'selected' : ''}>硅基流动 (SiliconFlow)</option>
+                    <option value="gemini" ${API_CONFIG.provider === 'gemini' ? 'selected' : ''}>Google Gemini 官方</option>
                 </optgroup>
                 <optgroup label="━━━ 浏览器直连 ━━━">
-                    <option value="gemini" ${API_CONFIG.provider === 'gemini' ? 'selected' : ''}>Google Gemini 官方</option>
+                    <!-- 之前在这里，现在空了或者留着备用 -->
                 </optgroup>
             </select>
             
@@ -7269,11 +7324,11 @@ let useDirect = (provider === 'gemini');
         
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0,0,0,0.1); text-align: center;">
             <button id="open-probe" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #17a2b8; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                🔍 最后发送内容 & Toke
+                🔍 最后发送内容
             </button>
 
             <button id="force-cloud-load" title="强制从服务器拉取最新的 chatMetadata，解决手机/电脑数据不一致问题" style="width: 100%; padding: 8px; margin-bottom: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                ☁️/🖥️ 强制读取服务端数据
+                ☁️/🖥️ 强制多端同步
             </button>
             <p style="font-size: 10px; color: #999; margin: -5px 0 10px 0;">解决多端同步问题（PC修改后移动端未更新）</p>
 
@@ -8471,12 +8526,11 @@ let useDirect = (provider === 'gemini');
 
                 // 3. ⏪ [核心步骤] 发送请求前，强制回滚表格！
                 if (baseKey) {
-                    // ✅ [安全补丁] 如果只找到了创世快照(-1)，但当前楼层较高(>5)，说明是刷新后丢失了中间快照。
-                    // 此时禁止回滚，防止将有数据的表格清空。
+                    // ✅ [安全补丁] 如果只找到了创世快照(-1)，但当前楼层较高(>5)...
                     if (baseKey === '-1' && targetIndex > 5) {
                         console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高且缺失中间快照，禁止回滚到初始状态，保持当前数据。`);
                     } else {
-                        restoreSnapshot(baseKey);
+                        restoreSnapshot(baseKey, true); // <--- 这里加了 true (强制回滚)
                         console.log(`↺ [opmt] 成功回档: 表格已恢复至基准 [${baseKey}]`);
                     }
                 } else if (baseIndex === -1 && snapshotHistory['-1']) {
@@ -8484,7 +8538,7 @@ let useDirect = (provider === 'gemini');
                     if (targetIndex > 5) {
                         console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高但只有创世快照，禁止回滚，保持当前数据。`);
                     } else {
-                        restoreSnapshot('-1');
+                        restoreSnapshot('-1', true); // <--- 这里也加了 true
                         console.log(`↺ [opmt] 成功回档: 表格已恢复至创世状态`);
                     }
                 } else {
