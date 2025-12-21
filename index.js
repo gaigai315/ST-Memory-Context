@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.3
+// 记忆表格 v1.4.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,13 +15,13 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.3 启动');
+    console.log('🚀 记忆表格 v1.4.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.3';
+    const V = 'v1.4.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -35,35 +35,36 @@
 
     // ==================== 用户配置对象 ====================
     const C = {
-        enabled: true,
-        filterTags: '',
-        filterMode: 'blacklist', // 'blacklist' (屏蔽) 或 'whitelist' (仅保留)
-        contextLimit: false,
-        contextLimitCount: 30,
+        enabled: true,          // ✅ 默认开启实时填表
+        filterTags: '',         // 黑名单标签（去除）
+        filterTagsWhite: '',    // 白名单标签（仅留）
+        contextLimit: true,     // ✅ 默认开启隐藏楼层
+        contextLimitCount: 30,  // ✅ 隐藏30楼
         uiFold: false,
         uiFoldCount: 50,
         tableInj: true,
         tablePos: 'system',
         tablePosType: 'system_end',
         tableDepth: 0,
-        autoSummary: false,
-        autoSummaryFloor: 50,
-        autoSummaryPrompt: false,      // 自动总结发起模式（true=静默发起，false=弹窗确认）
-        autoSummarySilent: false,      // 自动总结完成模式（true=静默保存，false=弹窗编辑）
-        autoSummaryDelay: false,       // 自动总结-延迟开关
-        autoSummaryDelayCount: 5,      // 自动总结-延迟层数
-        autoBackfill: false,
-        autoBackfillFloor: 10,
-        autoBackfillPrompt: false,     // 批量填表发起模式（true=静默发起，false=弹窗确认）
-        autoBackfillSilent: false,     // 批量填表完成模式（true=静默保存，false=弹窗显示结果）
-        autoBackfillDelay: false,      // 批量填表-延迟开关
-        autoBackfillDelayCount: 5,     // 批量填表-延迟层数
+        autoSummary: true,             // ✅ 默认开启自动总结
+        autoSummaryFloor: 50,          // ✅ 50层触发
+        autoSummaryPrompt: true,       // ✅ 默认静默发起（不弹窗确认）
+        autoSummarySilent: true,       // ✅ 默认静默保存（不弹窗编辑）
+        autoSummaryDelay: true,        // ✅ 开启延迟
+        autoSummaryDelayCount: 4,      // ✅ 延迟4楼
+        autoBackfill: false,           // ❌ 默认关闭批量填表（避免与实时填表冲突）
+        autoBackfillFloor: 20,         // ✅ 预设20层
+        autoBackfillPrompt: true,      // ✅ 默认静默发起（不弹窗确认）
+        autoBackfillSilent: true,      // ✅ 默认静默保存（不弹窗显示结果）
+        autoBackfillDelay: true,       // ✅ 开启延迟
+        autoBackfillDelayCount: 6,     // ✅ 延迟6楼
         log: true,
         pc: true,
         hideTag: true,
         filterHistory: true,
         cloudSync: true,
-        syncWorldInfo: false,          // 同步总结到世界书
+        syncWorldInfo: true,           // ✅ 默认开启世界书同步
+        autoBindWI: true,              // ✅ 默认开启自动绑定世界书
         customTables: null             // 用户自定义表格结构（格式同 DEFAULT_TABLES）
     };
 
@@ -78,7 +79,7 @@
         model: 'gemini-2.5-pro',
         temperature: 0.7,
         maxTokens: 65536,
-        summarySource: 'chat', // ✅ 默认改为聊天历史，符合大多数用户直觉
+        summarySource: 'table',    // ✅ 默认为表格总结（最佳实践）
         lastSummaryIndex: 0,
         lastBackfillIndex: 0
     };
@@ -96,8 +97,9 @@
     // ----- Memory标签识别正则 -----
     const MEMORY_TAG_REGEX = /<(Memory|GaigaiMemory|memory|tableEdit|gaigaimemory|tableedit)>([\s\S]*?)<\/\1>/gi;
 
-    // ----- 表格结构定义（9个表格） -----
+    // ----- 表格结构定义（默认9个表格，支持动态扩展） -----
     // ==================== 默认表格定义（出厂设置模板） ====================
+    // 最后一个表永远是"总结表"，前面的都是"数据表"
     const DEFAULT_TABLES = [
         { n: '主线剧情', c: ['日期', '开始时间', '完结时间', '事件概要', '状态'] },
         { n: '支线追踪', c: ['状态', '支线名', '开始时间', '完结时间', '事件追踪', '关键NPC'] },
@@ -359,7 +361,7 @@
 
             const $input = $('<input>', {
                 type: 'number',
-                id: 'postpone-floors',
+                id: 'gg_postpone_floors',
                 value: '0',
                 min: '0',
                 max: '100'
@@ -411,7 +413,7 @@
                     fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
                 }
             }).on('click', () => {
-                const postpone = parseInt($('#postpone-floors').val()) || 0;
+                const postpone = parseInt($('#gg_postpone_floors').val()) || 0;
                 $overlay.remove();
                 resolve({ action: 'confirm', postpone: postpone });
             });
@@ -434,7 +436,7 @@
                 }
                 else if (e.key === 'Enter') {
                     $(document).off('keydown.' + id);
-                    const postpone = parseInt($('#postpone-floors').val()) || 0;
+                    const postpone = parseInt($('#gg_postpone_floors').val()) || 0;
                     $overlay.remove();
                     resolve({ action: 'confirm', postpone: postpone });
                 }
@@ -506,7 +508,7 @@
 
                 // 🔄 步骤 B: 等待结束后，再获取表格数据！(关键修改)
                 // 这样能确保我们读到的是等待结束后的最新、最全的数据
-                const summarySheet = m.get(8);
+                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
                 if (!summarySheet || summarySheet.r.length === 0) {
                     console.log('⚠️ [世界书同步] 表格为空，跳过');
                     return;
@@ -544,26 +546,80 @@
                     };
                 });
 
-                const finalJson = { entries: importEntries, name: worldBookName };
-                
+                // 🔥 关键修复：上传文件只需要 entries，不需要 name 包装（根据V10测试结果）
+                const finalJson = { entries: importEntries };
+
                 // 获取 CSRF
                 let csrfToken = '';
                 try { csrfToken = await getCsrfToken(); } catch (e) {}
 
-                // --- 4. 尝试删除 (规避弹窗) ---
+                // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
+                console.log('🔍 [世界书同步] 扫描并清理旧文件...');
                 try {
-                    const delRes = await fetch('/api/worldinfo/delete', {
+                    // 4.1 获取服务器上所有的世界书列表
+                    const getRes = await fetch('/api/worldinfo/get', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({ name: worldBookName })
+                        body: JSON.stringify({})
                     });
 
-                    if (!delRes.ok) {
-                        console.warn(`⚠️ [世界书同步] 删除旧文件返回 ${delRes.status}，可能文件被占用，尝试直接覆盖...`);
+                    if (getRes.ok) {
+                        const allWorldBooks = await getRes.json();
+
+                        // 4.2 严格筛选：只删除当前会话的旧版本文件
+                        const filesToDelete = [];
+
+                        if (Array.isArray(allWorldBooks)) {
+                            allWorldBooks.forEach(fileName => {
+                                if (typeof fileName === 'string' &&
+                                    fileName.startsWith('Memory_Context_') &&  // 必须是记忆书
+                                    fileName.includes(safeName) &&              // 必须包含当前会话ID
+                                    fileName !== worldBookName) {               // 不能是即将上传的新文件
+                                    filesToDelete.push(fileName);
+                                }
+                            });
+                        }
+
+                        console.log(`📋 [世界书同步] 找到 ${filesToDelete.length} 个旧文件需要清理:`, filesToDelete);
+
+                        // 4.3 使用 Promise.all 并发删除所有旧文件，等待全部完成
+                        if (filesToDelete.length > 0) {
+                            const deletePromises = filesToDelete.map(async (oldBookName) => {
+                                try {
+                                    const delRes = await fetch('/api/worldinfo/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                                        body: JSON.stringify({ name: oldBookName })
+                                    });
+
+                                    if (delRes.ok) {
+                                        console.log(`✅ [世界书同步] 已删除旧文件: ${oldBookName}`);
+                                        return { success: true, name: oldBookName };
+                                    } else {
+                                        console.warn(`⚠️ [世界书同步] 删除 ${oldBookName} 失败 (${delRes.status})`);
+                                        return { success: false, name: oldBookName, status: delRes.status };
+                                    }
+                                } catch (delErr) {
+                                    console.warn(`⚠️ [世界书同步] 删除 ${oldBookName} 异常:`, delErr);
+                                    return { success: false, name: oldBookName, error: delErr.message };
+                                }
+                            });
+
+                            // 等待所有删除操作完成
+                            const deleteResults = await Promise.all(deletePromises);
+                            const successCount = deleteResults.filter(r => r.success).length;
+                            console.log(`🧹 [世界书同步] 清理完成: ${successCount}/${filesToDelete.length} 个文件已删除`);
+                        } else {
+                            console.log('✨ [世界书同步] 没有旧文件需要清理');
+                        }
+                    } else {
+                        console.warn(`⚠️ [世界书同步] 获取世界书列表失败 (${getRes.status})，跳过清理`);
                     }
                 } catch (e) {
-                    console.warn('⚠️ [世界书同步] 删除请求异常，尝试直接覆盖:', e);
+                    console.warn('⚠️ [世界书同步] 扫描清理过程异常，继续上传:', e);
                 }
+
+
 
                 // 🛑 核心修复：给文件系统喘息时间，防止 500 错误导致的连带写入失败
                 console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
@@ -586,12 +642,197 @@
                 globalWorldInfoEntriesCache = importEntries;
                 globalLastWorldInfoUid = maxUid;
 
+                // 🛑 步骤 C: 等待 ST 处理导入 (关键！让条目显示出来)
+                console.log('⏳ [世界书同步] 等待 SillyTavern 处理导入 (2s)...');
+                await new Promise(r => setTimeout(r, 2000));
+
+                // ✨ 自动绑定到角色卡 (传入基础书名进行智能匹配)
+                console.log('🔗 [世界书同步] 准备自动绑定到角色卡...');
+                await autoBindWorldInfo(worldBookName);
+
             } catch (error) {
                 console.error('❌ [世界书同步] 异常:', error);
             }
         }, 5000); // 5秒防抖
 
         return Promise.resolve();
+    }
+
+   /**
+     * 🔗 自动绑定记忆世界书 (V5.0 逻辑回归+去重修正版)
+     * 恢复了原版的库存检查逻辑，同时加入了强力的UI去重
+     */
+    async function autoBindWorldInfo(baseBookName = null, forceBind = false) {
+        if (!C.autoBindWI) return;
+
+        const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) 
+            ? SillyTavern.getContext() 
+            : null;
+
+        if (!ctx) return;
+
+       try {
+            // ==================== 🕵️‍♂️ 步骤1：恢复库存检查 (找回丢失的逻辑) ====================
+            // 我们必须先知道酒馆里到底有哪些书，才能决定绑谁，不能瞎猜
+            let allBookNames = [];
+            
+            // A. 从下拉框获取
+            $('#world_editor_select option').each(function() {
+                const name = $(this).text().trim();
+                if (name && name !== '新建' && !name.includes('---')) {
+                    allBookNames.push(name);
+                }
+            });
+
+            // B. 从全局变量获取 (双重保险)
+            try {
+                if (typeof window.world_names !== 'undefined' && Array.isArray(window.world_names)) {
+                    allBookNames = [...new Set([...allBookNames, ...window.world_names])];
+                } else if (typeof window.world_info === 'object') {
+                    // 兼容不同版本的酒馆数据结构
+                    if (Array.isArray(window.world_info)) allBookNames.push(...window.world_info.map(b => b.name || b));
+                    else allBookNames.push(...Object.keys(window.world_info));
+                }
+            } catch(e) {}
+            
+            allBookNames = [...new Set(allBookNames)]; // 去重
+
+            // ==================== 🎯 步骤2：锁定目标 (精准匹配) ====================
+            let targetBookName = null;
+            
+            if (baseBookName) {
+                targetBookName = baseBookName;
+            } else {
+                // 计算当前会话的唯一标识
+                let uniqueId = null;
+                if (ctx.chatMetadata && ctx.chatMetadata.file_name) {
+                    uniqueId = ctx.chatMetadata.file_name;
+                } else if (typeof window.selected_chat === 'string') {
+                    uniqueId = window.selected_chat.replace(/\.jsonl?$/i, "");
+                } else {
+                    uniqueId = ctx.chatId;
+                }
+
+                if (uniqueId) {
+                    // 尝试匹配：优先匹配包含 ID 且存在于 allBookNames 里的书
+                    const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
+                    
+                    // 1. 优先找包含时间戳的精准匹配
+                    const timeMatch = uniqueId.match(/\d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s/);
+                    if (timeMatch) {
+                        targetBookName = allBookNames.find(b => b.includes(timeMatch[0]) && b.startsWith('Memory_Context_'));
+                    }
+                    
+                    // 2. 如果没找到，找包含 safeName 的最新一本
+                    if (!targetBookName) {
+                        const candidates = allBookNames.filter(b => b.includes(safeName) && b.startsWith('Memory_Context_'));
+                        if (candidates.length > 0) {
+                            candidates.sort(); // 按时间排序
+                            targetBookName = candidates[candidates.length - 1]; // 取最新的
+                        }
+                    }
+                }
+            }
+
+            // ==================== 🧹 步骤3-6：数据清洗 (严厉模式) ====================
+            
+            const charId = ctx.characterId;
+            if (charId === undefined || charId === null) return;
+            const character = ctx.characters[charId];
+            if (!character || !character.data) return;
+
+            if (!character.data.extensions) character.data.extensions = {};
+            if (!Array.isArray(character.data.extensions.world_info)) character.data.extensions.world_info = [];
+
+            let currentList = character.data.extensions.world_info;
+            const cleanList = []; 
+
+            // 核心逻辑：只保留非记忆书 + 当前目标书
+            // 其他所有的 Memory_Context_ (无论是旧的、别的角色的) 统统丢弃
+            currentList.forEach(book => {
+                if (typeof book !== 'string' || !book.startsWith('Memory_Context_')) {
+                    cleanList.push(book); // 保留用户自己的书
+                } else if (book === targetBookName) {
+                    cleanList.push(book); // 保留当前正主
+                }
+                // else: 丢弃！(解决你说的“绑定了其他角色卡世界书”的问题)
+            });
+
+            // 如果目标书存在(已生成)且没在列表里，加进去
+            // 这里用 allBookNames 校验，防止绑定不存在的书报错
+            if (targetBookName && !cleanList.includes(targetBookName)) {
+                if (allBookNames.includes(targetBookName) || forceBind) {
+                    cleanList.push(targetBookName);
+                    // console.log(`✅ [自动绑定] 挂载新书: ${targetBookName}`);
+                }
+            }
+
+            // 保存数据
+            const newJson = JSON.stringify(cleanList.slice().sort());
+            const oldJson = JSON.stringify(currentList.slice().sort());
+            
+            if (newJson !== oldJson) {
+                character.data.extensions.world_info = cleanList;
+                if (ctx.characters && ctx.characters[charId]) {
+                    ctx.characters[charId].data.extensions.world_info = cleanList;
+                }
+                try {
+                    if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter(); 
+                    else if (typeof window.saveCharacterDebounced === 'function') window.saveCharacterDebounced();
+                } catch (e) {}
+            }
+
+            // ==================== 🛡️ 步骤7：UI 终极同步 (修复显示问题) ====================
+            // 这里应用“计数法”，解决下拉框里的双胞胎问题
+            
+            const $characterSelect = $('.character_extra_world_info_selector');
+            if ($characterSelect.length > 0) {
+                let hasKeptTarget = false;
+
+                // 遍历所有选项
+                $characterSelect.find('option').each(function() {
+                    const $opt = $(this);
+                    const optText = $opt.text().trim();
+                    
+                    // 只处理记忆书
+                    if (optText.startsWith('Memory_Context_')) {
+                        // 如果是正主
+                        if (optText === targetBookName) {
+                            if (hasKeptTarget) {
+                                // 之前已经留过一个了，这是重复的 -> 删！
+                                $opt.remove();
+                            } else {
+                                // 这是第一个，保留
+                                hasKeptTarget = true;
+                            }
+                        } 
+                        // 如果不是正主 (旧的/别人的) -> 删！
+                        // 这一步能把你说的“别的角色的幽灵书”从界面上干掉
+                        else {
+                            $opt.remove();
+                        }
+                    }
+                });
+
+                // 如果正主被误删了或者本来就没有，加回去
+                if (targetBookName && !hasKeptTarget) {
+                    const newOption = new Option(targetBookName, targetBookName, true, true);
+                    $characterSelect.append(newOption);
+                }
+
+                // 强制刷新选中状态
+                // 这一步确保 UI 上的钩子和 cleanList 数据一致
+                $characterSelect.val(cleanList).trigger('change');
+                
+                // 延时再触发一次 Select2 内部更新，确保视觉同步
+                setTimeout(() => {
+                    $characterSelect.trigger('change.select2');
+                }, 50);
+            }
+
+        } catch (error) {
+            console.error('❌ [自动绑定] 异常:', error);
+        }
     }
 
     /**
@@ -1009,7 +1250,7 @@
 
         // ✅✅✅ 极简版保存逻辑：不合并，直接新增一行
         save(summaryData, note = "") {
-            const sumSheet = this.m.get(8); // 获取第9个表格（索引8）即总结表
+            const sumSheet = this.m.get(this.m.s.length - 1); // 动态获取最后一个表格（总结表）
 
             // ✅ 【自动扩容】如果传入了备注，但总结表只有2列，自动添加第3列
             if (note && sumSheet.c.length < 3) {
@@ -1029,10 +1270,11 @@
                     console.log('📋 [自动扩容] 已初始化 C.customTables');
                 }
 
-                // 确保索引8存在且更新列定义
-                if (C.customTables[8]) {
-                    C.customTables[8].c = [...sumSheet.c];  // 同步列定义
-                    console.log('✅ [自动扩容] C.customTables[8] 已更新为:', C.customTables[8].c);
+                // 确保总结表索引存在且更新列定义
+                const summaryIndex = this.m.s.length - 1;
+                if (C.customTables[summaryIndex]) {
+                    C.customTables[summaryIndex].c = [...sumSheet.c];  // 同步列定义
+                    console.log(`✅ [自动扩容] C.customTables[${summaryIndex}] 已更新为:`, C.customTables[summaryIndex].c);
                 }
 
                 // 3. 保存到 localStorage
@@ -1088,7 +1330,7 @@
 
         // 读取逻辑也微调一下，让多条总结之间有间隔，方便AI理解
         load() {
-            const sumSheet = this.m.get(8);
+            const sumSheet = this.m.get(this.m.s.length - 1); // 动态获取最后一个表格（总结表）
             if (!sumSheet || sumSheet.r.length === 0) return '';
 
             // 格式示例：
@@ -1098,9 +1340,10 @@
             // 【剧情总结 2】
             // ...内容...
             return sumSheet.r.map((row, i) => {
-                // ✨✨✨ 核心修复：检查第 8 号表(总结表)的第 i 行是否被标记为隐藏
+                // ✨✨✨ 核心修复：检查总结表的第 i 行是否被标记为隐藏
+                const summaryIndex = this.m.s.length - 1;
                 // summarizedRows 是全局变量，存储了所有表格的隐藏行索引
-                if (typeof summarizedRows !== 'undefined' && summarizedRows[8] && summarizedRows[8].includes(i)) {
+                if (typeof summarizedRows !== 'undefined' && summarizedRows[summaryIndex] && summarizedRows[summaryIndex].includes(i)) {
                     return null; // 🚫 跳过被隐藏(变绿)的行
                 }
                 return `【${row[0] || '历史片段'}】\n${row[1] || ''}`;
@@ -1109,12 +1352,13 @@
 
         // ✅✅✅ 升级版 loadArray：支持动态列 + 过滤隐藏行
         loadArray() {
-            const sumSheet = this.m.get(8);
+            const sumSheet = this.m.get(this.m.s.length - 1); // 动态获取最后一个表格（总结表）
             if (!sumSheet || sumSheet.r.length === 0) return [];
 
+            const summaryIndex = this.m.s.length - 1;
             return sumSheet.r.map((row, i) => {
                 // 🚫 过滤逻辑：检查是否被标记为隐藏（同 load() 方法）
-                if (typeof summarizedRows !== 'undefined' && summarizedRows[8] && summarizedRows[8].includes(i)) {
+                if (typeof summarizedRows !== 'undefined' && summarizedRows[summaryIndex] && summarizedRows[summaryIndex].includes(i)) {
                     return null; // 跳过隐藏的行
                 }
 
@@ -1148,8 +1392,8 @@
                 return { type, content: content.trim() };
             }).filter(item => item !== null); // 过滤掉被隐藏的行
         }
-        clear() { this.m.get(8).clear(); this.m.save(); }
-        has() { const s = this.m.get(8); return s.r.length > 0 && s.r[0][1]; }
+        clear() { this.m.get(this.m.s.length - 1).clear(); this.m.save(); }
+        has() { const s = this.m.get(this.m.s.length - 1); return s.r.length > 0 && s.r[0][1]; }
     }
 
     /**
@@ -1164,6 +1408,7 @@
         constructor() {
             this.s = [];
             this.id = null;
+            this.structureBound = false;
             this.initTables(DEFAULT_TABLES);
         }
 
@@ -1266,6 +1511,8 @@
                 id: id,
                 ts: now,
                 d: this.s.map(sh => sh.json()),
+                structure: this.s.map(sh => ({ n: sh.n, c: sh.c })), // ✅ 新增：保存当前表结构（表名和列名）
+                structureBound: this.structureBound, // ✅ 保存结构绑定状态
                 summarized: summarizedRows,
                 colWidths: userColWidths,
                 rowHeights: userRowHeights,
@@ -1381,6 +1628,19 @@
 
             if (finalData && finalData.ts <= lastInternalSaveTime) return;
             if (finalData && finalData.v && finalData.d) {
+                // ✅ 新增：如果存档里有结构定义，先重塑表格
+                if (finalData.structure && Array.isArray(finalData.structure) && finalData.structure.length > 0) {
+                    console.log(`🏗️ [结构恢复] 检测到专属表结构（${finalData.structure.length}个表），正在重塑...`);
+                    this.initTables(finalData.structure, false);
+                    console.log(`✅ [结构恢复] 表格结构已恢复为角色专属配置`);
+                } else {
+                    console.log(`ℹ️ [结构恢复] 存档无专属结构，使用当前配置的表结构`);
+                }
+
+                // ✅ 恢复结构绑定状态
+                this.structureBound = finalData.structureBound || false;
+
+                // 然后才是填充数据
                 finalData.d.forEach((sd, i) => { if (this.s[i]) this.s[i].from(sd); });
                 if (finalData.summarized) summarizedRows = finalData.summarized;
                 if (finalData.colWidths) userColWidths = finalData.colWidths;
@@ -1435,7 +1695,7 @@
 
         ctx() { return (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null; }
 
-        getTableText() { return this.s.slice(0, 8).map((s, i) => s.txt(i)).filter(t => t).join('\n'); }
+        getTableText() { return this.s.slice(0, -1).map((s, i) => s.txt(i)).filter(t => t).join('\n'); }
 
         pmt() {
             let result = '';
@@ -1443,7 +1703,7 @@
                 result += '=== 📚 记忆总结（历史压缩数据，仅供参考） ===\n\n' + this.sm.load() + '\n\n=== 总结结束 ===\n\n';
             }
 
-            const tableStr = this.s.slice(0, 8).map((s, i) => s.txt(i)).filter(t => t).join('\n');
+            const tableStr = this.s.slice(0, -1).map((s, i) => s.txt(i)).filter(t => t).join('\n');
             if (tableStr) {
                 // ✅ 修改为：纯粹的状态描述，不带操作暗示，防止 AI 误解
                 result += '【系统数据库：剧情记忆档案（仅供剧情参考，请勿在回复中生成此表格）】\n\n' + tableStr + '【记忆档案结束】\n';
@@ -1453,7 +1713,7 @@
 
             // ✨✨✨ 核心修改：精简状态栏，只告诉 AI 下一个索引 ✨✨✨
             result += '\n[后台索引状态]\n';
-            this.s.slice(0, 8).forEach((s, i) => {
+            this.s.slice(0, -1).forEach((s, i) => {
                 const displayName = i === 1 ? '支线追踪' : s.n;
                 const nextIndex = s.r.length; // 下一个空位的索引
                 result += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
@@ -1468,7 +1728,7 @@
     function saveSnapshot(msgIndex) {
         try {
             const snapshot = {
-                data: m.all().slice(0, 8).map(sh => JSON.parse(JSON.stringify(sh.json()))), // ✅ 只保存前8个表格，不保存总结表
+                data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))), // ✅ 只保存数据表，不保存总结表
                 summarized: JSON.parse(JSON.stringify(summarizedRows)),
                 timestamp: Date.now()
             };
@@ -1524,12 +1784,12 @@
 
             // 2. 先彻底清空当前表格
             // (只要通过了上面的时间戳检查，说明这个空状态是合法的，或者是AI生成的最新状态)
-            m.s.slice(0, 8).forEach(sheet => sheet.r = []);
+            m.s.slice(0, -1).forEach(sheet => sheet.r = []);
 
             // 3. ✨✨✨ [关键修复] 强力深拷贝恢复 ✨✨✨
             // 将快照里的数据（哪怕是空的）复印一份给当前表格
             snapshot.data.forEach((sd, i) => {
-                if (i < 8 && m.s[i]) {
+                if (i < m.s.length - 1 && m.s[i]) {
                     const deepCopyData = JSON.parse(JSON.stringify(sd));
                     m.s[i].from(deepCopyData);
                 }
@@ -1713,6 +1973,12 @@
         if (DEFAULT_COL_WIDTHS[tableIndex] && DEFAULT_COL_WIDTHS[tableIndex][colName]) {
             return DEFAULT_COL_WIDTHS[tableIndex][colName];
         }
+
+        // ✅ 新增：如果是总结表（最后一个表），给个特殊的默认宽度
+        if (tableIndex === m.s.length - 1 && colName === '表格类型') {
+            return 100;
+        }
+
         return null;
     }
 
@@ -1771,7 +2037,7 @@
         const $box = $('<div>', {
             css: {
                 background: isDark ? '#1e1e1e' : '#fff',
-                color: textColor,
+                color: 'var(--g-tc)',
                 border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
                 width: '90vw',
                 maxWidth: '320px',
@@ -1797,7 +2063,7 @@
                 marginBottom: '5px'
             }
         });
-        $header.append(`<h3 style="margin:0; font-size:16px; color:${textColor};">📏 视图设置</h3>`);
+        $header.append(`<h3 style="margin:0; font-size:16px; color:var(--g-tc);">📏 视图设置</h3>`);
 
         const $closeBtn = $('<button>', {
             text: '×',
@@ -1824,7 +2090,7 @@
                 border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #eee'
             }
         });
-        $sliderContainer.append(`<div style="font-size:12px; font-weight:600; margin-bottom:8px; color:${textColor};">行高调整 (px)</div>`);
+        $sliderContainer.append(`<div style="font-size:12px; font-weight:600; margin-bottom:8px; color:var(--g-tc);">行高调整 (px)</div>`);
 
         const $controlRow = $('<div>', {
             css: {
@@ -1859,7 +2125,7 @@
                 border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #ddd',
                 borderRadius: '4px',
                 background: isDark ? 'rgba(255,255,255,0.05)' : '#fff',
-                color: textColor
+                color: 'var(--g-tc)'
             }
         });
 
@@ -1889,7 +2155,7 @@
             text: '📐 重置列宽',
             css: Object.assign({}, btnStyle, {
                 background: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
-                color: textColor
+                color: 'var(--g-tc)'
             })
         });
 
@@ -2008,7 +2274,7 @@
         // ✨✨✨ 修复：生成状态栏信息 ✨✨✨
         const tableTextRaw = m.getTableText();
         let statusStr = '\n=== 📋 当前表格状态 ===\n';
-        m.s.slice(0, 8).forEach((s, i) => {
+        m.s.slice(0, -1).forEach((s, i) => {
             const displayName = i === 1 ? '支线追踪' : s.n;
             const nextIndex = s.r.length;
             statusStr += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
@@ -2050,92 +2316,91 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     function cleanMemoryTags(text) { if (!text) return text; return text.replace(MEMORY_TAG_REGEX, '').trim(); }
 
     /**
-     * 核心过滤函数：根据黑/白名单处理内容
+     * 核心过滤函数：串行双重过滤（先黑名单去除，再白名单提取）
      * @param {string} content - 原始文本
      * @returns {string} - 处理后的文本
      */
     function filterContentByTags(content) {
-        if (!content || !C.filterTags) return content;
+        if (!content) return content;
+        let result = content;
 
-        const tags = C.filterTags.split(/[,，]/).map(t => t.trim()).filter(t => t);
-        if (tags.length === 0) return content;
-
-        // 🟢 模式 A: 白名单 (只保留指定标签内的内容)
-        if (C.filterMode === 'whitelist') {
-            let extracted = [];
-            let foundAny = false;
-
-            tags.forEach(t => {
-                let re;
-                // ✅ 针对 HTML 注释的特殊处理 (白名单模式下通常不填注释，但也做兼容)
-                if (t.startsWith('!--')) {
-                    re = new RegExp('<' + t + '[\\s\\S]*?-->', 'gi');
-                } else {
-                    re = new RegExp(`<${t}(?:\\s+[^>]*)?>([\\s\\S]*?)(?:<\\/${t}>|$)`, 'gi');
-                }
-
-                let match;
-                while ((match = re.exec(content)) !== null) {
-                    if (match[1] && match[1].trim()) {
-                        extracted.push(match[1].trim());
-                        foundAny = true;
-                    } else if (match[0]) {
-                        // 兼容注释或其他无group捕获的情况
-                        extracted.push(match[0].trim());
-                        foundAny = true;
-                    }
-                }
-            });
-
-            // 策略：如果找到了白名单标签，就只返回标签里的内容；
-            // 如果完全没找到任何白名单标签，说明这是一条普通消息，原样返回（防止误删正常对话）
-            return foundAny ? extracted.join('\\n\\n') : content;
-        }
-
-        // ⚫ 模式 B: 黑名单 (删除指定标签及其内容) - 默认
-        else {
-            let temp = content;
+        // 1️⃣ 黑名单处理 (如果设置了)
+        if (C.filterTags) {
+            const tags = C.filterTags.split(/[,，]/).map(t => t.trim()).filter(t => t);
             tags.forEach(t => {
                 let re;
                 if (t.startsWith('!--')) {
-                    // ✅ 针对 HTML 注释的特殊处理 (匹配 <!-- ... -->)
-                    // 例如填入 "!--" 则匹配所有 <!--...-->
-                    // 填入 "!--run" 则匹配 <!--run...-->
+                    // 匹配 HTML 注释 <!--...-->
                     re = new RegExp('<' + t + '[\\s\\S]*?-->', 'gi');
                 } else {
-                    // 原有的成对标签处理 <tag>...</tag>
+                    // 匹配成对标签 <tag>...</tag>
                     re = new RegExp(`<${t}(?:\\s+[^>]*)?>[\\s\\S]*?<\\/${t}>`, 'gi');
                 }
-                temp = temp.replace(re, '');
+                result = result.replace(re, '');
             });
-            return temp.trim();
         }
+
+        // 2️⃣ 白名单处理 (如果设置了，基于黑名单处理后的结果继续处理)
+        if (C.filterTagsWhite) {
+            const tags = C.filterTagsWhite.split(/[,，]/).map(t => t.trim()).filter(t => t);
+            if (tags.length > 0) {
+                let extracted = [];
+                let foundAny = false;
+                tags.forEach(t => {
+                    let re;
+                    if (t.startsWith('!--')) {
+                        // 白名单模式下注释标签通常不常用，但也做兼容
+                        re = new RegExp('<' + t + '[\\s\\S]*?-->', 'gi');
+                    } else {
+                        // 提取标签内的内容（group 1）
+                        re = new RegExp(`<${t}(?:\\s+[^>]*)?>([\\s\\S]*?)(?:<\\/${t}>|$)`, 'gi');
+                    }
+                    let match;
+                    while ((match = re.exec(result)) !== null) { // 注意：是对 result 进行匹配
+                        if (match[1] && match[1].trim()) {
+                            extracted.push(match[1].trim());
+                            foundAny = true;
+                        } else if (match[0]) {
+                            // 兼容注释或其他无 group 捕获的情况
+                            extracted.push(match[0].trim());
+                            foundAny = true;
+                        }
+                    }
+                });
+                // 只有找到了白名单标签才替换，否则保留(黑名单处理后的)原文本，防止误删
+                if (foundAny) result = extracted.join('\n\n');
+            }
+        }
+
+        return result.trim();
     }
 
-    // ✅✅✅ 智能解析器 v3.6 (无敌兼容版)
+    // ✅✅✅ 智能解析器 v5.0 (终极融合版：脚本 + ToolCall + Gemini数组)
     function prs(tx) {
         if (!tx) return [];
 
+        // 0. 反转义
         tx = unesc(tx);
 
-        // 1. 防吞清洗
+        // 1. 基础清洗
         const commentStart = new RegExp('\\x3c!--', 'g');
         const commentEnd = new RegExp('--\\x3e', 'g');
         let cleanTx = tx.replace(commentStart, ' ').replace(commentEnd, ' ');
-
-        // 2. 压扁换行，修正函数名空格
+        // 压缩空白，规范化函数名 (针对脚本格式)
         cleanTx = cleanTx.replace(/\s+/g, ' ').replace(/Row\s+\(/g, 'Row(').trim();
 
         const cs = [];
-        const commands = ['insertRow', 'updateRow', 'deleteRow'];
 
+        // ==========================================
+        // 🟢 策略 A: 脚本格式解析 (insertRow(...))
+        // ==========================================
+        const commands = ['insertRow', 'updateRow', 'deleteRow'];
         commands.forEach(fn => {
             let searchIndex = 0;
             while (true) {
                 const startIdx = cleanTx.indexOf(fn + '(', searchIndex);
                 if (startIdx === -1) break;
 
-                // 寻找闭合括号 (跳过引号内的括号)
                 let openCount = 0;
                 let endIdx = -1;
                 let inQuote = false;
@@ -2149,7 +2414,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     } else if (inQuote && char === quoteChar && cleanTx[i - 1] !== '\\') {
                         inQuote = false;
                     }
-
                     if (!inQuote) {
                         if (char === '(') openCount++;
                         else if (char === ')') {
@@ -2161,16 +2425,85 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 if (endIdx === -1) { searchIndex = startIdx + 1; continue; }
 
-                // 提取参数并解析
                 const argsStr = cleanTx.substring(startIdx + fn.length + 1, endIdx);
-                const parsed = pag(argsStr, fn);
+                const parsed = pag(argsStr, fn); // 假设 pag 函数在你代码里已有
                 if (parsed) {
                     cs.push({ t: fn.replace('Row', '').toLowerCase(), ...parsed });
                 }
-
                 searchIndex = endIdx + 1;
             }
         });
+
+        // ==========================================
+        // 🔵 策略 B: Gemini 数组格式解析 (你刚发的格式)
+        // 匹配: [{"op": "updateRow", "table": 2, ...}]
+        // ==========================================
+        try {
+            // 正则提取方括号 [] 包裹的内容
+            const arrayMatches = cleanTx.match(/\[\s*\{[\s\S]*?\}\s*\]/g) || [];
+            arrayMatches.forEach(jsonStr => {
+                try {
+                    // 预检：必须包含 op 和 table 关键字
+                    if (!jsonStr.includes('op') || !jsonStr.includes('table')) return;
+
+                    const arr = JSON.parse(jsonStr);
+                    if (Array.isArray(arr)) {
+                        arr.forEach(item => {
+                            if (item.op && item.table !== undefined) {
+                                // 映射操作类型
+                                let type = '';
+                                if (item.op.includes('insert')) type = 'insert';
+                                else if (item.op.includes('update')) type = 'update';
+                                else if (item.op.includes('delete')) type = 'delete';
+
+                                if (type) {
+                                    cs.push({
+                                        t: type,
+                                        ti: parseInt(item.table),
+                                        ri: item.index !== undefined ? parseInt(item.index) : null,
+                                        d: item.row || null // Gemini 这里的字段叫 row
+                                    });
+                                }
+                            }
+                        });
+                        console.log(`🔧 [兼容模式] 成功解析 Gemini 数组指令 (${arr.length}条)`);
+                    }
+                } catch (e) { /* 不是我们要的数组，忽略 */ }
+            });
+        } catch (e) { console.warn('Array parser error', e); }
+
+        // ==========================================
+        // 🔴 策略 C: Tool Call 格式解析 (OpenAI/DeepSeek)
+        // 匹配: {"function": "updateRow", "args": [...]}
+        // ==========================================
+        try {
+            if (cleanTx.includes('function') && cleanTx.includes('args')) {
+                const objMatches = cleanTx.match(/\{.*?\}/g) || [];
+                objMatches.forEach(jsonStr => {
+                    try {
+                        // 简单的修复单引号 JSON (容错)
+                        const validJson = jsonStr.replace(/'/g, '"'); 
+                        const obj = JSON.parse(validJson);
+                        
+                        if (obj.function && Array.isArray(obj.args)) {
+                            const fnName = obj.function.replace('Row', '').toLowerCase();
+                            const args = obj.args;
+                            let parsed = null;
+                            
+                            if (obj.function.includes('insert') && args.length >= 2) parsed = { ti: args[0], ri: null, d: args[1] };
+                            else if (obj.function.includes('update') && args.length >= 3) parsed = { ti: args[0], ri: args[1], d: args[2] };
+                            else if (obj.function.includes('delete') && args.length >= 2) parsed = { ti: args[0], ri: args[1], d: null };
+
+                            if (parsed) {
+                                cs.push({ t: fnName, ...parsed });
+                                console.log('🔧 [兼容模式] 成功解析 ToolCall 指令:', obj.function);
+                            }
+                        }
+                    } catch (e) { /* 忽略解析失败 */ }
+                });
+            }
+        } catch (e) { console.warn('ToolCall parser error', e); }
+
         return cs;
     }
 
@@ -2240,31 +2573,34 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     function inj(ev) {
-        // ✨✨✨ 1. [核心修复] 拦截总结模式 (防止 Prompt 污染) ✨✨✨
-        if (isSummarizing) {
-            // 如果正在执行总结任务，我们要把 System/Preset 里的变量全部“擦除”
-            // 防止酒馆把 {{MEMORY_PROMPT}} 展开成 2000 字的规则发送给 AI
+        // ✨✨✨ 1. [核心修复] 拦截总结/追溯模式 (防止 Prompt 污染) ✨✨✨
+        if (window.isSummarizing) {
+            // 如果正在执行总结/追溯任务，我们要把 System/Preset 里的变量全部"擦除"
+            // 防止酒馆把 {{MEMORY_PROMPT}} 展开成表格发送给 AI，造成双重数据
             const varsToRemove = ['{{MEMORY}}', '{{MEMORY_SUMMARY}}', '{{MEMORY_TABLE}}', '{{MEMORY_PROMPT}}'];
 
-            ev.chat.forEach(msg => {
-                let c = msg.content || msg.mes || '';
-                if (!c) return;
+            if (ev.chat && Array.isArray(ev.chat)) {
+                ev.chat.forEach(msg => {
+                    let c = msg.content || msg.mes || '';
+                    if (!c) return;
 
-                let modified = false;
-                varsToRemove.forEach(v => {
-                    if (c.includes(v)) {
-                        c = c.replace(v, ''); // ⚡️ 直接替换为空字符串
-                        modified = true;
+                    let modified = false;
+                    varsToRemove.forEach(v => {
+                        if (c.includes(v)) {
+                            // 全局替换，防止出现多次
+                            c = c.split(v).join('');
+                            modified = true;
+                        }
+                    });
+
+                    if (modified) {
+                        if (msg.content) msg.content = c;
+                        if (msg.mes) msg.mes = c;
                     }
                 });
+            }
 
-                if (modified) {
-                    if (msg.content) msg.content = c;
-                    if (msg.mes) msg.mes = c;
-                }
-            });
-
-            console.log('🧹 [总结模式] 已清洗所有记忆变量，确保 Prompt 纯净。');
+            console.log('🧹 [总结/追溯模式] 已清洗所有记忆变量，防止双重注入。');
             return; // ⛔️ 强制结束！不再执行后续的表格注入逻辑
         }
         // ============================================================
@@ -2297,7 +2633,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // B. 准备表格数据 (实时构建)
         // ✅ 旧逻辑：合并字符串（用于兼容旧的变量替换）
-        const tableContent = m.s.slice(0, 8).map((s, i) => s.txt(i)).filter(t => t).join('\n');
+        const tableContent = m.s.slice(0, -1).map((s, i) => s.txt(i)).filter(t => t).join('\n');
 
         strTable += '【系统数据库：剧情记忆档案（仅供剧情参考，请勿在回复中生成此表格）】\n\n';
 
@@ -2308,36 +2644,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
         strTable += '【记忆档案结束】\n';
 
-        strTable += '\n[后台索引状态]\n';
-        m.s.slice(0, 8).forEach((s, i) => {
-            const displayName = i === 1 ? '支线追踪' : s.n;
-            const nextIndex = s.r.length;
-            strTable += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
-        });
-        strTable += '[索引结束]\n';
-
         // ✅ 新逻辑：按表拆分（用于分区发送）
-        m.s.slice(0, 8).forEach((sheet, i) => {
+        m.s.slice(0, -1).forEach((sheet, i) => {
             if (sheet.r.length > 0) {
                 // 动态获取表名，支持用户自定义
                 const sheetName = sheet.n;
                 const sheetContent = sheet.txt(i);
 
-                // 添加状态栏信息
-                const nextIndex = sheet.r.length;
-                const statusInfo = `\n⏭️ 新增请用索引 ${nextIndex}`;
-
                 tableMessages.push({
                     role: 'system',
-                    content: `【当前表格状态 - ${sheetName}】\n${sheetContent}${statusInfo}`,
+                    content: `【当前表格状态 - ${sheetName}】\n${sheetContent}`,
                     isGaigaiData: true
                 });
             }
         });
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
-        if (C.enabled && window.Gaigai.PromptManager.get('tablePrompt')) {
+        // 逻辑：如果开启了批量填表(autoBackfill)，强制屏蔽实时填表提示词，无论 C.enabled 是什么状态！
+        if (C.enabled && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
             strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
+
+            // ✅ 追加索引状态信息到提示词末尾
+            strPrompt += '\n\n[当前索引状态]\n';
+            m.s.slice(0, -1).forEach((s, i) => {
+                const displayName = i === 1 ? '支线追踪' : s.n;
+                const nextIndex = s.r.length;
+                strPrompt += `表${i} ${displayName}: 下一行请用索引 ${nextIndex}\n`;
+            });
         }
 
         // ============================================================
@@ -2472,19 +2805,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 6. 过滤历史 (适配手机插件)
         if (C.filterHistory) {
-            ev.chat.forEach((msg) => {
+            // 获取 AI 正在生成的消息的索引。通常是 chat 数组的最后一项（如果 AI 正在说话）
+            const lastMessageIndex = ev.chat.length - 1;
+
+            ev.chat.forEach((msg, idx) => { // <-- ✨ 增加 idx 参数
                 // 跳过插件自己注入的提示词、数据
                 if (msg.isGaigaiPrompt || msg.isGaigaiData || msg.isPhoneMessage) return;
 
                 // ✨✨✨ 核心修复：遇到 System (系统) 消息直接跳过，绝对不清洗！✨✨✨
-                // 这样你的 {{MEMORY_PROMPT}} 展开后的 <Memory> 标签就不会被删掉了
                 if (msg.role === 'system') return;
 
                 // 跳过特定的手机消息格式
                 if (msg.content && (msg.content.includes('📱 手机') || msg.content.includes('手机微信消息记录'))) return;
 
-                // 仅清洗 Assistant (AI回复) 的历史记录，防止 AI 看到自己以前输出的数据库指令
-                if (msg.role === 'assistant' || !msg.is_user) {
+                // ✅✅✅ 关键修复点：
+                // 仅清洗 AI 的“历史”回复 (即：不是当前 AI 正在生成的那条消息)
+                // 这样可以确保 AI 当前正在输出的带有 <Memory> 标签的内容不会被提前清除
+                if ((msg.role === 'assistant' || !msg.is_user) && idx !== lastMessageIndex) { // <-- ✨ 修改这一行
                     const fields = ['content', 'mes', 'message', 'text'];
                     fields.forEach(f => {
                         if (msg[f] && typeof msg[f] === 'string') msg[f] = msg[f].replace(MEMORY_TAG_REGEX, '').trim();
@@ -3201,9 +3538,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             .g-p div[style*="background: rgba(255,255,255"],
             .g-p div[style*="background:rgba(255,255,255"],
             .g-p div[style*="background:#fff"],
-            #api-config-section,
-            #auto-bf-settings,
-            #auto-sum-settings {
+            #gg_api_config_section,
+            #gg_auto_bf_settings,
+            #gg_auto_sum_settings {
                 background: rgba(255, 255, 255, 0.05) !important; /* 微微提亮 */
                 border-color: rgba(255, 255, 255, 0.1) !important;
             }
@@ -3616,13 +3953,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     /**
-     * 渲染笔记本视图（用于索引8的记忆总结表）
+     * 渲染笔记本视图（用于最后一个表格，即总结表）
      * @param {Object} sheet - 表格数据对象
      * @param {number} tableIndex - 表格索引
      * @returns {string} - 返回笔记本视图的HTML字符串
      */
     /**
-     * 渲染笔记本视图（用于索引8的记忆总结表）
+     * 渲染笔记本视图（用于最后一个表格，即总结表）
      * 📱 修复版：将翻页按钮移到顶部，防止手机端看不见
      */
     function renderBookUI(sheet, tableIndex) {
@@ -3764,8 +4101,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     function gtb(s, ti) {
-        // 判断：如果是索引8（记忆总结表），使用笔记本视图
-        if (ti === 8) {
+        // 判断：如果是最后一个表（总结表），使用笔记本视图
+        if (ti === m.s.length - 1) {
             return renderBookUI(s, ti);
         }
 
@@ -4370,8 +4707,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const sh = m.get(ti);
             if (!sh) return;
 
-            // ✅ 拦截：总结表（索引8）使用笔记本视图专属删除逻辑
-            if (ti === 8) {
+            // ✅ 拦截：总结表使用笔记本视图专属删除逻辑
+            if (ti === m.s.length - 1) {
                 try {
                     isDeletingRow = true;  // 锁定
 
@@ -4401,9 +4738,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         // 删除当前页
                         sh.del(pageToDelete);
 
-                        // ✅ 关键：同步更新 summarizedRows[8]
-                        if (summarizedRows[8]) {
-                            summarizedRows[8] = summarizedRows[8]
+                        // ✅ 关键：同步更新 summarizedRows（动态索引）
+                        if (summarizedRows[ti]) {
+                            summarizedRows[ti] = summarizedRows[ti]
                                 .filter(ri => ri !== pageToDelete)  // 移除被删除的索引
                                 .map(ri => ri > pageToDelete ? ri - 1 : ri);  // 大于删除索引的都 -1（行号前移）
                             saveSummarizedRows();
@@ -4426,8 +4763,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         sh.r = [];
 
                         // 清空已总结标记
-                        if (summarizedRows[8]) {
-                            summarizedRows[8] = [];
+                        if (summarizedRows[ti]) {
+                            summarizedRows[ti] = [];
                             saveSummarizedRows();
                         }
 
@@ -4520,8 +4857,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const sh = m.get(ti);
             if (!sh) return;
 
-            // ✅ 拦截：总结表（索引8）使用笔记本视图专属新增逻辑
-            if (ti === 8) {
+            // ✅ 拦截：总结表使用笔记本视图专属新增逻辑
+            if (ti === m.s.length - 1) {
                 // 获取当前页码
                 const insertAfterPage = currentBookPage;
 
@@ -4532,10 +4869,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 在当前页之后插入
                 sh.ins(nr, insertAfterPage);
 
-                // ✅ 关键：同步更新 summarizedRows[8]
+                // ✅ 关键：同步更新 summarizedRows（动态索引）
                 // 所有大于 currentBookPage 的索引值加 1（因为插入新页后，后面的行号后移了）
-                if (summarizedRows[8]) {
-                    summarizedRows[8] = summarizedRows[8].map(ri => {
+                if (summarizedRows[ti]) {
+                    summarizedRows[ti] = summarizedRows[ti].map(ri => {
                         return ri > insertAfterPage ? ri + 1 : ri;
                     });
                     saveSummarizedRows();
@@ -4625,21 +4962,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const sheetCount = sheetsData.length;
                         let importMode = 'full'; // 默认全量恢复
                         let confirmMsg = '';
+                        const totalTableCount = m.s.length; // 动态获取总表格数
+                        const dataTableCount = m.s.length - 1; // 动态获取数据表数量
 
-                        if (sheetCount === 9) {
-                            // 包含 9 个表格（详情表 0-7 + 总结表 8）
+                        if (sheetCount === totalTableCount) {
+                            // 包含所有表格（所有数据表 + 总结表）
                             importMode = 'full';
-                            confirmMsg = '📦 检测到完整备份（9 个表格）\n\n将恢复所有详情表和总结表';
-                        } else if (sheetCount === 8) {
-                            // 仅包含详情表 (0-7)
+                            confirmMsg = `📦 检测到完整备份（${totalTableCount} 个表格）\n\n将恢复所有详情表和总结表`;
+                        } else if (sheetCount === dataTableCount) {
+                            // 仅包含数据表（不含总结表）
                             importMode = 'details';
-                            confirmMsg = '📊 检测到详情表备份（8 个表格）\n\n将仅恢复详情表，保留现有总结表';
+                            confirmMsg = `📊 检测到详情表备份（${dataTableCount} 个表格）\n\n将仅恢复详情表，保留现有总结表`;
                         } else if (sheetCount === 1) {
                             // 仅包含总结表
                             importMode = 'summary';
                             confirmMsg = '📝 检测到总结表备份（1 个表格）\n\n将仅恢复总结表，保留现有详情表';
                         } else {
-                            await customAlert(`⚠️ 数据格式异常！\n\n表格数量: ${sheetCount}\n预期: 1、8 或 9 个表格`, '格式错误');
+                            await customAlert(`⚠️ 数据格式异常！\n\n表格数量: ${sheetCount}\n预期: 1、${dataTableCount} 或 ${totalTableCount} 个表格`, '格式错误');
                             return;
                         }
 
@@ -4656,14 +4995,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 if (sheetsData[i]) sheet.from(sheetsData[i]);
                             });
                         } else if (importMode === 'details') {
-                            // 仅恢复详情表 (0-7)
-                            for (let i = 0; i < 8 && i < sheetsData.length; i++) {
+                            // 仅恢复数据表（不含最后一个总结表）
+                            for (let i = 0; i < m.s.length - 1 && i < sheetsData.length; i++) {
                                 if (sheetsData[i]) m.s[i].from(sheetsData[i]);
                             }
                         } else if (importMode === 'summary') {
-                            // 仅恢复总结表 (8)
-                            if (sheetsData[0] && m.s[8]) {
-                                m.s[8].from(sheetsData[0]);
+                            // 仅恢复总结表（最后一个表）
+                            const summaryIndex = m.s.length - 1;
+                            if (sheetsData[0] && m.s[summaryIndex]) {
+                                m.s[summaryIndex].from(sheetsData[0]);
                             }
                         }
 
@@ -4679,7 +5019,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         if (importMode === 'full') {
                             successMsg += '已恢复：所有详情表 + 总结表';
                         } else if (importMode === 'details') {
-                            successMsg += '已恢复：详情表 (0-7)\n保留：现有总结表';
+                            successMsg += `已恢复：所有数据表 (0-${dataTableCount - 1})\n保留：现有总结表`;
                         } else if (importMode === 'summary') {
                             successMsg += '已恢复：总结表\n保留：现有详情表';
                         }
@@ -4745,7 +5085,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const $box = $('<div>', {
                 css: {
                     background: isDark ? '#1e1e1e' : '#fff',
-                    color: textColor,
+                    color: 'var(--g-tc)',
                     border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
                     width: '320px',
                     maxWidth: '90vw',
@@ -4769,7 +5109,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     fontSize: '16px',
                     fontWeight: '600',
                     textAlign: 'center',
-                    color: textColor
+                    color: 'var(--g-tc)'
                 }
             });
 
@@ -4778,7 +5118,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 text: '请选择要导出的内容',
                 css: {
                     fontSize: '12px',
-                    color: textColor,
+                    color: 'var(--g-tc)',
                     opacity: '0.8',
                     marginBottom: '8px',
                     textAlign: 'center'
@@ -4811,11 +5151,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             const $formatLabel = $('<label>', {
                 for: 'export-txt-format',
-                html: `📄 保存为 TXT 格式 <span style="font-size:11px;color:${textColor};opacity:0.6;">(方便手机传输)</span>`,
+                html: `📄 保存为 TXT 格式 <span style="font-size:11px;color:var(--g-tc);opacity:0.6;">(方便手机传输)</span>`,
                 css: {
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: textColor,
+                    color: 'var(--g-tc)',
                     flex: 1,
                     userSelect: 'none'
                 }
@@ -4870,7 +5210,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 html: '📝 仅导出总结',
                 css: { ...btnStyle, background: UI.c, opacity: '0.9' }
             }).on('click', function () {
-                const summarySheet = m.get(8);
+                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
                 if (!summarySheet || summarySheet.r.length === 0) {
                     customAlert('当前没有总结数据可导出', '提示');
                     return;
@@ -4888,7 +5228,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 css: { ...btnStyle, background: UI.c, opacity: '0.8' }
             }).on('click', function () {
                 const useTxt = $formatCheckbox.is(':checked');
-                performExport(m.all().slice(0, 8), `memory_table_details_${m.gid()}_${Date.now()}`, useTxt);
+                performExport(m.all().slice(0, -1), `memory_table_details_${m.gid()}_${Date.now()}`, useTxt); // 动态获取所有数据表
             }).hover(
                 function () { $(this).css('filter', 'brightness(0.9)'); },
                 function () { $(this).css('filter', 'brightness(1)'); }
@@ -4915,9 +5255,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 11. 提示信息
             const $tip = $('<div>', {
                 html: `💡 提示：<br>
-                • 全部导出：包含所有9个表格<br>
-                • 仅导出总结：仅第9个总结表<br>
-                • 仅导出详情：前8个详情表`,
+                • 全部导出：包含所有表格<br>
+                • 仅导出总结：仅最后一个总结表<br>
+                • 仅导出详情：所有数据表（不含总结表）`,
                 css: {
                     padding: '10px',
                     background: 'rgba(33, 150, 243, 0.1)',
@@ -4967,8 +5307,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             if (!await customConfirm(confirmMsg, '清空表格')) return;
 
-            // 只清空前8个表格（保留第9个总结表）
-            m.all().slice(0, 8).forEach(s => s.clear());
+            // 只清空数据表（保留最后一个总结表）
+            m.all().slice(0, -1).forEach(s => s.clear());
             clearSummarizedMarks();
             lastManualEditTime = Date.now(); // ✨ 新增
             m.save(true); // 传入 true 跳过熔断保护，因为这是用户主动的清空操作
@@ -5028,7 +5368,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 4. 重建一个空白的创世快照(-1)，确保系统知道现在是空的
             snapshotHistory['-1'] = {
-                data: m.all().slice(0, 8).map(sh => JSON.parse(JSON.stringify(sh.json()))),
+                data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))), // 只保存数据表
                 summarized: {},
                 timestamp: 0
             };
@@ -5056,8 +5396,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 return;
             }
 
-            // ✅ 分支 A：总结表 (Index 8) 专属操作面板
-            if (ti === 8) {
+            // ✅ 分支 A：总结表专属操作面板
+            if (ti === m.s.length - 1) {
                 const id = 'sum-toggle-dialog-' + Date.now();
                 const $overlay = $('<div>', {
                     id: id,
@@ -5121,8 +5461,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     html: '📚 将所有页面设为【隐藏/已归档】',
                     css: btnCss
                 }).on('click', () => {
-                    if (!summarizedRows[8]) summarizedRows[8] = [];
-                    summarizedRows[8] = Array.from({ length: totalPages }, (_, k) => k);
+                    if (!summarizedRows[ti]) summarizedRows[ti] = [];
+                    summarizedRows[ti] = Array.from({ length: totalPages }, (_, k) => k);
                     finish('所有页面已设为隐藏');
                 });
 
@@ -5186,7 +5526,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 function processRange(str) {
-                    if (!summarizedRows[8]) summarizedRows[8] = [];
+                    if (!summarizedRows[ti]) summarizedRows[ti] = [];
                     const parts = str.split(/[,，]/);
                     let count = 0;
                     parts.forEach(p => {
@@ -5195,8 +5535,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             if (!isNaN(s) && !isNaN(e)) {
                                 for (let i = s; i <= e; i++) {
                                     if (i > 0 && i <= totalPages) {
-                                        if (!summarizedRows[8].includes(i - 1)) {
-                                            summarizedRows[8].push(i - 1);
+                                        if (!summarizedRows[ti].includes(i - 1)) {
+                                            summarizedRows[ti].push(i - 1);
                                             count++;
                                         }
                                     }
@@ -5205,8 +5545,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         } else {
                             const idx = parseInt(p);
                             if (!isNaN(idx) && idx > 0 && idx <= totalPages) {
-                                if (!summarizedRows[8].includes(idx - 1)) {
-                                    summarizedRows[8].push(idx - 1);
+                                if (!summarizedRows[ti].includes(idx - 1)) {
+                                    summarizedRows[ti].push(idx - 1);
                                     count++;
                                 }
                             }
@@ -5383,12 +5723,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         apiUrl = processApiUrl(apiUrl, provider);
         console.log('🔧 [URL处理完成]:', apiUrl);
 
-        // 数据清洗：System -> User (兼容性处理)
+        // Data清洗：System -> User (兼容性处理)
         let rawMessages = Array.isArray(prompt) ? prompt : [{ role: 'user', content: String(prompt) }];
-        const cleanMessages = rawMessages.map(m => ({
-            role: m.role === 'system' ? 'user' : m.role,
-            content: m.role === 'system' ? ('[System]: ' + m.content) : m.content
-        }));
+        
+        // ✨✨✨ 修复：现代模型（OpenAI/Claude/Gemini/Deepseek）都原生支持 system 角色
+        // 强制转为 User 会导致 Gemini 在长上下文中触发安全拦截或空回
+        const preserveSystem = provider === 'openai' || provider === 'deepseek' || provider === 'claude' || provider === 'gemini' || provider === 'siliconflow' || provider === 'proxy_only' || provider === 'compatible';
+
+        const cleanMessages = rawMessages.map(m => {
+            // 如果允许保留 system 且当前是 system，直接返回原样
+            if (preserveSystem && m.role === 'system') {
+                return { role: 'system', content: m.content };
+            }
+            // 否则才转为 User（针对老旧本地模型）
+            return {
+                role: m.role === 'system' ? 'user' : m.role,
+                content: m.role === 'system' ? ('[System]: ' + m.content) : m.content
+            };
+        });
 
         // ========================================
         // 按需鉴权：只有当 Key 不为空时才构造 Authorization Header
@@ -5473,7 +5825,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     throw new Error(`酒馆后端报错: ${errText.substring(0, 100)}`);
                 }
             
-                // ✨✨✨【修复插入点：智能拦截】✨✨✨
                 // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路
                 // ✨ 修复：排除本地地址 (127.0.0.1/localhost)。
                 // 如果用户用 gcli 等本地转接工具，应该走下面的通用 OpenAI/Custom 协议，那里有完善的安全注入。
@@ -5594,7 +5945,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ];
                         // 注入 Gemini 原生格式 (双重保险)
                         proxyPayload.safetySettings = proxyPayload.safety_settings;
@@ -5623,41 +5975,54 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         body: JSON.stringify(proxyPayload)
                     });
 
-                    // 检查 HTTP 状态码
-                    if (proxyResponse.ok) {
-                        const data = await proxyResponse.json();
-                        // ✅ 这里保留了你的 parseApiResponse 调用
-                        const result = parseApiResponse(data);
-                        if (result.success) {
-                            console.log('✅ [后端代理] 成功');
-                            return result;
-                        }
-                        throw new Error('后端返回数据无法解析');
+                   // 1. 检查成功状态
+                if (proxyResponse.ok) {
+                    const data = await proxyResponse.json();
+                    const result = parseApiResponse(data);
+                    if (result.success) {
+                        console.log('✅ [后端代理] 成功');
+                        return result;
                     }
-
-                    // 只有当 HTTP 状态码不是 2xx 时才读取错误信息
-                    const errText = await proxyResponse.text();
-                    console.warn(`⚠️ [后端代理失败] ${proxyResponse.status}: ${errText.substring(0, 200)}`);
-                    throw new Error(`后端返回 ${proxyResponse.status}`);
+                    throw new Error('后端返回数据无法解析');
                 }
+
+                // 2. 处理错误
+                const errText = await proxyResponse.text();
+                const s = proxyResponse.status;
+                let statusTip = '';
+
+                // 翻译错误码
+                if (s === 400) statusTip = ' (请求格式错误/参数不对)';
+                else if (s === 401) statusTip = ' (未授权/API Key无效)';
+                else if (s === 403) statusTip = ' (禁止访问/鉴权失败)';
+                else if (s === 404) statusTip = ' (酒馆后端路由不存在)';
+                else if (s === 500) statusTip = ' (酒馆内部报错/Python脚本崩溃)';
+                else if (s === 502) statusTip = ' (网关错误/上游API无响应)';
+                else if (s === 504) statusTip = ' (后端处理超时/卡死)';
+                else statusTip = ' (未知网络错误)';
+
+                // 注意引号是反引号 ` `
+                console.warn(`⚠️ [后端代理失败] ${s}${statusTip}: ${errText.substring(0, 200)}`);
+
+                throw new Error(`酒馆后端请求失败 ${s}${statusTip}: ${errText.substring(0, 100)}`);
+
+                } 
 
             } catch (e) {
                 console.error(`❌ [后端代理] 失败: ${e.message}`);
                 
-               // ✨✨✨ 修复：兼容端点 AND OpenAI兼容模式 都支持自动降级 ✨✨✨
-           if (provider === 'compatible' || provider === 'openai' || provider === 'gemini') {
+                // 自动降级逻辑
+                if (provider === 'compatible' || provider === 'openai' || provider === 'gemini') {
                     console.warn('⚠️ [自动降级] 后端代理失败，正在尝试浏览器直连...');
-                    useDirect = true; // 打开直连开关
-                    // 注意：这里不要 return，让代码继续向下执行，就会进入下面的 if (useDirect) 块
+                    useDirect = true; 
                 } else {
-                    // 其他模式（如 local）失败了直接报错
                     return {
                         success: false,
                         error: `后端代理失败: ${e.message}\n\n💡 提示：检查 API 地址和密钥是否正确`
                     };
                 }
             }
-        }
+        } 
 
         // ==========================================
         // 通道 B: 浏览器直连 (compatible, deepseek, gemini)
@@ -5783,7 +6148,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 if (!directResponse.ok) {
                     const errText = await directResponse.text();
-                    throw new Error(`HTTP ${directResponse.status}: ${errText.substring(0, 500)}`);
+
+                    // ✨ 翻译错误码 (直连模式)
+                    let statusTip = '';
+                    if (directResponse.status === 502) statusTip = ' (服务商网关错误/挂了)';
+                    else if (directResponse.status === 504) statusTip = ' (请求超时)';
+                    else if (directResponse.status === 401) statusTip = ' (API密钥无效)';
+                    else if (directResponse.status === 404) statusTip = ' (接口地址错误)';
+                    else if (directResponse.status === 429) statusTip = ' (请求太快被限流)';
+
+                    // 👇 这一行也必须用反引号 ` `，不要改动！
+                    throw new Error(`直连请求失败 ${directResponse.status}${statusTip}: ${errText.substring(0, 200)}`);
                 }
 
                 // ✅ [伪流式响应处理] 实现健壮的 SSE 流式解析
@@ -5923,14 +6298,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
 
                         // 2️⃣ 清洗策略：无论来源如何，必须清洗掉 <think> 标签，只留正文
-                        // 防止 DeepSeek 在 content 里混合输出了思考标签
+                        // 防止 DeepSeek/Gemini 在 content 里混合输出了思考标签
                         if (fullText) {
-                            const beforeClean = fullText.length;
-                            fullText = fullText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-                            const afterClean = fullText.length;
+                            const rawText = fullText; // 备份一份原始数据
+                            let cleaned = fullText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                            
+                            // 针对截断情况的额外清洗（如果思考没闭合）
+                            cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
 
-                            if (beforeClean !== afterClean) {
-                                console.log(`🧹 [清洗完成] 已移除 <think> 标签，清洗前: ${beforeClean} 字符，清洗后: ${afterClean} 字符`);
+                            // ✨✨✨ 核心修复：如果清洗后变为空（说明全都是思考内容），则回退到原文
+                            // 这样虽然格式不对，但至少不会报“空内容”错误，用户能看到思考过程
+                            if (!cleaned && rawText.trim().length > 0) {
+                                console.warn('⚠️ [流式清洗] 清洗后内容为空（AI仅输出了思考内容），触发回退保护，保留原文');
+                                fullText = rawText; 
+                            } else {
+                                fullText = cleaned;
+                                
+                                const beforeClean = rawText.length;
+                                const afterClean = fullText.length;
+                                if (beforeClean !== afterClean) {
+                                    console.log(`🧹 [清洗完成] 已移除 <think> 标签，清洗前: ${beforeClean} 字符，清洗后: ${afterClean} 字符`);
+                                }
                             }
                         }
 
@@ -5972,7 +6360,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (e.message.includes('Failed to fetch') ||
                     e.message.includes('NetworkError') ||
                     e.message.includes('CORS')) {
-                    errorMsg += '\n\n💡 可能是 CORS 跨域问题，建议切换到 "🔌 本地/内网" 模式使用后端代理';
+                    errorMsg += '\n\n💡 可能是 CORS 跨域问题。\n建议尝试切换【API提供商】选项（如 "OpenAI 兼容"、"兼容中转" 或 "反代"），利用酒馆后端代理绕过限制。';
                 }
 
                 return {
@@ -6137,8 +6525,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 else if (result && result.content) summary = result.content;
                 else if (result && result.body && result.body.text) summary = result.body.text;
 
+                // 移除思考过程 (带回退保护)
                 if (summary && summary.includes('<think>')) {
-                    summary = summary.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                    const raw = summary;
+                    const cleaned = summary.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                    // 如果清洗后为空，保留原文
+                    summary = cleaned || raw;
                 }
 
                 if (summary && summary.trim()) return { success: true, summary };
@@ -6163,23 +6555,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         <!-- 🌙 夜间模式开关 -->
         <div style="background:rgba(0,0,0,0.05); padding:10px; border-radius:6px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
             <label style="font-weight:bold; margin:0; display:flex; align-items:center; gap:5px;">🌙 夜间模式 (Dark Mode)</label>
-            <input type="checkbox" id="ui-dark-mode" ${UI.darkMode ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer;">
+            <input type="checkbox" id="gg_ui_dark_mode" ${UI.darkMode ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer;">
         </div>
 
         <label>主题色（按钮、表头）：</label>
-        <input type="color" id="tc" value="${UI.c}" style="width:100%; height:40px; border-radius:4px; border:1px solid #ddd; cursor:pointer;">
+        <input type="color" id="gg_theme_color" value="${UI.c}" style="width:100%; height:40px; border-radius:4px; border:1px solid #ddd; cursor:pointer;">
         <br><br>
-        
+
         <label>字体颜色（文字）：</label>
-        <input type="color" id="ttc" value="${UI.tc || '#ffffff'}" style="width:100%; height:40px; border-radius:4px; border:1px solid #ddd; cursor:pointer;">
+        <input type="color" id="gg_theme_text_color" value="${UI.tc || '#ffffff'}" style="width:100%; height:40px; border-radius:4px; border:1px solid #ddd; cursor:pointer;">
         <br><br>
 
         <label style="display:flex; justify-content:space-between;">
             <span>字体大小 (全局)：</span>
-            <span id="fs-val" style="font-weight:bold; color:${UI.c}">${UI.fs}px</span>
+            <span id="gg_fs_val" style="font-weight:bold; color:${UI.c}">${UI.fs}px</span>
         </label>
-        <input type="range" id="tfs" min="10" max="24" step="1" value="${UI.fs}"
-            oninput="document.getElementById('fs-val').innerText = this.value + 'px'; document.documentElement.style.setProperty('--g-fs', this.value + 'px');"
+        <input type="range" id="gg_theme_fontsize" min="10" max="24" step="1" value="${UI.fs}"
+            oninput="document.getElementById('gg_fs_val').innerText = this.value + 'px'; document.documentElement.style.setProperty('--g-fs', this.value + 'px');"
             style="width:100%; cursor:pointer; margin-top:5px;">
 
         <div style="font-size:10px; color:#333; opacity:0.6; margin-top:4px;">拖动滑块实时调整表格文字大小</div>
@@ -6188,18 +6580,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <label style="font-weight: 600; display:block; margin-bottom:5px;">📖 总结本背景图 (DIY)</label>
 
             <!-- 预览区域 -->
-            <div id="bg-preview" style="width: 100%; height: 60px; background: #eee; border-radius: 6px; margin-bottom: 8px; background-size: cover; background-position: center; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">
+            <div id="gg_bg_preview" style="width: 100%; height: 60px; background: #eee; border-radius: 6px; margin-bottom: 8px; background-size: cover; background-position: center; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">
                 ${UI.bookBg ? '' : '暂无背景，使用默认纸张'}
             </div>
 
             <div style="display: flex; gap: 5px;">
-                <input type="text" id="bg-url" placeholder="输入图片 URL..." style="flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                <button id="btn-clear-bg" style="padding: 5px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">🗑️</button>
+                <input type="text" id="gg_bg_url" placeholder="输入图片 URL..." style="flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                <button id="gg_btn_clear_bg" style="padding: 5px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">🗑️</button>
             </div>
 
             <div style="margin-top: 5px; display: flex; align-items: center; gap: 8px;">
-                 <label for="bg-file" style="cursor: pointer; background: #17a2b8; color: white; padding: 4px 10px; border-radius: 4px; font-size: 11px; display: inline-block;">📂 选择本地图片</label>
-                 <input type="file" id="bg-file" accept="image/*" style="display: none;">
+                 <label for="gg_bg_file" style="cursor: pointer; background: #17a2b8; color: white; padding: 4px 10px; border-radius: 4px; font-size: 11px; display: inline-block;">📂 选择本地图片</label>
+                 <input type="file" id="gg_bg_file" accept="image/*" style="display: none;">
                  <span style="font-size: 10px; color: #666;">(建议 < 1MB)</span>
             </div>
         </div>
@@ -6210,9 +6602,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             • 如果主题色较浅，请将字体颜色设为深色（如黑色）<br>
             • 字体过大可能会导致表格内容显示不全，请酌情调整
         </div>
-        
-        <button id="ts" style="padding:8px 16px; width:100%; margin-bottom:10px;">💾 保存</button>
-        <button id="tr" style="padding:8px 16px; width:100%; background:#6c757d;">🔄 恢复默认</button>
+
+        <button id="gg_save_theme" style="padding:8px 16px; width:100%; margin-bottom:10px;">💾 保存</button>
+        <button id="gg_reset_theme" style="padding:8px 16px; width:100%; background:#6c757d;">🔄 恢复默认</button>
     </div>`;
 
         pop('🎨 主题设置', h, true);
@@ -6222,7 +6614,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         setTimeout(() => {
             // ✅ 🌙 夜间模式切换事件 (带记忆功能)
-            $('#ui-dark-mode').off('change').on('change', function() {
+            $('#gg_ui_dark_mode').off('change').on('change', function() {
                 const isChecked = $(this).is(':checked'); // 目标状态
 
                 // 1. 切换前：先保存【当前模式】的颜色到记忆库
@@ -6250,8 +6642,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 // 3. 更新界面控件
-                $('#tc').val(UI.c);
-                $('#ttc').val(UI.tc);
+                $('#gg_theme_color').val(UI.c);
+                $('#gg_theme_text_color').val(UI.tc);
 
                 // 4. 应用样式
                 document.documentElement.style.setProperty('--g-c', UI.c);
@@ -6260,24 +6652,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 // 5. 保存配置 (会连同记忆库一起保存到 localStorage)
                 try { localStorage.setItem('gg_ui', JSON.stringify(UI)); } catch (e) { }
-                
+
                 if (typeof API_CONFIG !== 'undefined') {
                     API_CONFIG.darkMode = isChecked;
                     try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
                 }
-                
+
                 thm();
 
-                if (typeof window.saveAllSettingsToCloud === 'function') {
-                    window.saveAllSettingsToCloud().catch(err => {});
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    window.Gaigai.saveAllSettingsToCloud().catch(err => {});
                 }
             });
 
             // ✅ 这里的绑定作为双重保险
             // 使用 document 代理事件，确保一定能抓到元素
-            $(document).off('input', '#tfs').on('input', '#tfs', function () {
+            $(document).off('input', '#gg_theme_fontsize').on('input', '#gg_theme_fontsize', function () {
                 const val = $(this).val();
-                $('#fs-val').text(val + 'px');
+                $('#gg_fs_val').text(val + 'px');
                 // 同时更新 html 和 body，防止某些主题覆盖
                 document.documentElement.style.setProperty('--g-fs', val + 'px');
                 document.body.style.setProperty('--g-fs', val + 'px');
@@ -6289,11 +6681,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 初始化预览
             if (UI.bookBg) {
-                $('#bg-preview').css('background-image', `url("${UI.bookBg}")`).text('');
+                $('#gg_bg_preview').css('background-image', `url("${UI.bookBg}")`).text('');
             }
 
             // 1. 本地文件上传 (转 Base64)
-            $('#bg-file').on('change', function(e) {
+            $('#gg_bg_file').on('change', function(e) {
                 const file = e.target.files[0];
                 if (!file) return;
 
@@ -6305,37 +6697,37 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     const base64 = evt.target.result;
-                    $('#bg-preview').css('background-image', `url("${base64}")`).text('');
+                    $('#gg_bg_preview').css('background-image', `url("${base64}")`).text('');
                     UI.bookBg = base64; // 暂存到内存对象
                 };
                 reader.readAsDataURL(file);
             });
 
             // 2. URL 输入
-            $('#bg-url').on('input', function() {
+            $('#gg_bg_url').on('input', function() {
                 const url = $(this).val();
                 if (url) {
-                    $('#bg-preview').css('background-image', `url("${url}")`).text('');
+                    $('#gg_bg_preview').css('background-image', `url("${url}")`).text('');
                     UI.bookBg = url;
                 }
             });
 
             // 3. 清除按钮
-            $('#btn-clear-bg').on('click', function() {
+            $('#gg_btn_clear_bg').on('click', function() {
                 UI.bookBg = '';
-                $('#bg-preview').css('background-image', '').text('已清除，使用默认');
-                $('#bg-url').val('');
-                $('#bg-file').val('');
+                $('#gg_bg_preview').css('background-image', '').text('已清除，使用默认');
+                $('#gg_bg_url').val('');
+                $('#gg_bg_file').val('');
             });
 
             // ========================================
             // 保存按钮（同时保存所有主题设置包括背景图）
             // ========================================
-            $('#ts').off('click').on('click', async function () {
-                UI.c = $('#tc').val();
-                UI.tc = $('#ttc').val();
-                UI.fs = parseInt($('#tfs').val());
-                UI.darkMode = $('#ui-dark-mode').is(':checked'); // ✅ 保存夜间模式状态
+            $('#gg_save_theme').off('click').on('click', async function () {
+                UI.c = $('#gg_theme_color').val();
+                UI.tc = $('#gg_theme_text_color').val();
+                UI.fs = parseInt($('#gg_theme_fontsize').val());
+                UI.darkMode = $('#gg_ui_dark_mode').is(':checked'); // ✅ 保存夜间模式状态
                 // ✅ bookBg 已经在上面的事件中赋值到 UI.bookBg 了
 
                 try { localStorage.setItem(UK, JSON.stringify(UI)); } catch (e) { }
@@ -6350,8 +6742,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // 恢复默认按钮 (智能版：清除记忆 + 恢复默认)
-            $('#tr').off('click').on('click', async function () {
-                const isCurrentNight = $('#ui-dark-mode').is(':checked');
+            $('#gg_reset_theme').off('click').on('click', async function () {
+                const isCurrentNight = $('#gg_ui_dark_mode').is(':checked');
                 const modeName = isCurrentNight ? '夜间' : '白天';
 
                 if (!await customConfirm(`确定重置【${modeName}模式】的颜色配置？\n\n(字体大小和背景图也将重置)`, '恢复默认')) return;
@@ -6383,21 +6775,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
                 }
                 try { localStorage.setItem('gg_ui', JSON.stringify(UI)); } catch (e) { }
-                
+
                 m.save();
                 thm();
                 document.documentElement.style.setProperty('--g-fs', '12px');
 
                 // 4. 刷新控件
-                $('#ui-dark-mode').prop('checked', UI.darkMode);
-                $('#tc').val(UI.c);
-                $('#ttc').val(UI.tc);
-                $('#tfs').val(12);
-                $('#fs-val').text('12px');
-                
-                $('#bg-preview').css('background-image', '').text('暂无背景，使用默认纸张');
-                $('#bg-url').val('');
-                $('#bg-file').val('');
+                $('#gg_ui_dark_mode').prop('checked', UI.darkMode);
+                $('#gg_theme_color').val(UI.c);
+                $('#gg_theme_text_color').val(UI.tc);
+                $('#gg_theme_fontsize').val(12);
+                $('#gg_fs_val').text('12px');
+
+                $('#gg_bg_preview').css('background-image', '').text('暂无背景，使用默认纸张');
+                $('#gg_bg_url').val('');
+                $('#gg_bg_file').val('');
 
                 // 5. 提示
                 if (typeof toastr !== 'undefined') {
@@ -6416,19 +6808,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const h = `
     <div class="g-p">
         <h4>🤖 AI 总结配置</h4>
-        
+
         <fieldset style="border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:12px;">
             <legend style="font-size:11px; font-weight:600;">🚀 API 模式</legend>
-            <label><input type="radio" name="api-mode" value="tavern" ${!API_CONFIG.useIndependentAPI ? 'checked' : ''}> 使用酒馆API（默认）</label>
+            <label><input type="radio" name="gg_api_mode" value="tavern" ${!API_CONFIG.useIndependentAPI ? 'checked' : ''}> 使用酒馆API（默认）</label>
             <br>
-            <label><input type="radio" name="api-mode" value="independent" ${API_CONFIG.useIndependentAPI ? 'checked' : ''}> 使用独立API</label>
+            <label><input type="radio" name="gg_api_mode" value="independent" ${API_CONFIG.useIndependentAPI ? 'checked' : ''}> 使用独立API</label>
         </fieldset>
-        
+
         <fieldset id="api-config-section" style="border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:12px; ${API_CONFIG.useIndependentAPI ? '' : 'opacity:0.5; pointer-events:none;'}">
             <legend style="font-size:11px; font-weight:600;">独立API配置</legend>
-            
+
             <label>API提供商：</label>
-            <select id="api-provider" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; margin-bottom:10px;">
+            <select id="gg_api_provider" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; margin-bottom:10px;">
                 <optgroup label="━━━ 后端代理 ━━━">
                     <option value="openai" ${API_CONFIG.provider === 'openai' ? 'selected' : ''}>OpenAI 兼容模式/OpenAI 官方</option>
                     <option value="compatible" ${API_CONFIG.provider === 'compatible' ? 'selected' : ''}>兼容中转/代理</option>
@@ -6443,9 +6835,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <!-- 之前在这里，现在空了或者留着备用 -->
                 </optgroup>
             </select>
-            
+
             <label>API地址 (Base URL)：</label>
-            <input type="text" id="api-url" value="${API_CONFIG.apiUrl}" placeholder="例如: https://api.openai.com/v1" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px;">
+            <input type="text" id="gg_api_url" name="gg_api_url_history" autocomplete="on" value="${API_CONFIG.apiUrl}" placeholder="例如: https://api.openai.com/v1" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px;">
             <div style="font-size:10px; color:${UI.tc}; opacity:0.7; margin-top:4px; margin-bottom:10px;">
                 不行？在 URL 末尾添加 <code style="background:rgba(0,0,0,0.1); padding:1px 4px; border-radius:3px; font-family:monospace;">/v1</code> 试试！
                 <code style="background:rgba(0,0,0,0.1); padding:1px 4px; border-radius:3px; font-family:monospace;">/chat/completions</code> 后缀会自动补全。
@@ -6453,26 +6845,26 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             <label>API密钥 (Key)：</label>
             <div style="position: relative; margin-bottom: 10px;">
-                <input type="password" id="api-key" value="${API_CONFIG.apiKey}" placeholder="sk-..." style="width:100%; padding:5px 30px 5px 5px; border:1px solid #ddd; border-radius:4px; font-size:10px;">
-                <i id="toggle-key-btn" class="fa-solid fa-eye" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--g-tc); opacity: 0.6;" title="显示/隐藏密钥"></i>
+                <input type="password" id="gg_api_key" name="gg_api_key_history" autocomplete="on" value="${API_CONFIG.apiKey}" placeholder="sk-..." style="width:100%; padding:5px 30px 5px 5px; border:1px solid #ddd; border-radius:4px; font-size:10px;">
+                <i id="gg_toggle_key_btn" class="fa-solid fa-eye" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--g-tc); opacity: 0.6;" title="显示/隐藏密钥"></i>
             </div>
-            
+
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                 <label style="margin:0;">模型名称：</label>
-                <span id="fetch-models-btn" style="cursor:pointer; font-size:10px; color:${UI.tc}; border:1px solid ${UI.c}; padding:1px 6px; border-radius:3px; background:rgba(127,127,127,0.1);">🔄 拉取模型列表</span>
+                <span id="gg_fetch_models_btn" style="cursor:pointer; font-size:10px; color:${UI.tc}; border:1px solid ${UI.c}; padding:1px 6px; border-radius:3px; background:rgba(127,127,127,0.1);">🔄 拉取模型列表</span>
             </div>
 
-            <input type="text" id="api-model" value="${API_CONFIG.model}" placeholder="gpt-3.5-turbo" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
-            <select id="api-model-select" style="display:none; width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;"></select>
+            <input type="text" id="gg_api_model" name="gg_api_model_history" autocomplete="on" value="${API_CONFIG.model}" placeholder="gpt-3.5-turbo" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+            <select id="gg_api_model_select" style="display:none; width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;"></select>
 
             <label>最大输出长度 (Max Tokens)：</label>
-            <input type="number" id="api-max-tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+            <input type="number" id="gg_api_max_tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
 
         </fieldset>
-        
+
         <div style="display:flex; gap:10px;">
-            <button id="save-api" style="flex:1; padding:6px 12px; background:${UI.c}; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">💾 保存设置</button>
-            <button id="test-api" style="flex:1; padding:6px 12px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;" ${API_CONFIG.useIndependentAPI ? '' : 'disabled'}>🧪 测试连接</button>
+            <button id="gg_save_api" style="flex:1; padding:6px 12px; background:${UI.c}; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;">💾 保存设置</button>
+            <button id="gg_test_api" style="flex:1; padding:6px 12px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px;" ${API_CONFIG.useIndependentAPI ? '' : 'disabled'}>🧪 测试连接</button>
         </div>
     </div>`;
 
@@ -6482,8 +6874,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         setTimeout(() => {
 
             // === 新增：小眼睛切换功能 ===
-            $('#toggle-key-btn').off('click').on('click', function() {
-                const $input = $('#api-key');
+            $('#gg_toggle_key_btn').off('click').on('click', function() {
+                const $input = $('#gg_api_key');
                 const $icon = $(this);
                 if ($input.attr('type') === 'password') {
                     $input.attr('type', 'text');
@@ -6493,65 +6885,65 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     $icon.removeClass('fa-eye-slash').addClass('fa-eye');
                 }
             });
-            
-            $('input[name="api-mode"]').on('change', function () {
+
+            $('input[name="gg_api_mode"]').on('change', function () {
                 const isIndependent = $(this).val() === 'independent';
                 if (isIndependent) {
                     $('#api-config-section').css({ 'opacity': '1', 'pointer-events': 'auto' });
-                    $('#test-api').prop('disabled', false);
+                    $('#gg_test_api').prop('disabled', false);
                 } else {
                     $('#api-config-section').css({ 'opacity': '0.5', 'pointer-events': 'none' });
-                    $('#test-api').prop('disabled', true);
+                    $('#gg_test_api').prop('disabled', true);
                 }
             });
 
-            $('#api-provider').on('change', function () {
+            $('#gg_api_provider').on('change', function () {
                 const provider = $(this).val();
-                
+
                 // ✅ 核心修改：只修改 placeholder (提示文字)，绝不自动填充 val (实际值)
                 // 这样用户必须手动填入地址，不会误以为已经填好了。
 
                 // 先清空当前的 placeholder，防止残留
-                $('#api-url').attr('placeholder', '请输入 API 地址 (Base URL)...');
-                $('#api-model').attr('placeholder', '请输入模型名称...');
+                $('#gg_api_url').attr('placeholder', '请输入 API 地址 (Base URL)...');
+                $('#gg_api_model').attr('placeholder', '请输入模型名称...');
 
                 if (provider === 'local') {
                     // local 模式
-                    $('#api-url').attr('placeholder', '例如: http://127.0.0.1:7860/v1');
-                    $('#api-model').attr('placeholder', '例如: gpt-3.5-turbo');
+                    $('#gg_api_url').attr('placeholder', '例如: http://127.0.0.1:7860/v1');
+                    $('#gg_api_model').attr('placeholder', '例如: gpt-3.5-turbo');
                 } else if (provider === 'proxy_only') {
                     // 独立反代
-                    $('#api-url').attr('placeholder', '例如: http://127.0.0.1:8889/v1');
-                    $('#api-model').attr('placeholder', '例如: gemini-2.5-pro');
+                    $('#gg_api_url').attr('placeholder', '例如: http://127.0.0.1:8889/v1');
+                    $('#gg_api_model').attr('placeholder', '例如: gemini-2.5-pro');
                 } else if (provider === 'compatible') {
                     // 兼容端点
-                    $('#api-url').attr('placeholder', '例如: https://api.xxx.com/v1');
-                    $('#api-model').attr('placeholder', '例如: gpt-4o, deepseek-chat');
+                    $('#gg_api_url').attr('placeholder', '例如: https://api.xxx.com/v1');
+                    $('#gg_api_model').attr('placeholder', '例如: gpt-4o, deepseek-chat');
                 } else if (provider === 'openai') {
                     // OpenAI
-                    $('#api-url').attr('placeholder', '例如: https://api.openai.com/v1');
-                    $('#api-model').attr('placeholder', '例如: gpt-4o');
+                    $('#gg_api_url').attr('placeholder', '例如: https://api.openai.com/v1');
+                    $('#gg_api_model').attr('placeholder', '例如: gpt-4o');
                 } else if (provider === 'deepseek') {
                     // DeepSeek
-                    $('#api-url').attr('placeholder', '例如: https://api.deepseek.com/v1');
-                    $('#api-model').attr('placeholder', '例如: deepseek-chat');
+                    $('#gg_api_url').attr('placeholder', '例如: https://api.deepseek.com/v1');
+                    $('#gg_api_model').attr('placeholder', '例如: deepseek-chat');
                 } else if (provider === 'siliconflow') {
                     // 硅基流动
-                    $('#api-url').attr('placeholder', '例如: https://api.siliconflow.cn/v1');
-                    $('#api-model').attr('placeholder', '例如: deepseek-ai/DeepSeek-V3'); 
+                    $('#gg_api_url').attr('placeholder', '例如: https://api.siliconflow.cn/v1');
+                    $('#gg_api_model').attr('placeholder', '例如: deepseek-ai/DeepSeek-V3');
                 } else if (provider === 'gemini') {
                     // Gemini
-                    $('#api-url').attr('placeholder', '例如: https://generativelanguage.googleapis.com/v1beta');
-                    $('#api-model').attr('placeholder', '例如: gemini-1.5-flash');
+                    $('#gg_api_url').attr('placeholder', '例如: https://generativelanguage.googleapis.com/v1beta');
+                    $('#gg_api_model').attr('placeholder', '例如: gemini-1.5-flash');
                 } else if (provider === 'claude') {
                     // Claude
-                    $('#api-url').attr('placeholder', '例如: https://api.anthropic.com/v1/messages');
-                    $('#api-model').attr('placeholder', '例如: claude-3-5-sonnet-20241022');
+                    $('#gg_api_url').attr('placeholder', '例如: https://api.anthropic.com/v1/messages');
+                    $('#gg_api_model').attr('placeholder', '例如: claude-3-5-sonnet-20241022');
                 }
             });
 
             // ✨✨✨ 智能拉取模型 (鉴权修复版) ✨✨✨
-            $('#fetch-models-btn').off('click').on('click', async function () {
+            $('#gg_fetch_models_btn').off('click').on('click', async function () {
                 const btn = $(this);
                 const originalText = btn.text();
                 btn.text('拉取中...').prop('disabled', true);
@@ -6559,8 +6951,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // ========================================
                 // 1. 获取参数 - 直接从 DOM 读取当前输入框的值
                 // ========================================
-                let apiUrl = $('#api-url').val().trim().replace(/\/+$/, '');
-                let apiKey = $('#api-key').val().trim();
+                let apiUrl = ($('#gg_api_url').val() || '').trim().replace(/\/+$/, '');
+                let apiKey = ($('#gg_api_key').val() || '').trim();
                 
                 // ✅ 核心修复：提前构造鉴权头 (Bearer sk-...)
                 // 这一点是之前漏掉的，导致部分中转站不认账
@@ -6569,7 +6961,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     authHeader = apiKey.startsWith('Bearer ') ? apiKey : ('Bearer ' + apiKey);
                 }
 
-                const provider = $('#api-provider').val();
+                const provider = $('#gg_api_provider').val();
 
                 // 🔧 IP 修正
                 if (apiUrl.includes('0.0.0.0')) apiUrl = apiUrl.replace(/0\.0\.0\.0/g, '127.0.0.1');
@@ -6759,8 +7151,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 function displayModelSelect(models) {
-                    const $select = $('#api-model-select');
-                    const $input = $('#api-model');
+                    const $select = $('#gg_api_model_select');
+                    const $input = $('#gg_api_model');
                     $select.empty().append('<option value="__manual__">-- 手动输入 --</option>');
                     if (models.length > 0) {
                         models.forEach(m => $select.append(`<option value="${m.id}">${m.name || m.id}</option>`));
@@ -6780,18 +7172,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     else customAlert(message, title);
                 }
             });
-            
-            $('#save-api').on('click', async function () {
-                API_CONFIG.useIndependentAPI = $('input[name="api-mode"]:checked').val() === 'independent';
-                API_CONFIG.provider = $('#api-provider').val();
+
+            $('#gg_save_api').on('click', async function () {
+                API_CONFIG.useIndependentAPI = $('input[name="gg_api_mode"]:checked').val() === 'independent';
+                API_CONFIG.provider = $('#gg_api_provider').val();
 
                 // ✅ URL 清理：去除首尾空格和末尾斜杠，保存干净的 Base URL
-                let apiUrl = $('#api-url').val().trim().replace(/\/+$/, '');
+                let apiUrl = ($('#gg_api_url').val() || '').trim().replace(/\/+$/, '');
                 API_CONFIG.apiUrl = apiUrl;
 
-                API_CONFIG.apiKey = $('#api-key').val();
-                API_CONFIG.model = $('#api-model').val();
-                API_CONFIG.maxTokens = parseInt($('#api-max-tokens').val()) || 8192;
+                API_CONFIG.apiKey = ($('#gg_api_key').val() || '');
+                API_CONFIG.model = ($('#gg_api_model').val() || '');
+                API_CONFIG.maxTokens = parseInt($('#gg_api_max_tokens').val()) || 8192;
                 API_CONFIG.temperature = 0.1;
                 API_CONFIG.enableAI = true;
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
@@ -6807,7 +7199,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 await customAlert('✅ API配置已保存\n\n输出长度将根据模型自动优化', '成功');
             });
 
-            $('#test-api').on('click', async function () {
+            $('#gg_test_api').on('click', async function () {
                 const testAPIWithRetry = async () => {
                     const btn = $(this);
                     const originalText = btn.text();
@@ -6815,12 +7207,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // ========================================
                     // 1. 直接从 DOM 读取当前输入框的值
                     // ========================================
-                    let currentUrl = $('#api-url').val().trim().replace(/\/+$/, '');
-                    let currentKey = $('#api-key').val().trim();
-                    const currentModel = $('#api-model').val().trim();
-                    const currentMaxTokens = parseInt($('#api-max-tokens').val()) || 8192;
-                    const currentProvider = $('#api-provider').val();
-                    const currentMode = $('input[name="api-mode"]:checked').val() === 'independent';
+                    let currentUrl = ($('#gg_api_url').val() || '').trim().replace(/\/+$/, '');
+                    let currentKey = ($('#gg_api_key').val() || '').trim();
+                    const currentModel = ($('#gg_api_model').val() || '').trim();
+                    const currentMaxTokens = parseInt($('#gg_api_max_tokens').val()) || 8192;
+                    const currentProvider = $('#gg_api_provider').val();
+                    const currentMode = $('input[name="gg_api_mode"]:checked').val() === 'independent';
 
                     // 验证必填项
                     if (!currentModel) {
@@ -6923,118 +7315,111 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     // 按钮点击时，只需保存配置即可。
-
-    // ✅✅✅ [新增] 独立的配置加载函数 (粘贴在这里)
+    // ✅✅✅ [增强版] 配置加载函数：增加防空盾，防止配置被重置
     async function loadConfig() {
-        // ✅ 检查全局保存标记，如果正在保存配置，则跳过加载
-        if (window.isSavingConfig) {
-            console.log('⏸️ [配置加载] 检测到正在保存配置，跳过本次加载以避免冲突');
+        // 1. 防止冲突：如果正在保存或编辑，跳过加载
+        if (window.isSavingConfig || window.isEditingConfig) {
+            console.log('⏸️ [配置同步] 正在编辑或保存，跳过加载');
             return;
         }
 
-        // ✅ 检查是否正在编辑配置UI，防止后台同步覆盖用户输入
-        if (window.isEditingConfig) {
-            console.log('⏸️ [配置加载] 检测到正在编辑配置，跳过本次加载以避免覆盖用户输入');
-            return;
-        }
-
-        console.log('🔄 [配置加载] 开始初始化...');
-
-        const runtimeSummaryIndex = API_CONFIG.lastSummaryIndex;
-        const runtimeBackfillIndex = API_CONFIG.lastBackfillIndex;
+        console.log('🔄 [配置同步] 开始拉取云端配置...');
 
         let serverData = null;
-        let localData = {};
-        let needMigration = false;
-
-        try {
-            if (window.extension_settings && window.extension_settings.st_memory_table) {
-                serverData = window.extension_settings.st_memory_table;
-            } else {
-                const csrf = await getCsrfToken();
-                const res = await fetch('/api/settings/get', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                    body: JSON.stringify({})
-                });
-                if (res.ok) {
-                    const raw = await res.json();
-                    const parsed = parseServerSettings(raw);
-                    serverData = parsed?.extension_settings?.st_memory_table;
-                }
-            }
-        } catch (e) { console.warn('服务端配置读取失败', e); }
-
         let localTimestamp = 0;
-        try {
-            if (localStorage.getItem(CK)) localData.config = JSON.parse(localStorage.getItem(CK));
-            if (localStorage.getItem(AK)) localData.api = JSON.parse(localStorage.getItem(AK));
-            if (localStorage.getItem(UK)) localData.ui = JSON.parse(localStorage.getItem(UK));
-            // ❌ 删除旧的 prompts 读取
 
-            const storedTimestamp = localStorage.getItem('gg_timestamp');
-            if (storedTimestamp) localTimestamp = parseInt(storedTimestamp);
-        } catch (e) { }
+        // 2. 读取本地缓存 (作为兜底)
+        try {
+            const ts = localStorage.getItem('gg_timestamp');
+            if (ts) localTimestamp = parseInt(ts);
+        } catch (e) {}
+
+        // 3. 强制从服务器获取 (加时间戳破除缓存)
+        try {
+            const csrf = await getCsrfToken();
+            const res = await fetch('/api/settings/get?t=' + Date.now(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                body: JSON.stringify({})
+            });
+
+            if (res.ok) {
+                const raw = await res.json();
+                const parsed = typeof parseServerSettings === 'function' ? parseServerSettings(raw) : raw;
+                serverData = parsed?.extension_settings?.st_memory_table;
+            }
+        } catch (e) {
+            console.warn('⚠️ [配置同步] 网络请求失败，将使用本地缓存:', e);
+        }
+
+        // ================= 🛡️ 核心防御：空数据拦截 🛡️ =================
+        // 如果服务器返回 null，或者 config 对象不存在，说明数据损坏或未初始化。
+        // 此时绝对不能应用，否则会把本地配置重置为出厂默认！
+        if (!serverData || !serverData.config || Object.keys(serverData.config).length === 0) {
+            if (localTimestamp > 0) {
+                console.warn('🛑 [配置防御] 云端数据为空或无效，拦截重置！保持本地配置。');
+                return; // 直接结束，保护现有配置
+            } else {
+                console.log('✨ [配置同步] 云端无数据且本地无缓存，初始化默认配置');
+                // 只有在本地也是全新的情况下，才允许使用默认值
+            }
+        }
+        // ===============================================================
 
         const serverTimestamp = (serverData && serverData.lastModified) ? serverData.lastModified : 0;
         let useServerData = false;
 
-        if (serverData && Object.keys(serverData).length > 0) {
-            if (localTimestamp === 0 && serverTimestamp === 0) useServerData = true;
-            else if (serverTimestamp >= localTimestamp) useServerData = true;
+        // 4. 决策逻辑：只有当云端数据有效 且 (本地无数据 或 云端更新) 时，才应用
+        if (serverData && serverData.config) {
+            if (localTimestamp === 0) {
+                console.log('✨ [配置同步] 新设备/无缓存，应用云端配置');
+                useServerData = true;
+            } else if (serverTimestamp > localTimestamp) {
+                console.log(`📥 [配置同步] 发现新版本 (Cloud:${serverTimestamp} > Local:${localTimestamp})`);
+                useServerData = true;
+            } else {
+                console.log('✅ [配置同步] 本地配置已是最新');
+            }
         }
 
         if (useServerData) {
-            console.log('✅ [配置] 使用云端数据');
+            // 应用配置
             if (serverData.config) Object.assign(C, serverData.config);
 
-            // ✅ PROTECT PROGRESS POINTERS: Don't let global config overwrite chat-specific progress
+            // 保护 API 进度指针
             if (serverData.api) {
-                delete serverData.api.lastSummaryIndex;
-                delete serverData.api.lastBackfillIndex;
+                const currentSumIdx = API_CONFIG.lastSummaryIndex;
+                const currentBfIdx = API_CONFIG.lastBackfillIndex;
                 Object.assign(API_CONFIG, serverData.api);
+                // 恢复运行时指针（防止云端旧指针覆盖本地新进度）
+                if (currentSumIdx !== undefined && currentSumIdx > (serverData.api.lastSummaryIndex || 0)) {
+                    API_CONFIG.lastSummaryIndex = currentSumIdx;
+                }
+                if (currentBfIdx !== undefined && currentBfIdx > (serverData.api.lastBackfillIndex || 0)) {
+                    API_CONFIG.lastBackfillIndex = currentBfIdx;
+                }
             }
 
             if (serverData.ui) Object.assign(UI, serverData.ui);
 
-            // ✅ 新增：从云端恢复预设数据
+            // 同步预设
             if (serverData.profiles && window.Gaigai.PromptManager) {
                 window.Gaigai.PromptManager.saveProfilesData(serverData.profiles);
             }
 
-            localStorage.setItem(CK, JSON.stringify(C));
-            // ✅ Don't save progress pointers to localStorage - use cleaned version
-            const cleanedApiForStorage = JSON.parse(JSON.stringify(API_CONFIG));
-            delete cleanedApiForStorage.lastSummaryIndex;
-            delete cleanedApiForStorage.lastBackfillIndex;
-            localStorage.setItem(AK, JSON.stringify(cleanedApiForStorage));
-            localStorage.setItem(UK, JSON.stringify(UI));
+            // 写入本地缓存
+            localStorage.setItem('gg_config', JSON.stringify(C));
+            localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+            localStorage.setItem('gg_ui', JSON.stringify(UI));
             localStorage.setItem('gg_timestamp', serverTimestamp.toString());
-        }
-        else if (localData.api || localData.config) {
-            console.log('⚠️ [配置] 使用本地缓存');
-            if (localData.config) Object.assign(C, localData.config);
 
-            // ✅ PROTECT PROGRESS POINTERS: Don't let global config overwrite chat-specific progress
-            if (localData.api) {
-                delete localData.api.lastSummaryIndex;
-                delete localData.api.lastBackfillIndex;
-                Object.assign(API_CONFIG, localData.api);
-            }
+            // 刷新UI状态 (解决多端读取时信息隐藏的问题)
+            if (typeof thm === 'function') thm();
+            // 强制重新应用楼层折叠和标签隐藏，防止UI错乱
+            if (typeof applyUiFold === 'function') setTimeout(applyUiFold, 200);
+            if (typeof hideMemoryTags === 'function') setTimeout(hideMemoryTags, 300);
 
-            if (localData.ui) Object.assign(UI, localData.ui);
-            needMigration = true;
-        }
-
-        if (runtimeSummaryIndex !== undefined) API_CONFIG.lastSummaryIndex = runtimeSummaryIndex;
-        if (runtimeBackfillIndex !== undefined) API_CONFIG.lastBackfillIndex = runtimeBackfillIndex;
-
-        // 🛑 [安全修复] 严禁在读取配置阶段自动向服务器写入数据！
-        // 如果读取失败，自动保存会导致用户的云端配置被默认设置覆盖清空。
-        // 迁移操作应该由用户手动触发（点击"保存配置"按钮）。
-        if (needMigration) {
-            console.warn('⚠️ [配置迁移] 本地配置较新或云端缺失，将在用户下次手动保存时自动同步。');
-            // 移除 toastr 弹窗：避免每次打开页面都弹出黄色警告，提升体验
+            console.log('✅ [配置同步] 同步完成');
         }
     }
 
@@ -7056,6 +7441,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     // ✅✅✅ [新增] 统一的全量配置保存函数（使用 SillyTavern 原生方式）
     async function saveAllSettingsToCloud() {
+        if (!C || Object.keys(C).length < 5) { // 简单校验 C 对象是否包含足够多的键
+            console.error('🛑 [严重拦截] 检测到本地配置异常(为空或不完整)，已阻止上传，防止覆盖云端存档！');
+            if (typeof toastr !== 'undefined') toastr.error('本地配置异常，已阻止云端同步以保护存档', '安全拦截');
+            return;
+        }
         try {
             console.log('💾 [API] 开始保存配置到服务器...');
 
@@ -7159,7 +7549,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <label style="font-weight: 600; display:block;">💡 实时填表</label>
                     <span style="font-size:10px; opacity:0.7;">每回合正文内回复 (与酒馆同一API)</span>
                 </div>
-                <input type="checkbox" id="c-enabled" ${C.enabled ? 'checked' : ''} style="transform: scale(1.2);">
+                <input type="checkbox" id="gg_c_enabled" ${C.enabled ? 'checked' : ''} style="transform: scale(1.2);">
             </div>
             
             <hr style="border: 0; border-top: 1px dashed rgba(0,0,0,0.1); margin: 5px 0 8px 0;">
@@ -7169,29 +7559,29 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <label style="font-weight: 600; display:block;">⚡ 批量填表</label>
                     <span style="font-size:10px; opacity:0.7;">每隔N层填表 (建议配置独立API)</span>
                 </div>
-                <input type="checkbox" id="c-auto-bf" ${C.autoBackfill ? 'checked' : ''} style="transform: scale(1.2);">
+                <input type="checkbox" id="gg_c_auto_bf" ${C.autoBackfill ? 'checked' : ''} style="transform: scale(1.2);">
             </div>
             
-            <div id="auto-bf-settings" style="font-size: 11px; background: rgba(0,0,0,0.03); padding: 8px; border-radius: 4px; margin-bottom: 5px; ${C.autoBackfill ? '' : 'display:none;'}">
+            <div id="gg_auto_bf_settings" style="font-size: 11px; background: rgba(0,0,0,0.03); padding: 8px; border-radius: 4px; margin-bottom: 5px; ${C.autoBackfill ? '' : 'display:none;'}">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                     <span>每</span>
-                    <input type="number" id="c-auto-bf-floor" value="${C.autoBackfillFloor || 10}" min="2" style="width:50px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_bf_floor" value="${C.autoBackfillFloor || 10}" min="2" style="width:50px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
                     <span>层触发一次</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:8px; border-left:2px solid rgba(255,152,0,0.3);">
-                    <input type="checkbox" id="c-auto-bf-delay" ${C.autoBackfillDelay ? 'checked' : ''} style="margin:0;">
-                    <label for="c-auto-bf-delay" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin:0;">
+                    <input type="checkbox" id="gg_c_auto_bf_delay" ${C.autoBackfillDelay ? 'checked' : ''} style="margin:0;">
+                    <label for="gg_c_auto_bf_delay" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin:0;">
                         <span>⏱️ 延迟启动</span>
                     </label>
                     <span style="opacity:0.7;">|</span>
                     <span style="opacity:0.8;">滞后</span>
-                    <input type="number" id="c-auto-bf-delay-count" value="${C.autoBackfillDelayCount || 5}" min="1" style="width:40px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_bf_delay_count" value="${C.autoBackfillDelayCount || 5}" min="1" style="width:40px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
                     <span style="opacity:0.8;">层再执行</span>
                 </div>
                 <div style="background: rgba(33, 150, 243, 0.08); border: 1px solid rgba(33, 150, 243, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 6px;">
                     <div style="font-weight: 600; margin-bottom: 4px; color: #1976d2; font-size: 10px;">🔔 发起模式</div>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 2px;">
-                        <input type="checkbox" id="c-auto-bf-prompt" ${C.autoBackfillPrompt ? 'checked' : ''}>
+                        <input type="checkbox" id="gg_c_auto_bf_prompt" ${C.autoBackfillPrompt ? 'checked' : ''}>
                         <span>🤫 触发前静默发起 (直接执行)</span>
                     </label>
                     <div style="font-size: 9px; color: #666; margin-left: 20px;">未勾选时弹窗确认</div>
@@ -7199,19 +7589,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <div style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 4px; padding: 8px;">
                     <div style="font-weight: 600; margin-bottom: 4px; color: #388e3c; font-size: 10px;">✅ 完成模式</div>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 2px;">
-                        <input type="checkbox" id="c-auto-bf-silent" ${C.autoBackfillSilent ? 'checked' : ''}>
+                        <input type="checkbox" id="gg_c_auto_bf_silent" ${C.autoBackfillSilent ? 'checked' : ''}>
                         <span>🤫 完成后静默保存 (不弹结果窗)</span>
                     </label>
                     <div style="font-size: 9px; color: ${UI.tc}; opacity:0.7; margin-left: 20px;">未勾选时弹窗显示填表结果</div>
                 </div>
                 <div style="margin-top:6px; color:${UI.tc}; opacity:0.7; font-size: 10px; text-align: center; display:flex; align-items:center; gap:6px; justify-content:center; flex-wrap: wrap;">
                     <span>进度指针:</span>
-                    <input type="number" id="edit-last-bf" value="${lastBf}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:10px;">
+                    <input type="number" id="gg_edit_last_bf" value="${lastBf}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:10px;">
                     <span>层</span>
-                    <button id="save-last-bf-btn" style="padding:2px 8px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
+                    <button id="gg_save_last_bf_btn" style="padding:2px 8px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
                     <span>|</span>
-                    <span id="reset-bf-range-btn" style="cursor:pointer; text-decoration:underline;">重置进度</span>
-                    <span id="reset-bf-done-icon" style="display:none; color:green; margin-left:4px;">✔</span>
+                    <span id="gg_reset_bf_range_btn" style="cursor:pointer; text-decoration:underline;">重置进度</span>
+                    <span id="gg_reset_bf_done_icon" style="display:none; color:green; margin-left:4px;">✔</span>
                 </div>
             </div>
         </div>
@@ -7221,16 +7611,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <label style="font-weight: 600;">✂️ 隐藏楼层</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">留</span>
-                    <input type="number" id="c-limit-count" value="${C.contextLimitCount}" min="5" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
-                    <input type="checkbox" id="c-limit-on" ${C.contextLimit ? 'checked' : ''}>
+                    <input type="number" id="gg_c_limit_count" value="${C.contextLimitCount}" min="5" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="checkbox" id="gg_c_limit_on" ${C.contextLimit ? 'checked' : ''}>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <label style="font-weight: 600;">👁️ 楼层折叠</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">显</span>
-                    <input type="number" id="c-uifold-count" value="${C.uiFoldCount || 50}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
-                    <input type="checkbox" id="c-uifold-on" ${C.uiFold ? 'checked' : ''}>
+                    <input type="number" id="gg_c_uifold_count" value="${C.uiFoldCount || 50}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="checkbox" id="gg_c_uifold_on" ${C.uiFold ? 'checked' : ''}>
                 </div>
             </div>
         </div>
@@ -7239,16 +7629,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <label style="font-weight: 600;">
                     💉 注入记忆表格
-                    <i class="fa-solid fa-circle-info" id="memory-injection-info" style="margin-left: 6px; color: #17a2b8; cursor: pointer; font-size: 14px;"></i>
+                    <i class="fa-solid fa-circle-info" id="gg_memory_injection_info" style="margin-left: 6px; color: #17a2b8; cursor: pointer; font-size: 14px;"></i>
                 </label>
-                <input type="checkbox" id="c-table-inj" ${C.tableInj ? 'checked' : ''} style="transform: scale(1.2);">
+                <input type="checkbox" id="gg_c_table_inj" ${C.tableInj ? 'checked' : ''} style="transform: scale(1.2);">
             </div>
 
-            <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">👇 备用方案 (当未找到 {{MEMORY}} 变量时)：</div>
+            <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">👇 默认策略 (当未找到 {{MEMORY}} 变量时)：</div>
 
-            <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); font-size: 11px; color: #666; line-height: 1.6;">
-                <i class="fa-solid fa-circle-info" style="color: #17a2b8;"></i> <strong>默认策略：</strong><br>
+            <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); font-size: 11px; color: ${UI.tc}; opacity: 0.8; line-height: 1.6;">
+                <i class="fa-solid fa-circle-info" style="color: #17a2b8;"></i>
                 表格内容将作为 <strong>系统 (System)</strong> 消息，自动插入到 <strong>聊天记录 (Chat History)</strong> 的最上方（紧挨在 [Start a new Chat] 之前）。
+                <br><br>
+                💡 如需改变位置（例如移动到世界书下方），请在酒馆的【预设/世界书】中手动插入 <code>{{MEMORY}}</code> 变量。
             </div>
         </div>
 
@@ -7257,13 +7649,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <label style="font-weight: 600;">🤖 自动总结</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">每</span>
-                    <input type="number" id="c-auto-floor" value="${C.autoSummaryFloor}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_floor" value="${C.autoSummaryFloor}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
                     <span style="font-size: 11px;">层</span>
-                    <input type="checkbox" id="c-auto-sum" ${C.autoSummary ? 'checked' : ''} style="transform: scale(1.2);">
+                    <input type="checkbox" id="gg_c_auto_sum" ${C.autoSummary ? 'checked' : ''} style="transform: scale(1.2);">
                 </div>
             </div>
-            
-            <div id="auto-sum-settings" style="padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px; ${C.autoSummary ? '' : 'display:none;'}">
+
+            <div id="gg_auto_sum_settings" style="padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px; ${C.autoSummary ? '' : 'display:none;'}">
                 <div style="display:flex; gap:15px; margin-bottom:8px;">
                     <label style="font-size:11px; display:flex; align-items:center; cursor:pointer; opacity:0.9;">
                         <input type="radio" name="cfg-sum-src" value="table" ${API_CONFIG.summarySource === 'table' ? 'checked' : ''} style="margin-right:4px;">
@@ -7276,20 +7668,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 </div>
 
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:8px; border-left:2px solid rgba(255,152,0,0.3); font-size:11px;">
-                    <input type="checkbox" id="c-auto-sum-delay" ${C.autoSummaryDelay ? 'checked' : ''} style="margin:0;">
-                    <label for="c-auto-sum-delay" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin:0;">
+                    <input type="checkbox" id="gg_c_auto_sum_delay" ${C.autoSummaryDelay ? 'checked' : ''} style="margin:0;">
+                    <label for="gg_c_auto_sum_delay" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin:0;">
                         <span>⏱️ 延迟启动</span>
                     </label>
                     <span style="opacity:0.7;">|</span>
                     <span style="opacity:0.8;">滞后</span>
-                    <input type="number" id="c-auto-sum-delay-count" value="${C.autoSummaryDelayCount || 5}" min="1" style="width:40px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_sum_delay_count" value="${C.autoSummaryDelayCount || 5}" min="1" style="width:40px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
                     <span style="opacity:0.8;">层再执行</span>
                 </div>
 
                 <div style="background: rgba(33, 150, 243, 0.08); border: 1px solid rgba(33, 150, 243, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 6px;">
                     <div style="font-weight: 600; margin-bottom: 4px; color: #1976d2; font-size: 10px;">🔔 发起模式</div>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 2px;">
-                        <input type="checkbox" id="c-auto-sum-prompt" ${C.autoSummaryPrompt ? 'checked' : ''}>
+                        <input type="checkbox" id="gg_c_auto_sum_prompt" ${C.autoSummaryPrompt ? 'checked' : ''}>
                         <span>🤫 触发前静默发起 (直接执行)</span>
                     </label>
                     <div style="font-size: 9px; color: #666; margin-left: 20px;">未勾选时弹窗确认</div>
@@ -7298,7 +7690,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <div style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 4px; padding: 8px;">
                     <div style="font-weight: 600; margin-bottom: 4px; color: #388e3c; font-size: 10px;">✅ 完成模式</div>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 2px;">
-                        <input type="checkbox" id="c-auto-sum-silent" ${C.autoSummarySilent ? 'checked' : ''}>
+                        <input type="checkbox" id="gg_c_auto_sum_silent" ${C.autoSummarySilent ? 'checked' : ''}>
                         <span>🤫 完成后静默保存 (不弹结果窗)</span>
                     </label>
                     <div style="font-size: 9px; color: #666; margin-left: 20px;">未勾选时弹窗显示总结结果</div>
@@ -7307,56 +7699,65 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-                <div style="font-weight: 600; color:var(--g-tc);">🏷️ 标签过滤</div>
-                <div style="display:flex; gap:10px; font-size:11px; color:var(--g-tc);">
-                    <label style="cursor:pointer;"><input type="radio" name="c-filter-mode" value="blacklist" ${C.filterMode !== 'whitelist' ? 'checked' : ''}> 🚫 黑名单(屏蔽)</label>
-                    <label style="cursor:pointer;"><input type="radio" name="c-filter-mode" value="whitelist" ${C.filterMode === 'whitelist' ? 'checked' : ''}> ✅ 白名单(只留)</label>
-                </div>
+            <div style="font-weight: 600; color:var(--g-tc); margin-bottom: 8px;">🏷️ 标签过滤（串行双重过滤）</div>
+            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:6px;">过滤逻辑：先去黑后留白，可单选。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think, search</code>。若要过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">&lt;!--注释--&gt;</code>，请填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
+
+            <div style="margin-bottom: 8px;">
+                <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">🚫 黑名单标签 (去除)</label>
+                <input type="text" id="gg_c_filter_tags" value="${esc(C.filterTags || '')}" placeholder="例: thinking, system" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
+                <div style="font-size:9px; color:#d63031; margin-top:2px;">删除这些标签及其内部的所有文字</div>
             </div>
-            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:4px;">输入标签名，逗号分隔。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think, search</code>。若要过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">&lt;!--注释--&gt;</code>，请填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
-            <input type="text" id="c-filter-tags" value="${esc(C.filterTags || '')}" placeholder="标签名..." style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
-            <div style="font-size:10px; color:#d63031; margin-top:4px;" id="filter-tip">
-                ${C.filterMode === 'whitelist' ?
-                '⚠️ 白名单模式：仅提取标签内的文字，丢弃其他所有内容（若未找到标签则保留原文）。' :
-                '⚠️ 黑名单模式：删除标签及其内部的所有文字。'}
+
+            <div>
+                <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">✅ 白名单标签 (仅留)</label>
+                <input type="text" id="gg_c_filter_tags_white" value="${esc(C.filterTagsWhite || '')}" placeholder="例: content, message" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
+                <div style="font-size:9px; color:#27ae60; margin-top:2px;">仅提取这些标签内的文字（若未找到则保留黑名单处理后的结果）</div>
             </div>
         </div>
 
         <div style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 6px; padding: 10px; margin-top: 10px;">
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 600;">
-                <input type="checkbox" id="c-sync-wi" ${C.syncWorldInfo ? 'checked' : ''}>
+                <input type="checkbox" id="gg_c_sync_wi" ${C.syncWorldInfo ? 'checked' : ''}>
                 <span>🌏 同步到世界书</span>
             </label>
             <div style="font-size: 10px; color: #666; margin-top: 6px; margin-left: 22px; line-height: 1.4;">
                 将总结内容自动写入名为 <strong>[Memory_Context_Auto]</strong> 的世界书（常驻条目，触发词：总结/summary/前情提要/memory）
             </div>
 
+            <!-- ✨ 自动绑定到角色卡 -->
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-top: 8px; margin-left: 22px;">
+                <input type="checkbox" id="gg_c_auto_bind_wi" ${C.autoBindWI !== false ? 'checked' : ''}>
+                <span style="font-size: 11px;">🔗 自动绑定到角色卡</span>
+            </label>
+            <div style="font-size: 9px; color: #888; margin-top: 2px; margin-left: 44px; line-height: 1.3;">
+                自动将当前会话的记忆书挂载到角色卡，并移除其他会话的记忆书。
+            </div>
+
             <!-- ✨✨✨ 新增：手动覆盖按钮区域 ✨✨✨ -->
             <div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 8px; display: flex; align-items: center; justify-content: flex-end;">
-                <button id="btn-force-sync-wi" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                <button id="gg_btn_force_sync_wi" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                     <i class="fa-solid fa-arrows-rotate"></i> 强制用总结表覆盖世界书
                 </button>
             </div>
         </div>
 
         <div style="display: flex; gap: 8px; margin-top: 4px;">
-            <button id="open-api" style="flex:1; font-size:11px; padding:8px;">🤖 API配置</button>
-            <button id="open-pmt" style="flex:1; font-size:11px; padding:8px;">📝 提示词</button>
+            <button id="gg_open_api" style="flex:1; font-size:11px; padding:8px;">🤖 API配置</button>
+            <button id="gg_open_pmt" style="flex:1; font-size:11px; padding:8px;">📝 提示词</button>
         </div>
-        <button id="save-cfg" style="width: 100%; padding: 8px; margin-top: 4px; font-weight: bold;">💾 保存配置</button>
-        
+        <button id="gg_save_cfg" style="width: 100%; padding: 8px; margin-top: 4px; font-weight: bold;">💾 保存配置</button>
+
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0,0,0,0.1); text-align: center;">
-            <button id="open-probe" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #17a2b8; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <button id="gg_open_probe" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #17a2b8; color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 🔍 最后发送内容
             </button>
 
-            <button id="force-cloud-load" title="强制从服务器拉取最新的 chatMetadata，解决手机/电脑数据不一致问题" style="width: 100%; padding: 8px; margin-bottom: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <button id="gg_force_cloud_load" title="强制从服务器拉取最新的 chatMetadata，解决手机/电脑数据不一致问题" style="width: 100%; padding: 8px; margin-bottom: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 ☁️/🖥️ 强制多端同步
             </button>
             <p style="font-size: 10px; color: #999; margin: -5px 0 10px 0;">解决多端同步问题（PC修改后移动端未更新）</p>
 
-            <button id="rescue-btn" style="background: transparent; color: #dc3545; border: 1px dashed #dc3545; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; width: 100%;">
+            <button id="gg_rescue_btn" style="background: transparent; color: #dc3545; border: 1px dashed #dc3545; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; width: 100%;">
                 🚑 扫描并恢复丢失的旧数据
             </button>
             <p style="font-size: 10px; color: #999; margin: 5px 0 0 0;">如果更新后表格变空，点此按钮尝试找回。</p>
@@ -7368,7 +7769,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         setTimeout(() => {
             // ✅✅✅ 新增：重置追溯进度
-            $('#reset-bf-range-btn').on('click', async function () {
+            $('#gg_reset_bf_range_btn').on('click', async function () {
                 API_CONFIG.lastBackfillIndex = 0;
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
 
@@ -7380,13 +7781,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 m.save(); // ✅ 同步到聊天记录
-                $('#edit-last-bf').val(0); // ✅ 更新输入框显示
-                $('#reset-bf-done-icon').fadeIn().delay(1000).fadeOut();
+                $('#gg_edit_last_bf').val(0); // ✅ 更新输入框显示
+                $('#gg_reset_bf_done_icon').fadeIn().delay(1000).fadeOut();
             });
 
             // ✨✨✨ 新增：手动修正填表进度指针 ✨✨✨
-            $('#save-last-bf-btn').on('click', async function () {
-                const newValue = parseInt($('#edit-last-bf').val());
+            $('#gg_save_last_bf_btn').on('click', async function () {
+                const newValue = parseInt($('#gg_edit_last_bf').val());
 
                 // 验证输入
                 if (isNaN(newValue)) {
@@ -7425,13 +7826,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // ✨✨✨ 自动总结开关的 UI 联动 ✨✨✨
-            $('#c-auto-sum').on('change', function () {
+            $('#gg_c_auto_sum').on('change', function () {
                 const isChecked = $(this).is(':checked');
 
                 if (isChecked) {
-                    $('#auto-sum-settings').slideDown();
+                    $('#gg_auto_sum_settings').slideDown();
                 } else {
-                    $('#auto-sum-settings').slideUp();
+                    $('#gg_auto_sum_settings').slideUp();
                 }
 
                 // ✅ Per-Chat Configuration: Update C and save to current chat immediately
@@ -7441,7 +7842,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // 💉 注入记忆表格说明图标点击事件
-            $('#memory-injection-info').on('click', function () {
+            $('#gg_memory_injection_info').on('click', function () {
                 // 🌙 Dark Mode Fix: Use dynamic colors based on darkMode setting
                 const dialogBg = UI.darkMode ? '#1e1e1e' : '#ffffff';
                 const titleColor = UI.darkMode ? '#e0e0e0' : '#333';
@@ -7488,7 +7889,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
 
                 const $content = $('<div>', {
-                    css: { fontSize: '13px', lineHeight: '1.8', color: textColor },
+                    css: { fontSize: '13px', lineHeight: '1.8', color: 'var(--g-tc)' },
                     html: `
                         <div style="margin-bottom: 12px; font-weight: 600; color: ${accentColor};">🌟 变量模式：</div>
                         <div style="margin-bottom: 12px;">与实时填表搭配使用，在酒馆的【预设】中随机一处插入变量调整填表提示词、总结内容、表格内容在上下文的位置：</div>
@@ -7527,7 +7928,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
             });
 
-            $('#open-probe').on('click', function () {
+            $('#gg_open_probe').on('click', function () {
                 if (typeof window.Gaigai.showLastRequest === 'function') {
                     window.Gaigai.showLastRequest();
                 } else {
@@ -7537,7 +7938,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ✨✨✨ 新增：强制读取服务端数据（解决多端同步问题）
             // ✨✨✨ [修复版] 直接从服务器 API 获取最新 settings.json
-            $('#force-cloud-load').off('click').on('click', async function () {
+            $('#gg_force_cloud_load').off('click').on('click', async function () {
                 const btn = $(this);
                 const originalText = btn.text();
                 btn.text('正在全量同步...').prop('disabled', true);
@@ -7573,9 +7974,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
                         localStorage.setItem('gg_ui', JSON.stringify(UI));
 
-                        $('#c-enabled').prop('checked', C.enabled);
-                        $('#c-auto-bf').prop('checked', C.autoBackfill);
-                        $('#c-auto-sum').prop('checked', C.autoSummary);
+                        $('#gg_c_enabled').prop('checked', C.enabled);
+                        $('#gg_c_auto_bf').prop('checked', C.autoBackfill);
+                        $('#gg_c_auto_sum').prop('checked', C.autoSummary);
                     }
 
                     // 第二步：同步记忆表格与进度 (Chat Metadata)
@@ -7609,7 +8010,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // 🚑 历史存档时光机按钮
-            $('#rescue-btn').off('click').on('click', async function () {
+            $('#gg_rescue_btn').off('click').on('click', async function () {
                 const btn = $(this);
                 const originalText = btn.text();
                 btn.text('正在扫描全盘...');
@@ -7744,14 +8145,53 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
             
             // 互斥开关控制
-            $('#c-enabled').on('change', async function () {
+            // ✅✅✅ [关键修复] 从UI同步所有配置到C对象（防止切换开关时丢失未保存的修改）
+            function syncUIToConfig() {
+                C.enabled = $('#gg_c_enabled').is(':checked');
+                C.autoBackfill = $('#gg_c_auto_bf').is(':checked');
+                C.autoBackfillFloor = parseInt($('#gg_c_auto_bf_floor').val()) || 10;
+                C.autoBackfillPrompt = $('#gg_c_auto_bf_prompt').is(':checked');
+                C.autoBackfillSilent = $('#gg_c_auto_bf_silent').is(':checked');
+                C.autoBackfillDelay = $('#gg_c_auto_bf_delay').is(':checked');
+                C.autoBackfillDelayCount = parseInt($('#gg_c_auto_bf_delay_count').val()) || 5;
+                C.contextLimit = $('#gg_c_limit_on').is(':checked');
+                C.contextLimitCount = parseInt($('#gg_c_limit_count').val());
+                C.uiFold = $('#gg_c_uifold_on').is(':checked');
+                C.uiFoldCount = parseInt($('#gg_c_uifold_count').val());
+                C.tableInj = $('#gg_c_table_inj').is(':checked');
+                C.autoSummary = $('#gg_c_auto_sum').is(':checked');
+                C.autoSummaryFloor = parseInt($('#gg_c_auto_floor').val());
+                C.autoSummaryPrompt = $('#gg_c_auto_sum_prompt').is(':checked');
+                C.autoSummarySilent = $('#gg_c_auto_sum_silent').is(':checked');
+                C.autoSummaryDelay = $('#gg_c_auto_sum_delay').is(':checked');
+                C.autoSummaryDelayCount = parseInt($('#gg_c_auto_sum_delay_count').val()) || 5;
+                C.filterTags = $('#gg_c_filter_tags').val();
+                C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
+                C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
+                C.autoBindWI = $('#gg_c_auto_bind_wi').is(':checked');
+                API_CONFIG.summarySource = $('input[name="cfg-sum-src"]:checked').val();
+
+                // 保存到 localStorage
+                try {
+                    localStorage.setItem(CK, JSON.stringify(C));
+                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                    localStorage.setItem('gg_timestamp', Date.now().toString());
+                } catch (e) {
+                    console.error('❌ [syncUIToConfig] localStorage 写入失败:', e);
+                }
+            }
+
+            $('#gg_c_enabled').on('change', async function () {
+                // ✅ [防丢失] 先同步所有UI配置
+                syncUIToConfig();
+
                 const isChecked = $(this).is(':checked');
 
                 if (isChecked) {
-                    if ($('#c-auto-bf').is(':checked')) {
+                    if ($('#gg_c_auto_bf').is(':checked')) {
                         await customAlert('⚠️ 冲突提示\n\n【实时记忆填表】和【自动批量填表】不能同时开启。\n\n已自动关闭自动填表。', '模式切换');
-                        $('#c-auto-bf').prop('checked', false);
-                        $('#auto-bf-settings').slideUp();
+                        $('#gg_c_auto_bf').prop('checked', false);
+                        $('#gg_auto_bf_settings').slideUp();
                         C.autoBackfill = false; // Update config
                     }
                 }
@@ -7760,34 +8200,51 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.enabled = isChecked;
                 m.save();
                 console.log('💾 [每聊配置] 已保存实时填表设置到当前聊天:', isChecked);
+
+                // ✅ 同步到云端
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [实时填表开关] 云端同步失败:', err);
+                    });
+                }
             });
 
-            $('#c-auto-bf').on('change', async function () {
+            $('#gg_c_auto_bf').on('change', async function () {
+                // ✅ [防丢失] 先同步所有UI配置
+                syncUIToConfig();
+
                 const isChecked = $(this).is(':checked');
 
                 if (isChecked) {
-                    $('#auto-bf-settings').slideDown();
-                    if ($('#c-enabled').is(':checked')) {
+                    $('#gg_auto_bf_settings').slideDown();
+                    if ($('#gg_c_enabled').is(':checked')) {
                         if (await customConfirm('⚠️ 模式切换\n\n开启【自动批量填表】需要关闭【实时记忆填表】。\n\n确定切换吗？', '确认')) {
-                            $('#c-enabled').prop('checked', false);
+                            $('#gg_c_enabled').prop('checked', false);
                             C.enabled = false; // Update config
                         } else {
                             $(this).prop('checked', false);
-                            $('#auto-bf-settings').slideUp();
+                            $('#gg_auto_bf_settings').slideUp();
                             return; // Don't save if user cancelled
                         }
                     }
                 } else {
-                    $('#auto-bf-settings').slideUp();
+                    $('#gg_auto_bf_settings').slideUp();
                 }
 
                 // ✅ Per-Chat Configuration: Update C and save to current chat immediately
                 C.autoBackfill = isChecked;
                 m.save();
                 console.log('💾 [每聊配置] 已保存批量填表设置到当前聊天:', isChecked);
+
+                // ✅ 同步到云端
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [批量填表开关] 云端同步失败:', err);
+                    });
+                }
             });
 
-            $('#save-cfg').on('click', async function () {
+            $('#gg_save_cfg').on('click', async function () {
                 // ✅ 设置全局保存标记，防止并发冲突
                 window.isSavingConfig = true;
                 console.log('🔒 [配置保存] 已锁定，暂停其他 loadConfig 调用');
@@ -7796,64 +8253,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // ✨ 保存旧配置状态，用于检测世界书同步的变化
                     const oldSyncWorldInfo = C.syncWorldInfo;
 
-                    // ✅ 步骤 1：直接更新内存中的 C 对象（从 UI 读取）
-                    C.enabled = $('#c-enabled').is(':checked');
-                    C.autoBackfill = $('#c-auto-bf').is(':checked');
-                    C.autoBackfillFloor = parseInt($('#c-auto-bf-floor').val()) || 10;
-                    C.autoBackfillPrompt = $('#c-auto-bf-prompt').is(':checked');
-                    C.autoBackfillSilent = $('#c-auto-bf-silent').is(':checked');
-                    C.autoBackfillDelay = $('#c-auto-bf-delay').is(':checked');
-                    C.autoBackfillDelayCount = parseInt($('#c-auto-bf-delay-count').val()) || 5;
-                    C.contextLimit = $('#c-limit-on').is(':checked');
-                    C.contextLimitCount = parseInt($('#c-limit-count').val());
-                    C.uiFold = $('#c-uifold-on').is(':checked');
-                    C.uiFoldCount = parseInt($('#c-uifold-count').val());
-                    C.tableInj = $('#c-table-inj').is(':checked');
-                    C.tablePos = 'system'; // ✨ 强制默认值：系统角色
-                    C.tablePosType = $('#c-table-pos-type').val();
-                    C.tableDepth = parseInt($('#c-table-depth').val()) || 0;
-                    C.autoSummary = $('#c-auto-sum').is(':checked');
-                    C.autoSummaryFloor = parseInt($('#c-auto-floor').val());
-                    C.autoSummaryPrompt = $('#c-auto-sum-prompt').is(':checked');
-                    C.autoSummarySilent = $('#c-auto-sum-silent').is(':checked');
-                    C.autoSummaryDelay = $('#c-auto-sum-delay').is(':checked');
-                    C.autoSummaryDelayCount = parseInt($('#c-auto-sum-delay-count').val()) || 5;
-                    C.filterTags = $('#c-filter-tags').val();
-                    C.filterMode = $('input[name="c-filter-mode"]:checked').val();
-                    C.log = true;           // 默认开启日志
-                    C.pc = true;            // 默认开启角色独立存储 (重要)
-                    C.hideTag = true;       // 默认开启隐藏标签
-                    C.filterHistory = true; // 默认开启历史过滤
-                    C.syncWorldInfo = $('#c-sync-wi').is(':checked');
-
-                    API_CONFIG.summarySource = $('input[name="cfg-sum-src"]:checked').val();
-
-                    console.log('✅ [配置保存] 步骤1：内存对象已更新');
-
-                    // ✅ 步骤 2：立即保存到 localStorage（确保本地持久化）
-                    try {
-                        localStorage.setItem(CK, JSON.stringify(C));
-                        localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-                        localStorage.setItem('gg_timestamp', Date.now().toString());
-                        console.log('✅ [配置保存] 步骤2：localStorage 已更新');
-                    } catch (e) {
-                        console.error('❌ [配置保存] localStorage 写入失败:', e);
-                    }
+                    // ✅ 步骤 1：调用统一的同步函数（复用代码，避免重复）
+                    syncUIToConfig();
+                    console.log('✅ [配置保存] 步骤1：内存对象已更新（通过 syncUIToConfig）');
 
                     // ✨ 检测世界书同步从开启到关闭的状态变化，提示用户手动禁用世界书条目
                     if (oldSyncWorldInfo === true && C.syncWorldInfo === false) {
                         await customAlert('⚠️ 检测到您关闭了世界书同步\n\n请务必手动前往酒馆顶部的【世界书/知识书】面板，禁用或删除 [Memory_Context_Auto] 条目，否则旧的总结内容仍会持续发送给 AI。\n\n💡 互斥机制：\n• 开启同步：由世界书发送总结（插件不重复注入）\n• 关闭同步：由插件注入总结（需手动清理世界书）', '重要提示');
                     }
 
-                    // ✅ 步骤 3：异步保存到云端（不阻塞用户操作）
+                    // ✅ 步骤 2：异步保存到云端（不阻塞用户操作）
                     await saveAllSettingsToCloud();
-                    console.log('✅ [配置保存] 步骤3：云端同步完成');
+                    console.log('✅ [配置保存] 步骤2：云端同步完成');
 
                     applyUiFold();
 
                     if (C.autoBackfill && C.enabled) {
                         C.enabled = false;
-                        $('#c-enabled').prop('checked', false);
+                        $('#gg_c_enabled').prop('checked', false);
                         localStorage.setItem(CK, JSON.stringify(C));
                         localStorage.setItem('gg_timestamp', Date.now().toString());  // ✅ 添加时间戳
 
@@ -7875,12 +8292,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
 
-            $('#open-api').on('click', () => navTo('AI总结配置', shapi));
-            $('#open-pmt').on('click', () => navTo('提示词管理', window.Gaigai.PromptManager.showPromptManager));
+            $('#gg_open_api').on('click', () => navTo('AI总结配置', shapi));
+            $('#gg_open_pmt').on('click', () => navTo('提示词管理', window.Gaigai.PromptManager.showPromptManager));
 
             // ✨✨✨ 强制覆盖世界书 (V8 终极版：模拟前端导入) ✨✨✨
-            $('#btn-force-sync-wi').off('click').on('click', async function() {
-                const summarySheet = m.get(8);
+            $('#gg_btn_force_sync_wi').off('click').on('click', async function() {
+                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
 
                 // 1. 安全拦截
                 if (!summarySheet || summarySheet.r.length === 0) {
@@ -7964,21 +8381,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         toastr.success(`已重置并加载 ${summarySheet.r.length} 条记录`, '覆盖成功');
                     }
 
+                    console.log('⏳ [强制覆盖] 等待文件系统响应 (1.5s)...');
+                    setTimeout(async () => {
+                        console.log('🔗 [强制覆盖] 正在执行自动绑定...');
+                        await autoBindWorldInfo(worldBookName, true);
+                        
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success('已重新绑定当前世界书', '绑定更新');
+                        }
+                    }, 1500); 
+
                 } catch (e) {
                     console.error(e);
                     await customAlert(`操作失败: ${e.message}`, '错误');
                 } finally {
                     btn.html(oldText).prop('disabled', false);
                 }
-            });
-
-            // ✨ 动态更新过滤模式提示文字
-            $('input[name="c-filter-mode"]').on('change', function () {
-                const mode = $(this).val();
-                const tip = mode === 'whitelist' ?
-                    '⚠️ 白名单模式：仅提取 <tag> 内的文字，丢弃其他所有内容（若未找到标签则保留原文）。' :
-                    '⚠️ 黑名单模式：删除 <tag> 及其内部的所有文字。';
-                $('#filter-tip').html(tip);
             });
         }, 100);
     }
@@ -8067,7 +8485,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 步骤 1: 回滚到基准线 (Base State)
                     // 逻辑：第N楼的状态 = 第N-1楼的快照 + 第N楼的新指令
                     // ============================================================
-                    if (C.enabled) {
+                    if (C.enabled && !C.autoBackfill) {
                         let baseIndex = i - 1;
                         let baseKey = null;
 
@@ -8147,7 +8565,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         // 这样第 i+1 楼就能用这个作为基准了
                         // ============================================================
                         const newSnapshot = {
-                            data: m.all().slice(0, 8).map(sh => JSON.parse(JSON.stringify(sh.json()))),
+                            data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))), // 只保存数据表
                             summarized: JSON.parse(JSON.stringify(summarizedRows)),
                             timestamp: Date.now()
                         };
@@ -8417,7 +8835,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 4. 确保 -1 号创世快照存在 (兜底)
         if (!snapshotHistory['-1']) {
             snapshotHistory['-1'] = {
-                data: m.all().slice(0, 8).map(sh => {
+                data: m.all().slice(0, -1).map(sh => { // 只保存数据表
                     let copy = JSON.parse(JSON.stringify(sh.json()));
                     copy.r = [];
                     return copy;
@@ -8447,6 +8865,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         setTimeout(hideMemoryTags, 500);
         setTimeout(applyUiFold, 600);
+
+        // ✨ 自动绑定记忆书到角色卡
+        setTimeout(async () => {
+            console.log('🔗 [ochat] 准备自动绑定记忆书到角色卡...');
+            await autoBindWorldInfo();
+        }, 700);
 
         // 🔓 性能优化：解锁，允许用户操作
         setTimeout(() => {
@@ -8515,7 +8939,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const data = ev.detail || ev;
             if (!data) return;
             if (data.dryRun || data.isDryRun || data.quiet || data.bg || data.no_update) return;
-            if (isSummarizing) return;
+            if (isSummarizing || window.isSummarizing) return;
 
             // 1. 使用全局索引计算 (解决 Prompt 截断导致找不到快照的问题)
             const globalCtx = m.ctx();
@@ -8787,9 +9211,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         m.load();
         thm();
 
-        // ✨✨✨ 核心修复：创建“创世快照”(-1号)，代表对话开始前的空状态 ✨✨✨
+        // ✨✨✨ 核心修复：创建"创世快照"(-1号)，代表对话开始前的空状态 ✨✨✨
         snapshotHistory['-1'] = {
-            data: m.all().slice(0, 8).map(sh => JSON.parse(JSON.stringify(sh.json()))),
+            data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))), // 只保存数据表
             summarized: JSON.parse(JSON.stringify(summarizedRows)),
             timestamp: 0 // 时间戳设为0，确保它比任何手动编辑都早
         };
@@ -9026,11 +9450,8 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
             });
     }
 
-    // 启动加载器
-    loadDependencies();
-
-    // ✅✅✅ 直接把核心变量挂到 window.Gaigai 上
-    window.Gaigai = {
+    // ✅✅✅ 直接把核心变量挂到 window.Gaigai 上 (使用 Object.assign 防止覆盖子模块)
+    Object.assign(window.Gaigai, {
         v: V,
         m: m,
         shw: shw,
@@ -9047,8 +9468,15 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
         config: API_CONFIG,
         saveAllSettingsToCloud: saveAllSettingsToCloud,  // ✨ 供 prompt_manager.js 使用
         navTo: navTo,   // ✅ 新增：暴露跳转函数
-        goBack: goBack  // ✅ 新增：暴露返回函数
-    };
+        goBack: goBack,  // ✅ 新增：暴露返回函数
+        loadConfig: loadConfig,  // ✨ 供子模块使用
+        markAsSummarized: markAsSummarized,  // ✅ 总结模块需要
+        updateCurrentSnapshot: updateCurrentSnapshot,  // ✅ 子模块需要
+        refreshTable: refreshTable,  // ✅ 子模块需要
+        updateTabCount: updateTabCount,  // ✅ 子模块需要
+        syncToWorldInfo: syncToWorldInfo,  // ✅ 总结模块需要同步到世界书
+        customRetryAlert: customRetryAlert  // ✅ 重试弹窗
+    });
 
     // ✅ 使用 Object.defineProperty 创建引用（实现双向同步）
     Object.defineProperty(window.Gaigai, 'snapshotHistory', {
@@ -9079,26 +9507,26 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
         }
     });
 
-    // ✅ 工具函数直接暴露
+    // ✅ 工具函数直接暴露到 window.Gaigai
     window.Gaigai.saveSnapshot = saveSnapshot;
     window.Gaigai.restoreSnapshot = restoreSnapshot;
-    console.log('✅ window.Gaigai 已挂载', window.Gaigai);
 
-    // === 🔌 公开核心工具供子模块使用 ===
-    window.callIndependentAPI = callIndependentAPI;
-    window.callTavernAPI = callTavernAPI;
-    window.prs = prs;
-    window.exe = exe;
-    window.unesc = unesc; // ✅ 反转义函数，供 backfill_manager.js 和 summary_manager.js 使用
-    window.markAsSummarized = markAsSummarized; // 总结模块需要这个
-    window.updateCurrentSnapshot = updateCurrentSnapshot;
-    window.refreshTable = refreshTable;
-    window.updateTabCount = updateTabCount;
-    window.syncToWorldInfo = syncToWorldInfo; // 总结模块需要同步到世界书
-    window.customRetryAlert = customRetryAlert; // 重试弹窗
-    // 同时也挂载到 Gaigai 对象上以备不时之需
-    window.Gaigai.tools = { callIndependentAPI, callTavernAPI, prs, exe, filterContentByTags }; // ✅ 添加 filterContentByTags
-    console.log('✅ [核心工具] 已公开给子模块使用');
+    // === 🔌 核心工具集（供子模块使用）===
+    // 所有工具函数统一挂载到 window.Gaigai.tools 下，避免全局命名空间污染
+    window.Gaigai.tools = {
+        callIndependentAPI,
+        callTavernAPI,
+        prs,
+        exe,
+        filterContentByTags
+    };
+
+    console.log('✅ window.Gaigai 已挂载', window.Gaigai);
+    console.log('✅ [核心工具] 已公开给子模块使用（命名空间隔离）');
+
+    // 启动加载器（在 window.Gaigai 完全初始化之后）
+    loadDependencies();
+
 
     // ✨✨✨ 重写：关于页 & 更新检查 & 首次弹窗 (颜色修复版) ✨✨✨
     function showAbout(isAutoPopup = false) {
@@ -9115,11 +9543,11 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
         <div class="g-p" style="display:flex; flex-direction:column; gap:12px; height:100%;">
             <!-- 头部版本信息 -->
             <div style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); border-radius:8px; padding:12px; text-align:center; flex-shrink:0;">
-                <div style="font-size:18px; font-weight:bold; margin-bottom:5px; color:${textColor};">
+                <div style="font-size:18px; font-weight:bold; margin-bottom:5px; color:var(--g-tc);">
                     📘 记忆表格 (Memory Context)
                 </div>
-                <div style="font-size:12px; opacity:0.8; margin-bottom:8px; color:${textColor};">当前版本: v${cleanVer}</div>
-                <div id="update-status" style="background:rgba(0,0,0,0.05); padding:6px; border-radius:4px; font-size:11px; display:flex; align-items:center; justify-content:center; gap:8px; color:${textColor};">
+                <div style="font-size:12px; opacity:0.8; margin-bottom:8px; color:var(--g-tc);">当前版本: v${cleanVer}</div>
+                <div id="update-status" style="background:rgba(0,0,0,0.05); padding:6px; border-radius:4px; font-size:11px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--g-tc);">
                     ⏳ 正在连接 GitHub 检查更新...
                 </div>
             </div>
@@ -9134,36 +9562,38 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
 
                 <!-- ✅ 第一部分：本次更新日志 (高亮显示) -->
                 <div style="margin-bottom:20px; border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:15px;">
-                    <h4 style="margin-top:0; margin-bottom:10px; color:${textColor}; display:flex; align-items:center; gap:6px;">
+                    <h4 style="margin-top:0; margin-bottom:10px; color:var(--g-tc); display:flex; align-items:center; gap:6px;">
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
-                    <ul style="margin:0; padding-left:20px; font-size:12px; color:${textColor}; opacity:0.9;">
-                        <li><strong>✨ 优化夜间模式：</strong>已总结行在夜间模式下显示更明显的绿色背景，白天模式保持淡绿色</li>
-                        <li><strong>✨ 优化视觉效果：</strong>已总结行的文字降低亮度（半透明），更容易区分已总结和未总结的内容</li>
-                        <li><strong>✨ 优化按钮位置：</strong>插件图标现在会优先插入到扩展设置按钮之后，位置更合理</li>
-                        <li><strong>✨ 优化提示文字：</strong>设置界面的标签过滤说明更清晰，新增HTML注释过滤用法示例</li>
-                        <li><strong>🔧 修复熔断提示：</strong>清空表格（保留总结）时不再弹出不必要的熔断警告</li>
+                    <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
+                        <li><strong>✨ 兼容 JSON 填表：</strong>修复变量卡等插件返回 JSON 格式时的解析失败问题</li>
+                        <li><strong>🔧 兼容其他插件：</strong>所有 DOM ID 添加 gg_ 前缀，避免与其他插件命名冲突</li>
+                        <li><strong>🎯 新增表格结构功能：</strong>支持无限添加自定义表单，满足复杂场景需求</li>
+                        <li><strong>📍 优化提示词位置：</strong>修改硬编码位置，避免 AI 在正文中输出表单指令</li>
+                        <li><strong>☁️ 优化多端同步：</strong>改进云端配置读取逻辑，解决手机/电脑数据不一致问题</li>
+                        <li><strong>🏷️ 黑白标签组合：</strong>标签过滤现在支持黑名单+白名单串行组合，先去除再提取</li>
+                        <li><strong>🌐 世界书自动换绑：</strong>新增世界书自动换绑功能</li>
                     </ul>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
                 <div>
-                    <h4 style="margin-top:0; margin-bottom:10px; color:${textColor}; opacity:0.9;">
+                    <h4 style="margin-top:0; margin-bottom:10px; color:var(--g-tc); opacity:0.9;">
                         📘 功能介绍 & 新手引导
                     </h4>
 
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px;">
                         <div style="background:rgba(255,255,255,0.3); padding:10px; border-radius:6px; border:1px solid rgba(0,0,0,0.05);">
-                            <div style="font-weight:bold; margin-bottom:4px; color:${textColor}; font-size:12px;">📊 填表模式 (二选一)</div>
-                            <div style="font-size:11px; color:${textColor}; opacity:0.8;">
+                            <div style="font-weight:bold; margin-bottom:4px; color:var(--g-tc); font-size:12px;">📊 填表模式 (二选一)</div>
+                            <div style="font-size:11px; color:var(--g-tc); opacity:0.8;">
                                 • <strong>实时填表：</strong> 每回合都写。优点是实时性强，缺点是费钱/慢。<br>
                                 • <strong>批量填表：</strong> 每N楼写一次。优点是省Token、速度快。<br>
                                 <span style="opacity:0.6; font-size:10px;">(推荐开启批量填表 + 独立API)</span>
                             </div>
                         </div>
                         <div style="background:rgba(255,255,255,0.3); padding:10px; border-radius:6px; border:1px solid rgba(0,0,0,0.05);">
-                            <div style="font-weight:bold; margin-bottom:4px; color:${textColor}; font-size:12px;">📝 总结模式</div>
-                            <div style="font-size:11px; color:${textColor}; opacity:0.8;">
+                            <div style="font-weight:bold; margin-bottom:4px; color:var(--g-tc); font-size:12px;">📝 总结模式</div>
+                            <div style="font-size:11px; color:var(--g-tc); opacity:0.8;">
                                 • <strong>表格源：</strong> 读取表格里的数据生成总结。<br>
                                 • <strong>聊天源：</strong> 读取聊天记录生成总结。<br>
                                 <span style="opacity:0.6; font-size:10px;">(可在配置中切换总结来源)</span>
@@ -9182,14 +9612,18 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                 </div>
 
                 <div style="margin-top:15px; font-size:11px; text-align:center; opacity:0.7;">
-                    <a href="${repoUrl}" target="_blank" style="text-decoration:none; color:${textColor}; border-bottom:1px dashed ${textColor};">
+                    <a href="${repoUrl}" target="_blank" style="text-decoration:none; color:var(--g-tc); border-bottom:1px dashed var(--g-tc);">
                        🔗 GitHub 项目主页
+                    </a>
+                    <span style="margin: 0 10px; opacity: 0.5;">|</span>
+                    <a href="https://pcnsnlcapni4.feishu.cn/wiki/AfPuwMlCSieXbckthFUc5bQYnMe" target="_blank" style="text-decoration:none; color:var(--g-tc); border-bottom:1px dashed var(--g-tc);">
+                       📖 详细使用说明书
                     </a>
                 </div>
             </div>
 
             <div style="padding-top:5px; border-top:1px solid rgba(255,255,255,0.2); text-align:right; flex-shrink:0;">
-                <label style="font-size:12px; cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:6px; color:${textColor}; opacity:0.9;">
+                <label style="font-size:12px; cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:6px; color:var(--g-tc); opacity:0.9;">
                     <input type="checkbox" id="dont-show-again" ${isChecked ? 'checked' : ''}>
                     不再自动弹出 v${cleanVer} 说明
                 </label>

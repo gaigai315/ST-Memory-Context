@@ -1,6 +1,6 @@
 // ========================================================================
 // 提示词管理器 - Prompt Manager for Memory Table Extension
-// 版本: 1.4.3
+// 版本: 1.4.4
 // ========================================================================
 (function() {
     'use strict';
@@ -897,18 +897,18 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             <div style="background: rgba(255,255,255,0.2); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.3);">
                 <div style="display: flex; flex-wrap: wrap !important; gap: 8px; align-items: center; margin-bottom: 10px; max-width: 100%;">
                     <label style="font-weight: 600; flex-shrink: 0;">📦 当前预设：</label>
-                    <select id="profile-selector" style="flex: 1 1 auto; min-width: 150px; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.2); background: rgba(255,255,255,0.9); font-size: 12px;">
+                    <select id="gg_profile_selector" style="flex: 1 1 auto; min-width: 150px; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.2); background: rgba(255,255,255,0.9); font-size: 12px;">
                         ${profileOptions}
                     </select>
-                    <button id="new-profile-btn" style="padding: 8px 12px; background: #28a745; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;">➕ 新建</button>
-                    <button id="rename-profile-btn" style="padding: 8px 12px; background: #6c757d; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;">✏️ 重命名</button>
-                    <button id="delete-profile-btn" style="padding: 8px 12px; background: #dc3545; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;" ${currentProfileId === 'default' ? 'disabled' : ''}>🗑️ 删除</button>
+                    <button id="gg_new_profile_btn" style="padding: 8px 12px; background: #28a745; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;">➕ 新建</button>
+                    <button id="gg_rename_profile_btn" style="padding: 8px 12px; background: #17a2b8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;">✏️ 重命名</button>
+                    <button id="gg_delete_profile_btn" style="padding: 8px 12px; background: #dc3545; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; white-space: nowrap; flex: 1 0 auto;" ${currentProfileId === 'default' ? 'disabled' : ''}>🗑️ 删除</button>
                 </div>
 
                 ${charName ? `
                 <div style="margin-bottom: 8px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-bottom: 4px;">
-                        <input type="checkbox" id="bind-to-char" ${isCharBound ? 'checked' : ''} style="transform: scale(1.2);">
+                        <input type="checkbox" id="gg_bind_to_char" ${isCharBound ? 'checked' : ''} style="transform: scale(1.2);">
                         <span>🔒 锁定为此角色专用 (切换角色时自动加载): <strong>"${window.Gaigai.esc(charName)}"</strong></span>
                     </label>
                     <div style="font-size: 10px; color: #666; opacity: 0.7; padding-left: 28px;">
@@ -919,15 +919,15 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             </div>
 
             <div style="display: flex; flex-wrap: wrap !important; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(0,0,0,0.1); max-width: 100%;">
-                <button id="import-btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📥 导入</button>
-                <button id="export-single-btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📤 导出当前</button>
-                <button id="export-all-btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📦 导出全部</button>
+                <button id="gg_import_btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📥 导入</button>
+                <button id="gg_export_single_btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📤 导出当前</button>
+                <button id="gg_export_all_btn" style="flex: 1 1 auto; min-width: 90px; padding: 6px; background: ${window.Gaigai.ui.c}; opacity: 0.8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📦 导出全部</button>
             </div>
-            <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+            <input type="file" id="gg_import_file_input" accept=".json" style="display: none;" />
             <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2);">
                 <div style="margin-bottom: 8px; font-weight: 600;">🔓 史官破限 (System Pre-Prompt)</div>
                 <div style="font-size:10px; opacity:0.6; margin-bottom:10px;">用于总结/追溯等独立任务，不会在实时填表时发送</div>
-                <textarea id="pmt-nsfw" style="width:100%; height:80px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:11px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${window.Gaigai.esc(currentData.nsfwPrompt !== undefined ? currentData.nsfwPrompt : NSFW_UNLOCK)}</textarea>
+                <textarea id="gg_pmt_nsfw" style="width:100%; height:80px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:11px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${window.Gaigai.esc(currentData.nsfwPrompt !== undefined ? currentData.nsfwPrompt : NSFW_UNLOCK)}</textarea>
             </div>
 
             <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2);">
@@ -936,12 +936,12 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     <span style="font-size:10px; opacity:0.6;">(更新前手动保存已修改过的提示词，避免丢失)</span>
                 </div>
 
-                <textarea id="pmt-table" style="width:100%; height:150px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box; margin-bottom: 12px;">${window.Gaigai.esc(currentData.tablePrompt !== undefined ? currentData.tablePrompt : DEFAULT_TABLE_PROMPT)}</textarea>
+                <textarea id="gg_pmt_table" style="width:100%; height:150px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box; margin-bottom: 12px;">${window.Gaigai.esc(currentData.tablePrompt !== undefined ? currentData.tablePrompt : DEFAULT_TABLE_PROMPT)}</textarea>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <div style="font-size:12px; font-weight:bold; opacity:0.8; margin-bottom:6px;">角色</div>
-                        <select id="pmt-table-pos" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.8); font-size:12px;">
+                        <select id="gg_pmt_table-pos" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.8); font-size:12px;">
                             <option value="system" ${isSel('system', currentData.tablePromptPos)}>系统</option>
                             <option value="user" ${isSel('user', currentData.tablePromptPos)}>用户</option>
                             <option value="assistant" ${isSel('assistant', currentData.tablePromptPos)}>AI助手</option>
@@ -950,14 +950,14 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     <div style="display: flex; gap: 8px;">
                         <div style="flex: 1;">
                             <div style="font-size:12px; font-weight:bold; opacity:0.8; margin-bottom:6px;">位置</div>
-                            <select id="pmt-table-pos-type" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.8); font-size:12px;">
+                            <select id="gg_pmt_table-pos-type" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.8); font-size:12px;">
                                 <option value="system_end" ${isSel('system_end', currentData.tablePromptPosType)}>相对</option>
                                 <option value="chat" ${isSel('chat', currentData.tablePromptPosType)}>聊天中</option>
                             </select>
                         </div>
-                        <div id="pmt-table-depth-container" style="width: 60px; ${currentData.tablePromptPosType === 'chat' ? '' : 'display:none;'}">
+                        <div id="gg_pmt_table-depth-container" style="width: 60px; ${currentData.tablePromptPosType === 'chat' ? '' : 'display:none;'}">
                             <div style="font-size:12px; font-weight:bold; opacity:0.8; margin-bottom:6px;">深度</div>
-                            <input type="number" id="pmt-table-depth" value="${currentData.tablePromptDepth || 0}" min="0" style="width: 100%; text-align: center; padding:7px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.8); font-size:12px; box-sizing: border-box;">
+                            <input type="number" id="gg_pmt_table-depth" value="${currentData.tablePromptDepth || 0}" min="0" style="width: 100%; text-align: center; padding:7px; border-radius:6px; border:1px solid rgba(0,0,0,0.2); background:rgba(255,255,255,0.8); font-size:12px; box-sizing: border-box;">
                         </div>
                     </div>
                 </div>
@@ -967,48 +967,44 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 <div style="margin-bottom: 8px; font-weight: 600; display:flex; justify-content:space-between; align-items:center;">
                     <span>📝 总结/批量提示词</span>
 
-                    <div style="display:flex; background:rgba(0,0,0,0.1); border-radius:4px; padding:2px;">
-                        <label style="cursor:pointer; padding:4px 8px; border-radius:3px; font-size:11px; display:flex; align-items:center; transition:all 0.2s;" id="tab-label-table" class="active-tab">
-                            <input type="radio" name="pmt-sum-type" value="table" checked style="display:none;">
+                    <div style="display: flex; background: rgba(127, 127, 127, 0.15); padding: 4px; border-radius: 8px; gap: 4px;">
+                        <label style="flex: 1; text-align: center; justify-content: center; padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s; color: ${window.Gaigai.ui.tc}; opacity: 0.7; display: flex; align-items: center; border: 1px solid transparent;" id="gg_tab_label_table">
+                            <input type="radio" name="pmt-sum-type" value="table" checked>
                             📊 表格总结
                         </label>
-                        <label style="cursor:pointer; padding:4px 8px; border-radius:3px; font-size:11px; display:flex; align-items:center; transition:all 0.2s; opacity:0.6;" id="tab-label-chat">
-                            <input type="radio" name="pmt-sum-type" value="chat" style="display:none;">
+                        <label style="flex: 1; text-align: center; justify-content: center; padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s; color: ${window.Gaigai.ui.tc}; opacity: 0.7; display: flex; align-items: center; border: 1px solid transparent;" id="gg_tab_label_chat">
+                            <input type="radio" name="pmt-sum-type" value="chat">
                             💬 聊天总结
                         </label>
-                        <label style="cursor:pointer; padding:4px 8px; border-radius:3px; font-size:11px; display:flex; align-items:center; transition:all 0.2s; opacity:0.6;" id="tab-label-backfill">
-                            <input type="radio" name="pmt-sum-type" value="backfill" style="display:none;">
+                        <label style="flex: 1; text-align: center; justify-content: center; padding: 6px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s; color: ${window.Gaigai.ui.tc}; opacity: 0.7; display: flex; align-items: center; border: 1px solid transparent;" id="gg_tab_label_backfill">
+                            <input type="radio" name="pmt-sum-type" value="backfill">
                             ⚡ 批量填表
                         </label>
                     </div>
                 </div>
 
-                <textarea id="pmt-summary" style="width:100%; height:120px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${window.Gaigai.esc(currentData.summaryPromptTable !== undefined ? currentData.summaryPromptTable : DEFAULT_SUM_TABLE)}</textarea>
-                <div style="font-size:10px; opacity:0.5; margin-top:4px; text-align:right;" id="pmt-desc">当前编辑：记忆表格数据的总结指令</div>
+                <textarea id="gg_pmt_summary" style="width:100%; height:120px; padding:10px; border:1px solid rgba(0,0,0,0.1); border-radius:6px; font-size:12px; font-family:monospace; resize:vertical; background:rgba(255,255,255,0.5); box-sizing: border-box;">${window.Gaigai.esc(currentData.summaryPromptTable !== undefined ? currentData.summaryPromptTable : DEFAULT_SUM_TABLE)}</textarea>
+                <div style="font-size:10px; opacity:0.5; margin-top:4px; text-align:right;" id="gg_pmt_desc">当前编辑：记忆表格数据的总结指令</div>
             </div>
 
             <!-- 保存/恢复按钮组 (移到表格编辑器上方) -->
             <div style="display: flex; gap: 10px; margin-top: 5px;">
-                <button id="reset-pmt" style="flex:1; background:rgba(108, 117, 125, 0.8); font-size:12px; padding:10px; border-radius:6px; color:#fff; border:none; cursor:pointer;">🔄 恢复默认</button>
-                <button id="save-pmt" style="flex:2; padding:10px; font-weight:bold; font-size:13px; border-radius:6px; background:linear-gradient(135deg, #28a745 0%, #20c997 100%); color:#fff; border:none; cursor:pointer;">💾 保存设置</button>
+                <button id="gg_reset_pmt" style="flex:1; background:rgba(108, 117, 125, 0.8); font-size:12px; padding:10px; border-radius:6px; color:#fff; border:none; cursor:pointer;">🔄 恢复默认</button>
+                <button id="gg_save_pmt" style="flex:2; padding:10px; font-weight:bold; font-size:13px; border-radius:6px; background:linear-gradient(135deg, #28a745 0%, #20c997 100%); color:#fff; border:none; cursor:pointer;">💾 保存设置</button>
             </div>
 
             <!-- 表格结构编辑器入口 -->
             <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); margin-top: 10px;">
                 <div style="margin-bottom: 8px; font-weight: 600;">✏️ 表格结构管理</div>
                 <div style="font-size: 11px; color: #666; margin-bottom: 10px; line-height: 1.5;">
-                    自定义表格名称和列名（索引0-7可编辑，索引8总结表锁定）。<br>
+                    自定义表格名称和列名（数据表可编辑，最后一个总结表锁定）。<br>
                     <strong>⚠️ 修改表格结构后，需要手动更新提示词中的表格定义！</strong>
                 </div>
-                <button id="open-table-editor-btn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                <button id="gg_open_table_editor_btn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
                     📝 打开表格结构编辑器
                 </button>
             </div>
-        </div>
-
-        <style>
-            .active-tab { background: ${window.Gaigai.ui.c}; color: #fff; opacity: 1 !important; font-weight: bold; }
-        </style>`;
+        </div>`;
 
         window.Gaigai.pop('📝 提示词管理', h, true);
 
@@ -1019,7 +1015,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             let tempBackfillPmt = currentData.backfillPrompt !== undefined ? currentData.backfillPrompt : DEFAULT_BACKFILL_PROMPT;
 
             // 预设切换
-            $('#profile-selector').on('change', function() {
+            $('#gg_profile_selector').on('change', function() {
                 const newProfileId = $(this).val();
                 profilesData.currentProfileId = newProfileId;
                 saveProfilesData(profilesData);
@@ -1027,7 +1023,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 新建预设
-            $('#new-profile-btn').on('click', async function() {
+            $('#gg_new_profile_btn').on('click', async function() {
                 const name = await customPrompt('请输入新预设名称：', '我的预设');
                 if (!name) return;
 
@@ -1061,7 +1057,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 重命名预设
-            $('#rename-profile-btn').on('click', async function() {
+            $('#gg_rename_profile_btn').on('click', async function() {
                 const newName = await customPrompt('请输入新名称：', currentProfile.name);
                 if (!newName) return;
 
@@ -1078,7 +1074,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 删除预设
-            $('#delete-profile-btn').on('click', async function() {
+            $('#gg_delete_profile_btn').on('click', async function() {
                 if (currentProfileId === 'default') {
                     await window.Gaigai.customAlert('❌ 默认预设不可删除！', '错误');
                     return;
@@ -1110,7 +1106,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
             // 角色绑定
             if (charName) {
-                $('#bind-to-char').on('change', function() {
+                $('#gg_bind_to_char').on('change', function() {
                     if ($(this).is(':checked')) {
                         profilesData.charBindings[charName] = currentProfileId;
                         console.log(`[PromptManager] 已绑定角色 "${charName}" 到预设 "${currentProfileId}"`);
@@ -1128,18 +1124,18 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             }
 
             // 位置逻辑
-            $('#pmt-table-pos-type').on('change', function() {
+            $('#gg_pmt_table-pos-type').on('change', function() {
                 if ($(this).val() === 'chat') {
-                    $('#pmt-table-depth-container').css('display', 'block').hide().fadeIn(200);
+                    $('#gg_pmt_table-depth-container').css('display', 'block').hide().fadeIn(200);
                 } else {
-                    $('#pmt-table-depth-container').fadeOut(200);
+                    $('#gg_pmt_table-depth-container').fadeOut(200);
                 }
             });
 
             // 切换提示词标签
             $('input[name="pmt-sum-type"]').on('change', function() {
                 const type = $(this).val();
-                const currentVal = $('#pmt-summary').val();
+                const currentVal = $('#gg_pmt_summary').val();
                 const prevType = $('input[name="pmt-sum-type"]').not(this).filter((i, el) => {
                     return $(el).data('was-checked');
                 }).val() || 'table';
@@ -1151,20 +1147,14 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
                 // 加载新内容
                 if (type === 'table') {
-                    $('#pmt-summary').val(tempTablePmt);
-                    $('#tab-label-table').addClass('active-tab').css('opacity', '1');
-                    $('#tab-label-chat, #tab-label-backfill').removeClass('active-tab').css('opacity', '0.6');
-                    $('#pmt-desc').text('当前编辑：记忆表格数据的总结指令');
+                    $('#gg_pmt_summary').val(tempTablePmt);
+                    $('#gg_pmt_desc').text('当前编辑：记忆表格数据的总结指令');
                 } else if (type === 'chat') {
-                    $('#pmt-summary').val(tempChatPmt);
-                    $('#tab-label-chat').addClass('active-tab').css('opacity', '1');
-                    $('#tab-label-table, #tab-label-backfill').removeClass('active-tab').css('opacity', '0.6');
-                    $('#pmt-desc').text('当前编辑：聊天历史记录的总结指令');
+                    $('#gg_pmt_summary').val(tempChatPmt);
+                    $('#gg_pmt_desc').text('当前编辑：聊天历史记录的总结指令');
                 } else if (type === 'backfill') {
-                    $('#pmt-summary').val(tempBackfillPmt);
-                    $('#tab-label-backfill').addClass('active-tab').css('opacity', '1');
-                    $('#tab-label-table, #tab-label-chat').removeClass('active-tab').css('opacity', '0.6');
-                    $('#pmt-desc').text('当前编辑：批量/追溯填表的历史回溯指令');
+                    $('#gg_pmt_summary').val(tempBackfillPmt);
+                    $('#gg_pmt_desc').text('当前编辑：批量/追溯填表的历史回溯指令');
                 }
 
                 $('input[name="pmt-sum-type"]').data('was-checked', false);
@@ -1172,7 +1162,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 文本框失去焦点时同步
-            $('#pmt-summary').on('input blur', function() {
+            $('#gg_pmt_summary').on('input blur', function() {
                 const type = $('input[name="pmt-sum-type"]:checked').val();
                 if (type === 'table') tempTablePmt = $(this).val();
                 else if (type === 'chat') tempChatPmt = $(this).val();
@@ -1180,15 +1170,15 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 保存按钮
-            $('#save-pmt').on('click', async function() {
-                $('#pmt-summary').trigger('blur');
+            $('#gg_save_pmt').on('click', async function() {
+                $('#gg_pmt_summary').trigger('blur');
 
                 // 更新当前预设的数据
-                currentData.nsfwPrompt = $('#pmt-nsfw').val();
-                currentData.tablePrompt = $('#pmt-table').val();
-                currentData.tablePromptPos = $('#pmt-table-pos').val();
-                currentData.tablePromptPosType = $('#pmt-table-pos-type').val();
-                currentData.tablePromptDepth = parseInt($('#pmt-table-depth').val()) || 0;
+                currentData.nsfwPrompt = $('#gg_pmt_nsfw').val();
+                currentData.tablePrompt = $('#gg_pmt_table').val();
+                currentData.tablePromptPos = $('#gg_pmt_table-pos').val();
+                currentData.tablePromptPosType = $('#gg_pmt_table-pos-type').val();
+                currentData.tablePromptDepth = parseInt($('#gg_pmt_table-depth').val()) || 0;
                 currentData.summaryPromptTable = tempTablePmt;
                 currentData.summaryPromptChat = tempChatPmt;
                 currentData.backfillPrompt = tempBackfillPmt;
@@ -1211,18 +1201,18 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 打开表格结构编辑器按钮
-            $('#open-table-editor-btn').on('click', function() {
+            $('#gg_open_table_editor_btn').on('click', function() {
                 window.Gaigai.navTo('表格结构编辑器', showTableEditor);
             });
 
             // 恢复默认按钮
-            $('#reset-pmt').on('click', async function() {
+            $('#gg_reset_pmt').on('click', async function() {
                 const confirmHtml = `
                     <div class="g-p">
                         <div style="margin-bottom:12px; color:#666; font-size:12px;">请勾选需要恢复默认的项目：</div>
 
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
-                            <input type="checkbox" id="rst-nsfw" checked style="transform:scale(1.2);">
+                            <input type="checkbox" id="gg_rst_nsfw" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">🔓 史官破限提示词</div>
                                 <div style="font-size:10px; opacity:0.8;">(NSFW Unlock)</div>
@@ -1230,7 +1220,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         </label>
 
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
-                            <input type="checkbox" id="rst-table" checked style="transform:scale(1.2);">
+                            <input type="checkbox" id="gg_rst_table" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">📋 实时填表提示词</div>
                                 <div style="font-size:10px; opacity:0.8;">(Memory Guide - Realtime)</div>
@@ -1238,7 +1228,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         </label>
 
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
-                            <input type="checkbox" id="rst-sum-table" checked style="transform:scale(1.2);">
+                            <input type="checkbox" id="gg_rst_sum-table" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">📊 表格总结提示词</div>
                                 <div style="font-size:10px; opacity:0.8;">(Summary - Table Mode)</div>
@@ -1246,7 +1236,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         </label>
 
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
-                            <input type="checkbox" id="rst-sum-chat" checked style="transform:scale(1.2);">
+                            <input type="checkbox" id="gg_rst_sum-chat" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">💬 聊天总结提示词</div>
                                 <div style="font-size:10px; opacity:0.8;">(Summary - Chat Mode)</div>
@@ -1254,7 +1244,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         </label>
 
                         <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer; background:var(--g-c); border:1px solid rgba(255,255,255,0.2); padding:8px; border-radius:6px;">
-                            <input type="checkbox" id="rst-backfill" checked style="transform:scale(1.2);">
+                            <input type="checkbox" id="gg_rst_backfill" checked style="transform:scale(1.2);">
                             <div>
                                 <div style="font-weight:bold;">⚡ 批量填表提示词</div>
                                 <div style="font-size:10px; opacity:0.8;">(Backfill - History Mode)</div>
@@ -1262,8 +1252,8 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         </label>
 
                         <div style="margin-top:15px; display:flex; gap:10px;">
-                            <button id="confirm-reset-btn" style="flex:1; padding:10px; background:#dc3545; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">确认恢复</button>
-                            <button id="cancel-reset-btn" style="flex:1; padding:10px; background:#6c757d; color:#fff; border:none; border-radius:6px; cursor:pointer;">取消</button>
+                            <button id="gg_confirm_reset_btn" style="flex:1; padding:10px; background:#dc3545; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">确认恢复</button>
+                            <button id="gg_cancel_reset_btn" style="flex:1; padding:10px; background:#6c757d; color:#fff; border:none; border-radius:6px; cursor:pointer;">取消</button>
                         </div>
                     </div>
                 `;
@@ -1271,24 +1261,24 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 window.Gaigai.pop('🔄 恢复默认提示词', confirmHtml, true);
 
                 setTimeout(() => {
-                    $('#confirm-reset-btn').on('click', async function() {
-                        if ($('#rst-nsfw').is(':checked')) {
+                    $('#gg_confirm_reset_btn').on('click', async function() {
+                        if ($('#gg_rst_nsfw').is(':checked')) {
                             currentData.nsfwPrompt = NSFW_UNLOCK;
-                            $('#pmt-nsfw').val(NSFW_UNLOCK);
+                            $('#gg_pmt_nsfw').val(NSFW_UNLOCK);
                         }
-                        if ($('#rst-table').is(':checked')) {
+                        if ($('#gg_rst_table').is(':checked')) {
                             currentData.tablePrompt = DEFAULT_TABLE_PROMPT;
-                            $('#pmt-table').val(DEFAULT_TABLE_PROMPT);
+                            $('#gg_pmt_table').val(DEFAULT_TABLE_PROMPT);
                         }
-                        if ($('#rst-sum-table').is(':checked')) {
+                        if ($('#gg_rst_sum-table').is(':checked')) {
                             currentData.summaryPromptTable = DEFAULT_SUM_TABLE;
                             tempTablePmt = DEFAULT_SUM_TABLE;
                         }
-                        if ($('#rst-sum-chat').is(':checked')) {
+                        if ($('#gg_rst_sum-chat').is(':checked')) {
                             currentData.summaryPromptChat = DEFAULT_SUM_CHAT;
                             tempChatPmt = DEFAULT_SUM_CHAT;
                         }
-                        if ($('#rst-backfill').is(':checked')) {
+                        if ($('#gg_rst_backfill').is(':checked')) {
                             currentData.backfillPrompt = DEFAULT_BACKFILL_PROMPT;
                             tempBackfillPmt = DEFAULT_BACKFILL_PROMPT;
                         }
@@ -1300,7 +1290,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         showPromptManager(); 
                     });
 
-                    $('#cancel-reset-btn').on('click', function() {
+                    $('#gg_cancel_reset_btn').on('click', function() {
                         showPromptManager();
                     });
                 }, 50);
@@ -1308,7 +1298,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
             // 导入/导出功能
             // 导出当前预设
-            $('#export-single-btn').on('click', function() {
+            $('#gg_export_single_btn').on('click', function() {
                 const exportData = {
                     name: currentProfile.name,
                     data: currentData
@@ -1318,18 +1308,18 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 导出全部预设
-            $('#export-all-btn').on('click', function() {
+            $('#gg_export_all_btn').on('click', function() {
                 const filename = `prompts_backup_${Date.now()}.json`;
                 downloadJson(profilesData, filename);
             });
 
             // 导入按钮
-            $('#import-btn').on('click', function() {
-                $('#import-file-input').click();
+            $('#gg_import_btn').on('click', function() {
+                $('#gg_import_file_input').click();
             });
 
             // 文件选择处理
-            $('#import-file-input').on('change', async function(e) {
+            $('#gg_import_file_input').on('change', async function(e) {
                 const file = e.target.files[0];
                 if (file) {
                     await handleImport(file);
@@ -1421,7 +1411,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             await window.Gaigai.customAlert('✅ 默认提示词已更新成功！\n\n您可以前往"配置 → 提示词"查看最新内容。', '更新成功');
 
             // 7.7 如果当前正处于提示词管理界面，刷新界面
-            if ($('#profile-selector').length > 0) {
+            if ($('#gg_profile_selector').length > 0) {
                 console.log('[PromptManager] 刷新提示词管理界面...');
                 showPromptManager();
             }
@@ -1432,7 +1422,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     }
 
     /**
-     * 显示表格编辑器（从 index.js 迁移）
+     * 显示表格编辑器（动态增删版 - 手机极致适配）
      */
     function showTableEditor() {
         const C = window.Gaigai.config_obj;
@@ -1443,7 +1433,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         const m = window.Gaigai.m;
         const shw = window.Gaigai.shw;
 
-        // 从 index.js 读取 DEFAULT_TABLES（应该已挂载到 Gaigai）
+        // 默认结构（兜底用）
         const DEFAULT_TABLES = [
             { n: '主线剧情', c: ['日期', '开始时间', '完结时间', '事件概要', '状态'] },
             { n: '支线追踪', c: ['状态', '支线名', '开始时间', '完结时间', '事件追踪', '关键NPC'] },
@@ -1456,67 +1446,170 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             { n: '记忆总结', c: ['表格类型', '总结内容'] }
         ];
 
-        // 获取当前表格结构
-        const currentTables = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
-            ? C.customTables
-            : DEFAULT_TABLES;
+        let currentTables = window.Gaigai.m.all().map(s => ({ n: s.n, c: [...s.c] }));
 
-        // 构建编辑器HTML
-        let editorRows = '';
-        currentTables.forEach((tb, idx) => {
-            const isSummaryTable = (idx === 8);
-            const lockIcon = isSummaryTable ? '🔓📌' : '📝';
-            const nameDisabled = isSummaryTable ? 'disabled' : '';
-            const colsDisabled = '';
-            const nameOpacity = isSummaryTable ? 'opacity: 0.6;' : '';
+        const renderEditor = () => {
+            let editorRows = '';
+            const summaryIndex = currentTables.length - 1;
 
-            editorRows += `
-                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                    <span style="font-weight: bold; min-width: 60px; color: ${UI.tc};">[${idx}] ${lockIcon}</span>
-                    <input type="text"
-                           class="tbl-name"
-                           data-index="${idx}"
-                           value="${esc(tb.n)}"
-                           placeholder="表名"
-                           ${nameDisabled}
-                           style="flex: 1 1 90px; min-width: 90px; padding: 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px; background: ${isSummaryTable ? '#f0f0f0' : '#fff'}; ${nameOpacity}">
-                    <span style="color: ${UI.tc};">|</span>
-                    <input type="text"
-                           class="tbl-cols"
-                           data-index="${idx}"
-                           value="${esc(tb.c.join(', '))}"
-                           placeholder="列名（逗号分隔）"
-                           ${colsDisabled}
-                           style="flex: 1 1 240px; min-width: 240px; padding: 6px; border: 1px solid rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px; background: #fff;">
-                </div>
-            `;
-        });
+            currentTables.forEach((tb, idx) => {
+                const isSummaryTable = (idx === summaryIndex);
+                const nameDisabled = isSummaryTable ? 'disabled' : '';
+                const deleteBtn = isSummaryTable
+                    ? ''
+                    : `<button class="btn-del-table" data-idx="${idx}">🗑️</button>`;
+
+                // ⚠️ 总结表特殊标记
+                const indexBadge = isSummaryTable
+                    ? `<span style="font-size:10px; background:${UI.c}; color:#fff; padding:0 4px; border-radius:3px; margin-left:4px; height:16px; line-height:16px; display:inline-block;">总结表</span>`
+                    : '';
+
+                editorRows += `
+                    <div class="gg-table-item" style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 8px; margin-bottom: 8px; border: 1px solid rgba(0,0,0,0.1);">
+                        <div class="gg-row-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <span style="font-weight: bold; color: ${UI.tc}; font-size:12px; display:flex; align-items:center;">
+                                #${idx} ${indexBadge}
+                            </span>
+                            ${deleteBtn}
+                        </div>
+
+                        <div class="gg-inputs">
+                            <input type="text" class="tbl-name" data-index="${idx}" value="${esc(tb.n)}" placeholder="表名" ${nameDisabled}>
+                            <input type="text" class="tbl-cols" data-index="${idx}" value="${esc(tb.c.join(', '))}" placeholder="列名（逗号分隔）">
+                        </div>
+                    </div>
+                `;
+            });
+            return editorRows;
+        };
 
         const h = `
+            <style>
+                /* --- 基础样式 --- */
+                .gg-table-item {
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 6px;
+                    padding: 8px;
+                    margin-bottom: 8px;
+                    border: 1px solid rgba(0,0,0,0.1);
+                }
+                .gg-row-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 6px;
+                }
+                .gg-inputs { display: flex; gap: 8px; }
+                .tbl-name { flex: 1; min-width: 80px; }
+                .tbl-cols { flex: 2; }
+                .btn-del-table {
+                    padding: 0;
+                    background: #dc3545;
+                    color: #fff;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    width: 24px;
+                    height: 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                }
+
+                /* --- 📱 手机端极致适配 (<600px) --- */
+                @media (max-width: 600px) {
+                    /* 1. 头部压缩 */
+                    .gg-editor-header {
+                        padding: 8px 10px !important;
+                        margin-bottom: 8px !important;
+                    }
+                    .gg-editor-header h4 { font-size: 13px !important; margin: 0 0 2px 0 !important; }
+                    .gg-editor-header div { font-size: 10px !important; line-height: 1.3 !important; }
+
+                    /* 2. 表格卡片压缩 */
+                    .gg-table-item {
+                        padding: 8px !important;
+                        margin-bottom: 6px !important;
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    .gg-row-header { margin-bottom: 4px !important; height: 20px !important; }
+
+                    /* 输入框紧凑垂直排列 */
+                    .gg-inputs { flex-direction: column !important; gap: 6px !important; }
+                    .tbl-name, .tbl-cols {
+                        width: 100% !important;
+                        height: 28px !important; /* 强制降低高度 */
+                        min-height: 28px !important;
+                        font-size: 11px !important;
+                        padding: 4px 6px !important;
+                        margin: 0 !important;
+                    }
+
+                    /* 3. 按钮全体瘦身 */
+                    #gg_add_new_table_btn,
+                    #gg_save_table_structure_btn,
+                    #gg_reset_table_structure_btn,
+                    #gg_copy_table_definition_btn {
+                        flex: 0 0 auto !important;
+                        padding: 0 !important;
+                        height: 32px !important; /* 强制按钮高度 */
+                        min-height: 32px !important;
+                        font-size: 12px !important;
+                        line-height: 32px !important;
+                        margin-top: 6px !important;
+                        display: flex; align-items: center; justify-content: center;
+                    }
+
+                    /* 复选框区域紧凑 */
+                    .gg-bind-box {
+                        padding: 6px !important;
+                        margin-top: 8px !important;
+                    }
+                    .gg-bind-box label {
+                        margin-bottom: 4px !important;
+                        font-size: 11px !important;
+                    }
+                    .gg-bind-box div { font-size: 9px !important; margin-bottom: 6px !important; }
+                }
+            </style>
+
             <div class="g-p" style="display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
-                <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0; margin-bottom: 12px;">
+                <div class="gg-editor-header" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0; margin-bottom: 12px;">
                     <h4 style="margin: 0; color: ${UI.tc};">✏️ 表格结构编辑器</h4>
+                    <div style="font-size: 11px; opacity: 0.8; margin-top:5px;">
+                        自定义表格增删。<strong>最后一张为"总结表"</strong>。
+                    </div>
                 </div>
 
-                <div style="flex: 1; overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: rgba(0,0,0,0.05); border-radius: 8px; padding: 12px; border: 1px solid rgba(0,0,0,0.1);">
-                    ${editorRows}
+                <div id="gg_table_editor_list" style="flex: 1; overflow-x: auto; overflow-y: auto; background: rgba(0,0,0,0.05); border-radius: 8px; padding: 10px; border: 1px solid rgba(0,0,0,0.1);">
+                    ${renderEditor()}
                 </div>
 
-                <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); margin-top: 12px; flex-shrink: 0;">
-                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                        <button id="save-table-structure-btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                            💾 保存结构
+                <button id="gg_add_new_table_btn" style="margin-top:10px; width: 100%; padding: 8px; background: #17a2b8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                    ➕ 插入新表
+                </button>
+
+                <div class="gg-bind-box" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2); margin-top: 10px; flex-shrink: 0;">
+                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; padding: 6px; background: rgba(33, 150, 243, 0.1); border-radius: 6px; border: 1px solid rgba(33, 150, 243, 0.2);">
+                        <input type="checkbox" id="gg_bind_to_current_chat" ${m.structureBound ? 'checked' : ''} style="transform: scale(1.1);">
+                        <span style="font-size: 11px; color: ${UI.tc}; font-weight: 600;">
+                            🔒 仅绑定当前角色
+                        </span>
+                    </label>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <button id="gg_save_table_structure_btn" style="flex: 1; padding: 8px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                            💾 保存
                         </button>
-                        <button id="reset-table-structure-btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                            🔄 恢复默认
+                        <button id="gg_reset_table_structure_btn" style="flex: 1; padding: 8px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                            🔄 默认
                         </button>
                     </div>
-                    <button id="copy-table-definition-btn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                        📋 复制表格定义到剪贴板
+                    <button id="gg_copy_table_definition_btn" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                        📋 复制定义
                     </button>
-                    <div style="font-size: 10px; color: #666; margin-top: 8px; text-align: center;">
-                        复制后可粘贴到"提示词管理"中手动更新表格定义
-                    </div>
                 </div>
             </div>
         `;
@@ -1524,127 +1617,95 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         pop('✏️ 表格结构编辑器', h, true);
 
         setTimeout(() => {
+            // 实时更新 input 数据到 currentTables
+            const updateCurrentData = () => {
+                $('.tbl-name').each(function() {
+                    const idx = $(this).data('index');
+                    currentTables[idx].n = $(this).val();
+                });
+                $('.tbl-cols').each(function() {
+                    const idx = $(this).data('index');
+                    currentTables[idx].c = $(this).val().split(/,|，/).map(s=>s.trim()).filter(s=>s);
+                });
+            };
+
+            // ➕ 添加新表逻辑
+            $('#gg_add_new_table_btn').on('click', function() {
+                updateCurrentData();
+                const summaryTable = currentTables.pop();
+                currentTables.push({ n: '新表格', c: ['列1', '列2'] });
+                currentTables.push(summaryTable);
+                $('#gg_table_editor_list').html(renderEditor());
+                bindDeleteEvents();
+            });
+
+            // 🗑️ 删除表格逻辑
+            const bindDeleteEvents = () => {
+                $('.btn-del-table').off('click').on('click', async function() {
+                    const idx = $(this).data('idx');
+                    const confirmed = await window.Gaigai.customConfirm('确定删除？', '确认删除');
+                    if(confirmed) {
+                        updateCurrentData();
+                        currentTables.splice(idx, 1);
+                        $('#gg_table_editor_list').html(renderEditor());
+                        bindDeleteEvents();
+                    }
+                });
+            };
+            bindDeleteEvents();
+
             // 保存结构按钮
-            $('#save-table-structure-btn').on('click', async function() {
-                const newTables = [];
-                let hasError = false;
-
+            $('#gg_save_table_structure_btn').on('click', async function() {
+                updateCurrentData();
                 for (let i = 0; i < currentTables.length; i++) {
-                    const nameInput = $(`.tbl-name[data-index="${i}"]`);
-                    const colsInput = $(`.tbl-cols[data-index="${i}"]`);
-
-                    const tableName = nameInput.val().trim();
-                    const colsText = colsInput.val().trim();
-
-                    if (!tableName) {
-                        await customAlert(`索引 ${i} 的表名不能为空！`, '验证失败');
-                        hasError = true;
-                        break;
-                    }
-
-                    const cols = colsText.split(',').map(c => c.trim()).filter(c => c.length > 0);
-                    if (cols.length === 0) {
-                        await customAlert(`索引 ${i} 至少需要一个列名！`, '验证失败');
-                        hasError = true;
-                        break;
-                    }
-
-                    newTables.push({ n: tableName, c: cols });
+                    if (!currentTables[i].n) { await customAlert(`第${i+1}个表格无名！`, '错误'); return; }
+                    if (currentTables[i].c.length === 0) { await customAlert(`第${i+1}个表格无列！`, '错误'); return; }
                 }
+                const bindToCurrentChat = $('#gg_bind_to_current_chat').is(':checked');
+                m.structureBound = bindToCurrentChat;
 
-                if (hasError) return;
-
-                C.customTables = newTables;
-                localStorage.setItem('gg_config', JSON.stringify(C));
-
-                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                    await window.Gaigai.saveAllSettingsToCloud();
+                if (bindToCurrentChat) {
+                    m.initTables(currentTables, true);
+                    m.save(true);
+                    shw();
+                    await customAlert('✅ 已绑定到当前角色！', '成功');
+                } else {
+                    C.customTables = currentTables;
+                    localStorage.setItem('gg_config', JSON.stringify(C));
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') await window.Gaigai.saveAllSettingsToCloud();
+                    m.initTables(currentTables);
+                    m.save(true);
+                    shw();
+                    await customAlert('✅ 已保存为全局默认！', '成功');
                 }
-
-                m.initTables(newTables);
-                m.save(true);
-
-                shw();
-
-                // 🔥 弹出提示：提醒用户更新提示词
-                await customAlert('✅ 表格结构已保存并应用！\n\n⚠️ 重要提示：\n• 索引 0-7：可自由编辑表名和列名\n• 索引 8 (总结表)：表名锁定，列名可编辑\n• 修改后请务必前往"提示词管理"手动更新提示词中的表格定义！', '保存成功');
             });
 
             // 恢复默认按钮
-            $('#reset-table-structure-btn').on('click', async function() {
-                const confirmed = await window.Gaigai.customConfirm('确定要恢复默认表格结构吗？\n\n这将清除所有自定义设置！', '确认操作');
-                if (!confirmed) return;
-
+            $('#gg_reset_table_structure_btn').on('click', async function() {
+                if (!await window.Gaigai.customConfirm('确定恢复默认？', '确认')) return;
                 C.customTables = null;
                 localStorage.setItem('gg_config', JSON.stringify(C));
-
-                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                    await window.Gaigai.saveAllSettingsToCloud();
-                }
-
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') await window.Gaigai.saveAllSettingsToCloud();
                 m.initTables(DEFAULT_TABLES);
                 m.save(true);
-
                 shw();
                 showTableEditor();
-
-                await customAlert('✅ 已恢复默认表格结构！', '成功');
+                await customAlert('✅ 已恢复默认结构', '成功');
             });
 
             // 复制定义按钮
-            $('#copy-table-definition-btn').on('click', function() {
-                let definition = '📋 表格定义（请复制到提示词中）\n\n';
-
+            $('#gg_copy_table_definition_btn').on('click', function() {
+                let definition = '📋 表格定义\n';
                 for (let i = 0; i < currentTables.length; i++) {
-                    const nameInput = $(`.tbl-name[data-index="${i}"]`);
-                    const colsInput = $(`.tbl-cols[data-index="${i}"]`);
-
-                    const tableName = nameInput.val().trim();
-                    const colsText = colsInput.val().trim();
-                    const cols = colsText.split(',').map(c => c.trim()).filter(c => c.length > 0);
-
-                    definition += `Index ${i}: ${tableName} (${cols.join(', ')})\n`;
+                    const name = $(`.tbl-name[data-index="${i}"]`).val().trim();
+                    const cols = $(`.tbl-cols[data-index="${i}"]`).val().trim();
+                    definition += `Idx ${i}: ${name} (${cols})\n`;
                 }
-
-                const usageGuide = `
-====================
-【操作格式指南】
-
-1. 必须使用标签：<Memory><!-- --></Memory>
-
-2. 指令语法：
-   - 新增行：insertRow(表格索引, {列索引: "内容", ...})
-   - 更新行：updateRow(表格索引, 行索引, {列索引: "内容", ...})
-
-3. 正确格式示例：
-
-新增行:
-<Memory><!-- insertRow(0, {0: "2024年3月15日", 1: "上午(08:30)", 2: "", 3: "在村庄接受长老委托，前往迷雾森林寻找失落宝石", 4: "进行中"}) --></Memory>
-
-更新行:
-<Memory><!-- updateRow(0, 0, {3: "在迷雾森林遭遇神秘商人艾莉娅，获得线索：宝石在古神殿深处"}) --></Memory>
-
-完结行+新增行:
-<Memory><!-- updateRow(0, 0, {2: "深夜(23:50)", 4: "已完成"})
-insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿继续探索，寻找宝石线索", 4: "进行中"}) --></Memory>
-
-4. 重要注意事项：
-   ⚠️ 严禁使用 Markdown 代码块（\`\`\`）
-   ⚠️ 必须使用数字索引（表格索引、列索引、行索引）
-   ⚠️ 内容中的引号请使用双引号 ""
-   ⚠️ 多条指令可以在同一个标签内换行书写
-`;
-
-                const fullContent = definition + usageGuide;
-
-                navigator.clipboard.writeText(fullContent).then(() => {
-                    customAlert('✅ 表格定义和操作指南已复制到剪贴板！\n\n请前往"提示词管理"粘贴并更新。', '复制成功');
-                }).catch(err => {
-                    console.error('复制失败:', err);
-                    alert('复制失败，请手动复制：\n\n' + fullContent);
+                navigator.clipboard.writeText(definition).then(() => {
+                    customAlert('✅ 已复制到剪贴板', '成功');
                 });
             });
-        }, 50);
+        }, 100);
     }
 
     // ========================================================================
