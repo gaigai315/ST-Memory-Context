@@ -553,6 +553,57 @@
                 let csrfToken = '';
                 try { csrfToken = await getCsrfToken(); } catch (e) {}
 
+                // --- 3.5. 预先解绑 (防止世界书UI出现重复的"幽灵条目") ---
+                console.log('🧹 [世界书同步] 预先解绑旧记忆书...');
+                try {
+                    const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
+                        ? SillyTavern.getContext()
+                        : null;
+
+                    if (ctx) {
+                        const charId = ctx.characterId;
+                        if (charId !== undefined && charId !== null) {
+                            const character = ctx.characters?.[charId];
+                            if (character?.data) {
+                                if (!character.data.extensions) character.data.extensions = {};
+                                if (!Array.isArray(character.data.extensions.world_info)) {
+                                    character.data.extensions.world_info = [];
+                                }
+
+                                const currentList = character.data.extensions.world_info;
+                                // 过滤掉所有属于当前会话的记忆书（名字以 Memory_Context_ 开头且包含当前 safeName）
+                                const cleanList = currentList.filter(book => {
+                                    if (typeof book !== 'string') return true; // 保留非字符串类型
+                                    if (!book.startsWith('Memory_Context_')) return true; // 保留非记忆书
+                                    if (book.includes(safeName)) return false; // 过滤掉当前会话的记忆书
+                                    return true; // 保留其他记忆书
+                                });
+
+                                // 如果列表有变化，立即保存角色
+                                if (cleanList.length !== currentList.length) {
+                                    console.log(`🔓 [预先解绑] 移除 ${currentList.length - cleanList.length} 个旧记忆书引用`);
+                                    character.data.extensions.world_info = cleanList;
+                                    if (ctx.characters && ctx.characters[charId]) {
+                                        ctx.characters[charId].data.extensions.world_info = cleanList;
+                                    }
+                                    try {
+                                        if (typeof ctx.saveCharacter === 'function') {
+                                            await ctx.saveCharacter();
+                                        } else if (typeof window.saveCharacterDebounced === 'function') {
+                                            window.saveCharacterDebounced();
+                                        }
+                                        console.log('✅ [预先解绑] 角色保存成功');
+                                    } catch (saveErr) {
+                                        console.error('❌ [预先解绑] 角色保存失败:', saveErr);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('❌ [预先解绑] 执行失败:', err);
+                }
+
                 // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
                 console.log('🔍 [世界书同步] 扫描并清理旧文件...');
                 try {
@@ -745,46 +796,58 @@
             if (!Array.isArray(character.data.extensions.world_info)) character.data.extensions.world_info = [];
 
             let currentList = character.data.extensions.world_info;
-            const cleanList = []; 
+            const cleanList = [];
+            let hadTargetBook = false; // 记录：用户原本是否绑定了目标书
 
-            // 核心逻辑：只保留非记忆书 + 当前目标书
-            // 其他所有的 Memory_Context_ (无论是旧的、别的角色的) 统统丢弃
+            // 🔍 步骤1：清除所有与当前对话关联的记忆书，并记录用户是否原本绑定了目标书
             currentList.forEach(book => {
                 if (typeof book !== 'string' || !book.startsWith('Memory_Context_')) {
-                    cleanList.push(book); // 保留用户自己的书
+                    cleanList.push(book); // 保留用户自己的书（非记忆书）
                 } else if (book === targetBookName) {
-                    cleanList.push(book); // 保留当前正主
+                    hadTargetBook = true; // 用户原本绑定了目标书
+                    // 暂不添加，后面再决定是否添加
                 }
-                // else: 丢弃！(解决你说的“绑定了其他角色卡世界书”的问题)
+                // else: 丢弃所有其他记忆书（旧的、别的对话的）
             });
 
-            // 如果目标书存在(已生成)且没在列表里，加进去
-            // 这里用 allBookNames 校验，防止绑定不存在的书报错
-            if (targetBookName && !cleanList.includes(targetBookName)) {
-                if (allBookNames.includes(targetBookName) || forceBind) {
+            // 🎯 步骤2：只有在以下情况才添加目标书
+            // 条件1: forceBind = true（强制绑定，比如刚生成世界书时）
+            // 条件2: 用户原本就绑定了，且书还存在于服务器（防止绑定已删除的书）
+            if (targetBookName) {
+                if (forceBind || (hadTargetBook && allBookNames.includes(targetBookName))) {
                     cleanList.push(targetBookName);
-                    // console.log(`✅ [自动绑定] 挂载新书: ${targetBookName}`);
+                    // console.log(`✅ [自动绑定] 挂载书: ${targetBookName}`);
+                } else if (!hadTargetBook) {
+                    console.log(`⏭️ [自动绑定] 跳过绑定 (用户已手动移除): ${targetBookName}`);
                 }
             }
 
+            // 🧹 步骤3：使用 Set 去重，确保绝对没有重复
+            const uniqueCleanList = [...new Set(cleanList)];
+
+            // 如果去重后数量变了，说明有重复，记录日志
+            if (uniqueCleanList.length < cleanList.length) {
+                console.log(`🔧 [自动绑定] 发现并移除 ${cleanList.length - uniqueCleanList.length} 个重复条目`);
+            }
+
             // 保存数据
-            const newJson = JSON.stringify(cleanList.slice().sort());
+            const newJson = JSON.stringify(uniqueCleanList.slice().sort());
             const oldJson = JSON.stringify(currentList.slice().sort());
-            
+
             if (newJson !== oldJson) {
-                character.data.extensions.world_info = cleanList;
+                character.data.extensions.world_info = uniqueCleanList;
                 if (ctx.characters && ctx.characters[charId]) {
-                    ctx.characters[charId].data.extensions.world_info = cleanList;
+                    ctx.characters[charId].data.extensions.world_info = uniqueCleanList;
                 }
                 try {
-                    if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter(); 
+                    if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter();
                     else if (typeof window.saveCharacterDebounced === 'function') window.saveCharacterDebounced();
                 } catch (e) {}
             }
 
             // ==================== 🛡️ 步骤7：UI 终极同步 (修复显示问题) ====================
-            // 这里应用“计数法”，解决下拉框里的双胞胎问题
-            
+            // 这里应用"计数法"，解决下拉框里的双胞胎问题
+
             const $characterSelect = $('.character_extra_world_info_selector');
             if ($characterSelect.length > 0) {
                 let hasKeptTarget = false;
@@ -793,11 +856,11 @@
                 $characterSelect.find('option').each(function() {
                     const $opt = $(this);
                     const optText = $opt.text().trim();
-                    
+
                     // 只处理记忆书
                     if (optText.startsWith('Memory_Context_')) {
-                        // 如果是正主
-                        if (optText === targetBookName) {
+                        // 如果是正主且在 uniqueCleanList 里
+                        if (optText === targetBookName && uniqueCleanList.includes(targetBookName)) {
                             if (hasKeptTarget) {
                                 // 之前已经留过一个了，这是重复的 -> 删！
                                 $opt.remove();
@@ -805,25 +868,25 @@
                                 // 这是第一个，保留
                                 hasKeptTarget = true;
                             }
-                        } 
-                        // 如果不是正主 (旧的/别人的) -> 删！
-                        // 这一步能把你说的“别的角色的幽灵书”从界面上干掉
+                        }
+                        // 如果不是正主，或者正主不在 uniqueCleanList 里 -> 删！
+                        // 这一步能把你说的"别的角色的幽灵书"从界面上干掉
                         else {
                             $opt.remove();
                         }
                     }
                 });
 
-                // 如果正主被误删了或者本来就没有，加回去
-                if (targetBookName && !hasKeptTarget) {
+                // 只有当目标书在 uniqueCleanList 里且没被误删时，才加回去
+                if (targetBookName && uniqueCleanList.includes(targetBookName) && !hasKeptTarget) {
                     const newOption = new Option(targetBookName, targetBookName, true, true);
                     $characterSelect.append(newOption);
                 }
 
-                // 强制刷新选中状态
-                // 这一步确保 UI 上的钩子和 cleanList 数据一致
-                $characterSelect.val(cleanList).trigger('change');
-                
+                // 强制刷新选中状态 - 使用去重后的列表
+                // 这一步确保 UI 上的钩子和 uniqueCleanList 数据一致
+                $characterSelect.val(uniqueCleanList).trigger('change');
+
                 // 延时再触发一次 Select2 内部更新，确保视觉同步
                 setTimeout(() => {
                     $characterSelect.trigger('change.select2');
