@@ -20,6 +20,9 @@
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
 
+    // ===== 防止配置恢复期间触发保存的标志 (修复移动端竞态条件) =====
+    let isRestoringSettings = false;
+
     // ==================== 全局常量定义 ====================
     const V = 'v1.4.4';
     const SK = 'gg_data';              // 数据存储键
@@ -553,57 +556,6 @@
                 let csrfToken = '';
                 try { csrfToken = await getCsrfToken(); } catch (e) {}
 
-                // --- 3.5. 预先解绑 (防止世界书UI出现重复的"幽灵条目") ---
-                console.log('🧹 [世界书同步] 预先解绑旧记忆书...');
-                try {
-                    const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
-                        ? SillyTavern.getContext()
-                        : null;
-
-                    if (ctx) {
-                        const charId = ctx.characterId;
-                        if (charId !== undefined && charId !== null) {
-                            const character = ctx.characters?.[charId];
-                            if (character?.data) {
-                                if (!character.data.extensions) character.data.extensions = {};
-                                if (!Array.isArray(character.data.extensions.world_info)) {
-                                    character.data.extensions.world_info = [];
-                                }
-
-                                const currentList = character.data.extensions.world_info;
-                                // 过滤掉所有属于当前会话的记忆书（名字以 Memory_Context_ 开头且包含当前 safeName）
-                                const cleanList = currentList.filter(book => {
-                                    if (typeof book !== 'string') return true; // 保留非字符串类型
-                                    if (!book.startsWith('Memory_Context_')) return true; // 保留非记忆书
-                                    if (book.includes(safeName)) return false; // 过滤掉当前会话的记忆书
-                                    return true; // 保留其他记忆书
-                                });
-
-                                // 如果列表有变化，立即保存角色
-                                if (cleanList.length !== currentList.length) {
-                                    console.log(`🔓 [预先解绑] 移除 ${currentList.length - cleanList.length} 个旧记忆书引用`);
-                                    character.data.extensions.world_info = cleanList;
-                                    if (ctx.characters && ctx.characters[charId]) {
-                                        ctx.characters[charId].data.extensions.world_info = cleanList;
-                                    }
-                                    try {
-                                        if (typeof ctx.saveCharacter === 'function') {
-                                            await ctx.saveCharacter();
-                                        } else if (typeof window.saveCharacterDebounced === 'function') {
-                                            window.saveCharacterDebounced();
-                                        }
-                                        console.log('✅ [预先解绑] 角色保存成功');
-                                    } catch (saveErr) {
-                                        console.error('❌ [预先解绑] 角色保存失败:', saveErr);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.error('❌ [预先解绑] 执行失败:', err);
-                }
-
                 // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
                 console.log('🔍 [世界书同步] 扫描并清理旧文件...');
                 try {
@@ -697,9 +649,13 @@
                 console.log('⏳ [世界书同步] 等待 SillyTavern 处理导入 (2s)...');
                 await new Promise(r => setTimeout(r, 2000));
 
-                // ✨ 自动绑定到角色卡 (传入基础书名进行智能匹配)
-                console.log('🔗 [世界书同步] 准备自动绑定到角色卡...');
-                await autoBindWorldInfo(worldBookName);
+                // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
+                if (C.autoBindWI) {
+                    console.log('🔗 [世界书同步] 准备自动绑定到角色卡...');
+                    await autoBindWorldInfo(worldBookName);
+                } else {
+                    console.log('⏭️ [世界书同步] 自动绑定已禁用，跳过绑定');
+                }
 
             } catch (error) {
                 console.error('❌ [世界书同步] 异常:', error);
@@ -796,58 +752,46 @@
             if (!Array.isArray(character.data.extensions.world_info)) character.data.extensions.world_info = [];
 
             let currentList = character.data.extensions.world_info;
-            const cleanList = [];
-            let hadTargetBook = false; // 记录：用户原本是否绑定了目标书
+            const cleanList = []; 
 
-            // 🔍 步骤1：清除所有与当前对话关联的记忆书，并记录用户是否原本绑定了目标书
+            // 核心逻辑：只保留非记忆书 + 当前目标书
+            // 其他所有的 Memory_Context_ (无论是旧的、别的角色的) 统统丢弃
             currentList.forEach(book => {
                 if (typeof book !== 'string' || !book.startsWith('Memory_Context_')) {
-                    cleanList.push(book); // 保留用户自己的书（非记忆书）
+                    cleanList.push(book); // 保留用户自己的书
                 } else if (book === targetBookName) {
-                    hadTargetBook = true; // 用户原本绑定了目标书
-                    // 暂不添加，后面再决定是否添加
+                    cleanList.push(book); // 保留当前正主
                 }
-                // else: 丢弃所有其他记忆书（旧的、别的对话的）
+                // else: 丢弃！(解决你说的“绑定了其他角色卡世界书”的问题)
             });
 
-            // 🎯 步骤2：只有在以下情况才添加目标书
-            // 条件1: forceBind = true（强制绑定，比如刚生成世界书时）
-            // 条件2: 用户原本就绑定了，且书还存在于服务器（防止绑定已删除的书）
-            if (targetBookName) {
-                if (forceBind || (hadTargetBook && allBookNames.includes(targetBookName))) {
+            // 如果目标书存在(已生成)且没在列表里，加进去
+            // 这里用 allBookNames 校验，防止绑定不存在的书报错
+            if (targetBookName && !cleanList.includes(targetBookName)) {
+                if (allBookNames.includes(targetBookName) || forceBind) {
                     cleanList.push(targetBookName);
-                    // console.log(`✅ [自动绑定] 挂载书: ${targetBookName}`);
-                } else if (!hadTargetBook) {
-                    console.log(`⏭️ [自动绑定] 跳过绑定 (用户已手动移除): ${targetBookName}`);
+                    // console.log(`✅ [自动绑定] 挂载新书: ${targetBookName}`);
                 }
-            }
-
-            // 🧹 步骤3：使用 Set 去重，确保绝对没有重复
-            const uniqueCleanList = [...new Set(cleanList)];
-
-            // 如果去重后数量变了，说明有重复，记录日志
-            if (uniqueCleanList.length < cleanList.length) {
-                console.log(`🔧 [自动绑定] 发现并移除 ${cleanList.length - uniqueCleanList.length} 个重复条目`);
             }
 
             // 保存数据
-            const newJson = JSON.stringify(uniqueCleanList.slice().sort());
+            const newJson = JSON.stringify(cleanList.slice().sort());
             const oldJson = JSON.stringify(currentList.slice().sort());
-
+            
             if (newJson !== oldJson) {
-                character.data.extensions.world_info = uniqueCleanList;
+                character.data.extensions.world_info = cleanList;
                 if (ctx.characters && ctx.characters[charId]) {
-                    ctx.characters[charId].data.extensions.world_info = uniqueCleanList;
+                    ctx.characters[charId].data.extensions.world_info = cleanList;
                 }
                 try {
-                    if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter();
+                    if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter(); 
                     else if (typeof window.saveCharacterDebounced === 'function') window.saveCharacterDebounced();
                 } catch (e) {}
             }
 
             // ==================== 🛡️ 步骤7：UI 终极同步 (修复显示问题) ====================
-            // 这里应用"计数法"，解决下拉框里的双胞胎问题
-
+            // 这里应用“计数法”，解决下拉框里的双胞胎问题
+            
             const $characterSelect = $('.character_extra_world_info_selector');
             if ($characterSelect.length > 0) {
                 let hasKeptTarget = false;
@@ -856,11 +800,11 @@
                 $characterSelect.find('option').each(function() {
                     const $opt = $(this);
                     const optText = $opt.text().trim();
-
+                    
                     // 只处理记忆书
                     if (optText.startsWith('Memory_Context_')) {
-                        // 如果是正主且在 uniqueCleanList 里
-                        if (optText === targetBookName && uniqueCleanList.includes(targetBookName)) {
+                        // 如果是正主
+                        if (optText === targetBookName) {
                             if (hasKeptTarget) {
                                 // 之前已经留过一个了，这是重复的 -> 删！
                                 $opt.remove();
@@ -868,25 +812,25 @@
                                 // 这是第一个，保留
                                 hasKeptTarget = true;
                             }
-                        }
-                        // 如果不是正主，或者正主不在 uniqueCleanList 里 -> 删！
-                        // 这一步能把你说的"别的角色的幽灵书"从界面上干掉
+                        } 
+                        // 如果不是正主 (旧的/别人的) -> 删！
+                        // 这一步能把你说的“别的角色的幽灵书”从界面上干掉
                         else {
                             $opt.remove();
                         }
                     }
                 });
 
-                // 只有当目标书在 uniqueCleanList 里且没被误删时，才加回去
-                if (targetBookName && uniqueCleanList.includes(targetBookName) && !hasKeptTarget) {
+                // 如果正主被误删了或者本来就没有，加回去
+                if (targetBookName && !hasKeptTarget) {
                     const newOption = new Option(targetBookName, targetBookName, true, true);
                     $characterSelect.append(newOption);
                 }
 
-                // 强制刷新选中状态 - 使用去重后的列表
-                // 这一步确保 UI 上的钩子和 uniqueCleanList 数据一致
-                $characterSelect.val(uniqueCleanList).trigger('change');
-
+                // 强制刷新选中状态
+                // 这一步确保 UI 上的钩子和 cleanList 数据一致
+                $characterSelect.val(cleanList).trigger('change');
+                
                 // 延时再触发一次 Select2 内部更新，确保视觉同步
                 setTimeout(() => {
                     $characterSelect.trigger('change.select2');
@@ -7583,6 +7527,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     async function shcf() {
+        //  🛡️ 设置恢复标志，防止在配置面板打开过程中触发保存
+        isRestoringSettings = true;
+        console.log('🔒 [配置面板] 已设置 isRestoringSettings = true，阻止自动保存');
+
         // ⚡ [优化] 移除 loadConfig，使用 ochat 中预加载的数据，实现秒开
         const ctx = m.ctx();
         const totalCount = ctx && ctx.chat ? ctx.chat.length : 0;
@@ -8210,6 +8158,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 互斥开关控制
             // ✅✅✅ [关键修复] 从UI同步所有配置到C对象（防止切换开关时丢失未保存的修改）
             function syncUIToConfig() {
+                // 🛡️ 防止配置恢复期间触发保存（修复移动端竞态条件）
+                if (isRestoringSettings) {
+                    console.log('⏸️ [syncUIToConfig] 配置恢复中，跳过保存');
+                    return;
+                }
+
                 C.enabled = $('#gg_c_enabled').is(':checked');
                 C.autoBackfill = $('#gg_c_auto_bf').is(':checked');
                 C.autoBackfillFloor = parseInt($('#gg_c_auto_bf_floor').val()) || 10;
@@ -8245,6 +8199,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             $('#gg_c_enabled').on('change', async function () {
+                // 🛡️ 防止配置恢复期间触发保存（修复移动端竞态条件）
+                if (isRestoringSettings) {
+                    console.log('⏸️ [gg_c_enabled] 配置恢复中，跳过保存');
+                    return;
+                }
+
                 // ✅ [防丢失] 先同步所有UI配置
                 syncUIToConfig();
 
@@ -8273,6 +8233,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             $('#gg_c_auto_bf').on('change', async function () {
+                // 🛡️ 防止配置恢复期间触发保存（修复移动端竞态条件）
+                if (isRestoringSettings) {
+                    console.log('⏸️ [gg_c_auto_bf] 配置恢复中，跳过保存');
+                    return;
+                }
+
                 // ✅ [防丢失] 先同步所有UI配置
                 syncUIToConfig();
 
@@ -8360,6 +8326,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ✨✨✨ 强制覆盖世界书 (V8 终极版：模拟前端导入) ✨✨✨
             $('#gg_btn_force_sync_wi').off('click').on('click', async function() {
+                // 0. 检查世界书同步是否开启
+                if (!C.syncWorldInfo) {
+                    await customAlert('⚠️ 世界书同步已关闭\n\n请先在配置中开启【同步到世界书】选项。', '功能未启用');
+                    return;
+                }
+
                 const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
 
                 // 1. 安全拦截
@@ -8444,15 +8416,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         toastr.success(`已重置并加载 ${summarySheet.r.length} 条记录`, '覆盖成功');
                     }
 
-                    console.log('⏳ [强制覆盖] 等待文件系统响应 (1.5s)...');
-                    setTimeout(async () => {
-                        console.log('🔗 [强制覆盖] 正在执行自动绑定...');
-                        await autoBindWorldInfo(worldBookName, true);
-                        
-                        if (typeof toastr !== 'undefined') {
-                            toastr.success('已重新绑定当前世界书', '绑定更新');
-                        }
-                    }, 1500); 
+                    // 7. 自动绑定（只有开启了自动绑定才执行）
+                    if (C.autoBindWI) {
+                        console.log('⏳ [强制覆盖] 等待文件系统响应 (1.5s)...');
+                        setTimeout(async () => {
+                            console.log('🔗 [强制覆盖] 正在执行自动绑定...');
+                            await autoBindWorldInfo(worldBookName, true);
+
+                            if (typeof toastr !== 'undefined') {
+                                toastr.success('已重新绑定当前世界书', '绑定更新');
+                            }
+                        }, 1500);
+                    } else {
+                        console.log('⏭️ [强制覆盖] 自动绑定已禁用，跳过绑定');
+                    }
 
                 } catch (e) {
                     console.error(e);
@@ -8461,6 +8438,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     btn.html(oldText).prop('disabled', false);
                 }
             });
+
+            // 🔓 释放恢复标志，允许保存操作
+            isRestoringSettings = false;
+            console.log('🔓 [配置面板] 已设置 isRestoringSettings = false，允许保存');
         }, 100);
     }
 
@@ -8931,7 +8912,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // ✨ 自动绑定记忆书到角色卡
         setTimeout(async () => {
-            console.log('🔗 [ochat] 准备自动绑定记忆书到角色卡...');
+            // 🛡️ 重新从 localStorage 加载配置，确保使用最新的用户偏好
+            // 防止"僵尸绑定"效应（配置还未加载时使用默认值）
+            try {
+                const saved = JSON.parse(localStorage.getItem('gg_config'));
+                if (saved && saved.autoBindWI === false) {
+                    console.log('🛑 [ochat] 自动绑定已跳过 (用户已禁用)');
+                    return;
+                }
+            } catch(e) {
+                console.warn('⚠️ [ochat] 无法读取配置，使用内存配置');
+            }
+
+            // 双重检查：内存配置也要验证
+            if (!C.autoBindWI) {
+                console.log('🛑 [ochat] 自动绑定已跳过 (内存配置已禁用)');
+                return;
+            }
+
+            console.log('🔗 [ochat] 执行自动绑定...');
             await autoBindWorldInfo();
         }, 700);
 
@@ -9263,7 +9262,38 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const $extBtn = $('#extensions-settings-button');
 
         // --- 加载设置 (异步加载配置以支持服务端同步) ---
-        try { const sv = localStorage.getItem(UK); if (sv) UI = { ...UI, ...JSON.parse(sv) }; } catch (e) { }
+        // 1. 先从 localStorage 加载配置，确保用户保存的设置被应用
+        try {
+            const savedConfig = localStorage.getItem(CK);
+            if (savedConfig) {
+                Object.assign(C, JSON.parse(savedConfig));
+                console.log('✅ [初始化] 已从 localStorage 加载用户配置');
+            }
+        } catch (e) {
+            console.warn('⚠️ [初始化] 加载本地配置失败:', e);
+        }
+
+        try {
+            const savedApiConfig = localStorage.getItem(AK);
+            if (savedApiConfig) {
+                Object.assign(API_CONFIG, JSON.parse(savedApiConfig));
+                console.log('✅ [初始化] 已从 localStorage 加载 API 配置');
+            }
+        } catch (e) {
+            console.warn('⚠️ [初始化] 加载本地 API 配置失败:', e);
+        }
+
+        try {
+            const sv = localStorage.getItem(UK);
+            if (sv) {
+                UI = { ...UI, ...JSON.parse(sv) };
+                console.log('✅ [初始化] 已从 localStorage 加载 UI 配置');
+            }
+        } catch (e) {
+            console.warn('⚠️ [初始化] 加载本地 UI 配置失败:', e);
+        }
+
+        // 2. 然后从服务器同步配置（如果服务器有更新的配置会覆盖）
         await loadConfig(); // 🌐 异步加载配置，支持服务端同步
 
         // ⚠️ PROMPTS 的加载和管理已移至 prompt_manager.js
