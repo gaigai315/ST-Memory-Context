@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.4
+// 记忆表格 v1.4.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.4 启动');
+    console.log('🚀 记忆表格 v1.4.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.4';
+    const V = 'v1.4.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2786,6 +2786,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const nextIndex = s.r.length;
                 strPrompt += `表${i} ${displayName}: 下一行请用索引 ${nextIndex}\n`;
             });
+
+             // ✨✨✨ 新增的规则 ✨✨✨
+            strPrompt += '[索引结束]\n\n🛑 严禁在回复中输出表格样式或[当前索引状态]！\n✅ 你只需在正文结束后，使用 <Memory> 标签包裹指令即可。';
         }
 
         // ============================================================
@@ -5473,11 +5476,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ✅✅ 新增：清空表格（保留总结）
         $('#g-clear-tables').off('click').on('click', async function () {
             const hasSummary = m.sm.has();
+            const tableCount = m.all().length - 1; // 动态计算数据表数量（排除总结表）
             let confirmMsg = '确定清空所有详细表格吗？\n\n';
 
             if (hasSummary) {
                 confirmMsg += '✅ 记忆总结将会保留\n';
-                confirmMsg += '🗑️ 前8个表格的详细数据将被清空\n\n';
+                confirmMsg += `🗑️ ${tableCount}个数据表格的详细数据将被清空\n\n`;
                 confirmMsg += '建议先导出备份。';
             } else {
                 confirmMsg += '⚠️ 当前没有总结，此操作将清空所有表格！\n\n建议先导出备份。';
@@ -5489,11 +5493,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             m.all().slice(0, -1).forEach(s => s.clear());
             clearSummarizedMarks();
             lastManualEditTime = Date.now(); // ✨ 新增
+
+            // ✅ 重置追溯进度（数据表已空，需要重新从头追溯）
+            API_CONFIG.lastBackfillIndex = 0;
+            // ⚠️ 不重置 lastSummaryIndex（总结表还在，进度保持不变）
+
+            // ✅ 保存配置到本地和云端
+            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            await saveAllSettingsToCloud();
+
             m.save(true); // 传入 true 跳过熔断保护，因为这是用户主动的清空操作
 
             await customAlert(hasSummary ?
-                '✅ 表格已清空，总结已保留\n\n下次聊天时AI会看到总结，从第0行开始记录新数据。' :
-                '✅ 所有表格已清空',
+                '✅ 表格已清空，总结已保留\n\n追溯进度已重置，总结进度保持不变。\n下次聊天时AI会看到总结，从第0行开始记录新数据。' :
+                '✅ 所有表格已清空\n\n追溯进度已重置。',
                 '完成'
             );
 
@@ -6158,6 +6171,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const data = await proxyResponse.json();
                     const result = parseApiResponse(data);
                     if (result.success) {
+                        // ✨✨✨ Fallback 保护：如果清洗后内容为空，检查原始数据
+                        if (result.summary && result.summary.trim()) {
+                            const rawSummary = result.summary;
+                            let cleaned = result.summary.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+                            // 针对截断情况的额外清洗（如果思考没闭合）
+                            cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+
+                            // 如果清洗后为空，但原始内容不为空，则保留原始内容
+                            if (!cleaned && rawSummary.trim().length > 0) {
+                                console.warn('⚠️ [后端代理清洗] 清洗后内容为空（AI仅输出了思考内容），触发回退保护，保留原文');
+                                result.summary = rawSummary;
+                            } else {
+                                result.summary = cleaned;
+                                if (rawSummary.length !== cleaned.length) {
+                                    console.log(`🧹 [后端代理清洗] 已移除 <think> 标签，清洗前: ${rawSummary.length} 字符，清洗后: ${cleaned.length} 字符`);
+                                }
+                            }
+                        }
                         console.log('✅ [后端代理] 成功');
                         return result;
                     }
@@ -9700,13 +9732,8 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>✨ 兼容 JSON 填表：</strong>修复变量卡等插件返回 JSON 格式时的解析失败问题</li>
-                        <li><strong>🔧 兼容其他插件：</strong>所有 DOM ID 添加 gg_ 前缀，避免与其他插件命名冲突</li>
-                        <li><strong>🎯 新增表格结构功能：</strong>支持无限添加自定义表单，满足复杂场景需求</li>
-                        <li><strong>📍 优化提示词位置：</strong>修改硬编码位置，避免 AI 在正文中输出表单指令</li>
-                        <li><strong>☁️ 优化多端同步：</strong>改进云端配置读取逻辑，解决手机/电脑数据不一致问题</li>
-                        <li><strong>🏷️ 黑白标签组合：</strong>标签过滤现在支持黑名单+白名单串行组合，先去除再提取</li>
-                        <li><strong>🌐 世界书自动换绑：</strong>新增世界书自动换绑功能</li>
+                        <li><strong>✨ 折叠楼层：</strong>折叠楼层功能暂时关闭</li>
+                        <li><strong>🔧 流式空回：</strong>优化空回问题，避免过度清洗</li>
                     </ul>
                 </div>
 
