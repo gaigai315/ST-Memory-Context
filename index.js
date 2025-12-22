@@ -1640,7 +1640,27 @@
                 config: {
                     enabled: C.enabled,
                     autoBackfill: C.autoBackfill,
-                    autoSummary: C.autoSummary
+                    autoSummary: C.autoSummary,
+                    // ✅ 核心参数
+                    autoBackfillFloor: C.autoBackfillFloor,
+                    autoSummaryFloor: C.autoSummaryFloor,
+                    summarySource: API_CONFIG.summarySource,
+                    // ✅ 自动化细节 (延迟/静默/弹窗) - 之前漏掉的都在这里
+                    autoBackfillDelay: C.autoBackfillDelay,
+                    autoBackfillDelayCount: C.autoBackfillDelayCount,
+                    autoBackfillPrompt: C.autoBackfillPrompt,
+                    autoBackfillSilent: C.autoBackfillSilent,
+                    autoSummaryDelay: C.autoSummaryDelay,
+                    autoSummaryDelayCount: C.autoSummaryDelayCount,
+                    autoSummaryPrompt: C.autoSummaryPrompt,
+                    autoSummarySilent: C.autoSummarySilent,
+                    // ✅ 其他功能
+                    contextLimit: C.contextLimit,
+                    contextLimitCount: C.contextLimitCount,
+                    filterTags: C.filterTags,
+                    filterTagsWhite: C.filterTagsWhite,
+                    syncWorldInfo: C.syncWorldInfo,
+                    autoBindWI: C.autoBindWI
                 }
             };
 
@@ -1675,20 +1695,45 @@
             const id = this.gid();
             if (!id) return;
 
-            // ✅ Per-Chat Configuration: STEP 1 - Reset to Global Defaults
-            // Always reload global config from localStorage to avoid carrying over settings from previous chat
+            // ✅ Per-Chat Configuration: STEP 1 - 彻底重置为全局默认 (防止上一个会话的数据残留)
             try {
                 const globalConfigStr = localStorage.getItem(CK);
-                if (globalConfigStr) {
-                    const globalConfig = JSON.parse(globalConfigStr);
-                    // Reset critical toggles to global defaults
-                    if (globalConfig.enabled !== undefined) C.enabled = globalConfig.enabled;
-                    if (globalConfig.autoBackfill !== undefined) C.autoBackfill = globalConfig.autoBackfill;
-                    if (globalConfig.autoSummary !== undefined) C.autoSummary = globalConfig.autoSummary;
-                    console.log('🔄 [配置重置] 已加载全局默认配置');
-                }
+                const globalConfig = globalConfigStr ? JSON.parse(globalConfigStr) : {};
+
+                // --- 1. 开关类 (优先用全局，无全局用默认) ---
+                C.enabled = globalConfig.enabled !== undefined ? globalConfig.enabled : true;
+                C.autoBackfill = globalConfig.autoBackfill !== undefined ? globalConfig.autoBackfill : false;
+                C.autoSummary = globalConfig.autoSummary !== undefined ? globalConfig.autoSummary : true;
+
+                // --- 2. 数值/参数类 (必须重置，否则会串味) ---
+                C.autoBackfillFloor = globalConfig.autoBackfillFloor !== undefined ? globalConfig.autoBackfillFloor : 20;
+                C.autoSummaryFloor = globalConfig.autoSummaryFloor !== undefined ? globalConfig.autoSummaryFloor : 50;
+                C.autoBackfillDelay = globalConfig.autoBackfillDelay !== undefined ? globalConfig.autoBackfillDelay : true;
+                C.autoBackfillDelayCount = globalConfig.autoBackfillDelayCount !== undefined ? globalConfig.autoBackfillDelayCount : 6;
+                C.autoSummaryDelay = globalConfig.autoSummaryDelay !== undefined ? globalConfig.autoSummaryDelay : true;
+                C.autoSummaryDelayCount = globalConfig.autoSummaryDelayCount !== undefined ? globalConfig.autoSummaryDelayCount : 4;
+
+                // --- 3. 静默/弹窗设置 ---
+                C.autoBackfillPrompt = globalConfig.autoBackfillPrompt !== undefined ? globalConfig.autoBackfillPrompt : true;
+                C.autoBackfillSilent = globalConfig.autoBackfillSilent !== undefined ? globalConfig.autoBackfillSilent : true;
+                C.autoSummaryPrompt = globalConfig.autoSummaryPrompt !== undefined ? globalConfig.autoSummaryPrompt : true;
+                C.autoSummarySilent = globalConfig.autoSummarySilent !== undefined ? globalConfig.autoSummarySilent : true;
+
+                // --- 4. 其他功能设置 ---
+                C.contextLimit = globalConfig.contextLimit !== undefined ? globalConfig.contextLimit : true;
+                C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
+                C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
+                C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
+                C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : true;
+                C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
+
+                // --- 5. API 相关 (总结源) ---
+                if (globalConfig.summarySource !== undefined) API_CONFIG.summarySource = globalConfig.summarySource;
+                else API_CONFIG.summarySource = 'table'; // 默认值
+
+                console.log('🧹 [配置清洗] 内存状态已重置为全局/默认值，准备加载会话专属配置...');
             } catch (e) {
-                console.warn('⚠️ [配置加载] 读取全局配置失败:', e);
+                console.warn('⚠️ [配置重置] 失败，可能导致配置串味:', e);
             }
 
             if (this.id !== id) {
@@ -1774,14 +1819,45 @@
                 // 如果存档中没有 meta 信息，保持当前内存中的配置不变
                 // 这样可以兼容旧版存档，同时不会丢失用户的进度
 
-                // ✅ Per-Chat Configuration: STEP 2 - Override with chat-specific config
+                // ✅ Per-Chat Configuration: STEP 2 - 强制应用存档中的独立配置
+                // ✨✨✨ 会话完全隔离：只要存档中有配置，就无条件应用，不做时间戳对比
+                // 这样可以确保会话 A 的修改永远不会影响会话 B
                 if (finalData.config) {
                     if (finalData.config.enabled !== undefined) C.enabled = finalData.config.enabled;
                     if (finalData.config.autoBackfill !== undefined) C.autoBackfill = finalData.config.autoBackfill;
                     if (finalData.config.autoSummary !== undefined) C.autoSummary = finalData.config.autoSummary;
-                    console.log('✅ [每聊配置] 已加载此聊天的专属配置:', finalData.config);
+                    if (finalData.config.autoBackfillFloor !== undefined) C.autoBackfillFloor = finalData.config.autoBackfillFloor;
+                    if (finalData.config.autoSummaryFloor !== undefined) C.autoSummaryFloor = finalData.config.autoSummaryFloor;
+                    // ✨ 特殊处理：将存档中的 summarySource 恢复回 API_CONFIG
+                    if (finalData.config.summarySource !== undefined) API_CONFIG.summarySource = finalData.config.summarySource;
+
+                    // ✨ 恢复隐藏楼层设置
+                    if (finalData.config.contextLimit !== undefined) C.contextLimit = finalData.config.contextLimit;
+                    if (finalData.config.contextLimitCount !== undefined) C.contextLimitCount = finalData.config.contextLimitCount;
+
+                    // ✨ 恢复标签过滤设置
+                    if (finalData.config.filterTags !== undefined) C.filterTags = finalData.config.filterTags;
+                    if (finalData.config.filterTagsWhite !== undefined) C.filterTagsWhite = finalData.config.filterTagsWhite;
+
+                    // ✨ 恢复世界书设置
+                    if (finalData.config.syncWorldInfo !== undefined) C.syncWorldInfo = finalData.config.syncWorldInfo;
+                    if (finalData.config.autoBindWI !== undefined) C.autoBindWI = finalData.config.autoBindWI;
+
+                    // ✨ 恢复批量填表细节
+                    if (finalData.config.autoBackfillDelay !== undefined) C.autoBackfillDelay = finalData.config.autoBackfillDelay;
+                    if (finalData.config.autoBackfillDelayCount !== undefined) C.autoBackfillDelayCount = finalData.config.autoBackfillDelayCount;
+                    if (finalData.config.autoBackfillPrompt !== undefined) C.autoBackfillPrompt = finalData.config.autoBackfillPrompt;
+                    if (finalData.config.autoBackfillSilent !== undefined) C.autoBackfillSilent = finalData.config.autoBackfillSilent;
+
+                    // ✨ 恢复自动总结细节
+                    if (finalData.config.autoSummaryDelay !== undefined) C.autoSummaryDelay = finalData.config.autoSummaryDelay;
+                    if (finalData.config.autoSummaryDelayCount !== undefined) C.autoSummaryDelayCount = finalData.config.autoSummaryDelayCount;
+                    if (finalData.config.autoSummaryPrompt !== undefined) C.autoSummaryPrompt = finalData.config.autoSummaryPrompt;
+                    if (finalData.config.autoSummarySilent !== undefined) C.autoSummarySilent = finalData.config.autoSummarySilent;
+
+                    console.log('✅ [每聊配置] 已恢复当前会话的独立设置 (忽略时间戳):', finalData.config);
                 } else {
-                    console.log('ℹ️ [每聊配置] 此聊天无专属配置，使用全局默认值');
+                    console.log('ℹ️ [每聊配置] 此会话无专属配置，使用全局默认值');
                 }
 
                 lastInternalSaveTime = finalData.ts;
@@ -7675,6 +7751,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('🔒 [进度隔离] 已移除角色专属进度，仅保存通用配置');
             console.log(`⏰ [时间戳] 保存时间: ${new Date(allSettings.lastModified).toLocaleString()}`);
 
+            // ✅✅✅ 乐观保存策略：立即更新本地状态，不等待网络请求
+            // 这样用户点击保存瞬间，本地数据即刻更新，防止网络延迟期间切换会话导致读取旧数据
+            if (!window.extension_settings) window.extension_settings = {};
+            window.extension_settings.st_memory_table = allSettings;
+            localStorage.setItem(CK, JSON.stringify(C));
+            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+            localStorage.setItem(UK, JSON.stringify(UI));
+            // ❌ 已删除：localStorage.setItem(PK, JSON.stringify(PROMPTS));
+            // ✅ 预设数据现在由 PromptManager 管理，通过 profiles 保存
+
+            // ✅ 关键修复：更新 serverData.lastModified，防止后续 loadConfig 误判回滚
+            if (!window.serverData) window.serverData = {};
+            window.serverData.lastModified = allSettings.lastModified;
+            console.log(`✅ [乐观保存] 本地状态已立即更新，时间戳: ${new Date(allSettings.lastModified).toLocaleString()}`);
+
             // 2. Get CSRF
             let csrfToken = '';
             try { csrfToken = await getCsrfToken(); } catch (e) { }
@@ -7704,20 +7795,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             if (!saveResponse.ok) throw new Error('无法写入服务器配置');
-
-            // 6. BACKUP: Update local state
-            if (!window.extension_settings) window.extension_settings = {};
-            window.extension_settings.st_memory_table = allSettings;
-            localStorage.setItem(CK, JSON.stringify(C));
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG)); 
-            localStorage.setItem(UK, JSON.stringify(UI));
-            // ❌ 已删除：localStorage.setItem(PK, JSON.stringify(PROMPTS));
-            // ✅ 预设数据现在由 PromptManager 管理，通过 profiles 保存
-
-            // ✅ 关键修复：更新 serverData.lastModified，防止后续 loadConfig 误判回滚
-            if (!window.serverData) window.serverData = {};
-            window.serverData.lastModified = allSettings.lastModified;
-            console.log(`✅ [时间戳更新] serverData.lastModified 已更新: ${new Date(allSettings.lastModified).toLocaleString()}`);
 
             console.log('✅ [API] 配置已强制写入 settings.json (Size:', JSON.stringify(allSettings).length, ')');
             // ✅ UX Improvement: Silent background sync (no toastr popup)
@@ -8041,6 +8118,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ✨✨✨ 自动总结开关的 UI 联动 ✨✨✨
             $('#gg_c_auto_sum').on('change', function () {
+                syncUIToConfig();  // ✅✅✅ 确保同步到全局配置对象 C 和 localStorage
                 const isChecked = $(this).is(':checked');
 
                 if (isChecked) {
@@ -8488,6 +8566,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // ✅ 步骤 1：调用统一的同步函数（复用代码，避免重复）
                     syncUIToConfig();
                     console.log('✅ [配置保存] 步骤1：内存对象已更新（通过 syncUIToConfig）');
+
+                    // ✅ 步骤 1.5：【核心修复】立即将 C 写入当前角色的存档！
+                    m.save();
+                    console.log('✅ [配置保存] 已同步至当前角色存档');
 
                     // ✨ 检测世界书同步从开启到关闭的状态变化，提示用户手动禁用世界书条目
                     if (oldSyncWorldInfo === true && C.syncWorldInfo === false) {
@@ -9734,6 +9816,7 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>✨ 折叠楼层：</strong>折叠楼层功能暂时关闭</li>
                         <li><strong>🔧 流式空回：</strong>优化空回问题，避免过度清洗</li>
+                        <li><strong>✨ 会话隔离：</strong>确保会话设置独立配置数据</li>
                     </ul>
                 </div>
 
