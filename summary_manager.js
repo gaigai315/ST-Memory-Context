@@ -293,6 +293,19 @@
                     if (window.Gaigai.isBatchRunning) {
                         window.Gaigai.stopBatch = true;
                         console.log('🛑 [用户操作] 请求停止批量总结');
+
+                        // ✅ 立即恢复UI为正常状态
+                        const $btn = $(this);
+                        $btn.text('🚀 开始聊天总结')
+                            .css('background', '#2196f3')
+                            .css('opacity', '1')
+                            .prop('disabled', false);
+                        $('#gg_sum_chat-status').text('');
+
+                        if (typeof toastr !== 'undefined') {
+                            toastr.info('正在停止批量任务...', '停止中', { timeOut: 2000 });
+                        }
+
                         return;
                     }
 
@@ -1164,7 +1177,11 @@
 
                 // ⏳ [稳定性等待] 强制等待 6 秒（与追溯保持一致，适配 thinking 模型）
                 console.log(`⏳ [批次缓冲] 等待数据完全落盘 (6秒)...`);
-                await new Promise(r => setTimeout(r, 6000));
+                // 🛑 分秒检查停止标志，确保及时响应
+                for (let delay = 6; delay > 0; delay--) {
+                    if (window.Gaigai.stopBatch) break;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
             }
 
             // 等待最后一批数据的世界书同步防抖结束

@@ -483,8 +483,100 @@
     }
 
     // ========================================================================
-    // ✨ 世界书同步：V5.5 终极防截断版 (延迟读取策略)
-    // 改进点：防抖(5s) -> 强制等待(3s) -> 【这才开始读取数据】 -> 写入
+    // ✨ 智能世界书同步辅助函数 (V6.0 防幽灵条目版)
+    // ========================================================================
+    /**
+     * 智能同步世界书：自动判断是首次创建还是更新
+     * @param {string} worldBookName - 世界书名称
+     * @param {object} importEntries - 条目数据
+     * @param {string} csrfToken - CSRF令牌
+     * @returns {Promise<{mode: 'create'|'update', success: boolean}>}
+     */
+    async function smartSyncWorldInfo(worldBookName, importEntries, csrfToken) {
+        try {
+            // 步骤1：检查书是否已存在
+            let bookExists = false;
+
+            // 方法A：检查内存（最快）
+            if (typeof window.world_info !== 'undefined' && window.world_info[worldBookName]) {
+                bookExists = true;
+                console.log(`✅ [智能同步] 内存检测: 书已存在`);
+            }
+
+            // 方法B：API检查（更准确）
+            if (!bookExists) {
+                try {
+                    const getRes = await fetch('/api/worldinfo/get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        body: JSON.stringify({})
+                    });
+                    if (getRes.ok) {
+                        const allWorldBooks = await getRes.json();
+                        bookExists = Array.isArray(allWorldBooks) && allWorldBooks.includes(worldBookName);
+                        console.log(`✅ [智能同步] API检测: 书${bookExists ? '已存在' : '不存在'}`);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [智能同步] API检测失败，回退到创建模式');
+                }
+            }
+
+            // 步骤2：根据存在状态选择同步策略
+            if (bookExists) {
+                // ==================== 更新模式：内存热更新 + API保存 ====================
+                console.log('⚡ [智能同步] 使用【热更新模式】- 不触发UI重复加载');
+
+                // 2.1 更新内存数据
+                if (typeof window.world_info !== 'undefined' && window.world_info[worldBookName]) {
+                    window.world_info[worldBookName].entries = importEntries;
+                    console.log('✅ [智能同步] 内存数据已更新');
+                }
+
+                // 2.2 调用API保存到硬盘
+                const finalJson = { entries: importEntries, name: worldBookName };
+                const saveRes = await fetch('/api/worldinfo/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ name: worldBookName, data: finalJson })
+                });
+
+                if (saveRes.ok) {
+                    console.log('💾 [智能同步] 硬盘保存成功 (API模式)');
+                    return { mode: 'update', success: true };
+                } else {
+                    throw new Error(`API保存失败: ${saveRes.status}`);
+                }
+
+            } else {
+                // ==================== 创建模式：模拟文件上传 ====================
+                console.log('📤 [智能同步] 使用【上传模式】- 首次创建，触发UI刷新');
+
+                const finalJson = { entries: importEntries };
+                const $fileInput = $('#world_import_file');
+
+                if ($fileInput.length === 0) {
+                    throw new Error('未找到上传控件 #world_import_file');
+                }
+
+                const file = new File([JSON.stringify(finalJson)], `${worldBookName}.json`, { type: "application/json" });
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                $fileInput[0].files = dataTransfer.files;
+                $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
+
+                console.log('✅ [智能同步] 上传触发成功，等待ST处理...');
+                return { mode: 'create', success: true };
+            }
+
+        } catch (error) {
+            console.error('❌ [智能同步] 异常:', error);
+            return { mode: 'error', success: false, error: error.message };
+        }
+    }
+
+    // ========================================================================
+    // ✨ 世界书同步：V6.0 智能防幽灵版
+    // 改进点：防抖(5s) -> 强制等待(3s) -> 智能检测是否已存在 -> 选择同步策略
     // ========================================================================
     let syncDebounceTimer = null;
     let globalLastWorldInfoUid = -1;
@@ -628,26 +720,21 @@
                 console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
                 await new Promise(r => setTimeout(r, 1500));
 
-                // --- 5. 前端模拟上传 (触发UI刷新) ---
-                console.log('⚡ [世界书同步] 准备写入 JSON，大小:', JSON.stringify(finalJson).length);
-                const $fileInput = $('#world_import_file');
-                if ($fileInput.length > 0) {
-                    const file = new File([JSON.stringify(finalJson)], `${worldBookName}.json`, { type: "application/json" });
-                    const dataTransfer = new DataTransfer();
-                    dataTransfer.items.add(file);
-                    $fileInput[0].files = dataTransfer.files;
-
-                    console.log('⚡ [世界书同步] 触发前端刷新');
-                    $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                // --- 5. 智能同步 (自动判断创建/更新，防止幽灵条目) ---
+                console.log('⚡ [世界书同步] 准备智能同步，条目数:', Object.keys(importEntries).length);
+                const syncResult = await smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
 
                 // 更新缓存
                 globalWorldInfoEntriesCache = importEntries;
                 globalLastWorldInfoUid = maxUid;
 
-                // 🛑 步骤 C: 等待 ST 处理导入 (关键！让条目显示出来)
-                console.log('⏳ [世界书同步] 等待 SillyTavern 处理导入 (2s)...');
-                await new Promise(r => setTimeout(r, 2000));
+                // 🛑 步骤 C: 等待 ST 处理 (只有首次创建需要等待UI刷新)
+                if (syncResult.mode === 'create') {
+                    console.log('⏳ [世界书同步] 首次创建，等待 SillyTavern 处理导入 (2s)...');
+                    await new Promise(r => setTimeout(r, 2000));
+                } else if (syncResult.mode === 'update') {
+                    console.log('✅ [世界书同步] 热更新完成，无需等待UI刷新');
+                }
 
                 // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
                 if (C.autoBindWI) {
@@ -789,52 +876,73 @@
                 } catch (e) {}
             }
 
-            // ==================== 🛡️ 步骤7：UI 终极同步 (修复显示问题) ====================
-            // 这里应用“计数法”，解决下拉框里的双胞胎问题
-            
+            // ==================== 🛡️ 步骤7：UI 标准刷新 (V6.0 防幽灵绑定版) ====================
+            // 只更新选中状态，不暴力删除/添加 DOM 节点（除非是真正的重复项）
+
             const $characterSelect = $('.character_extra_world_info_selector');
             if ($characterSelect.length > 0) {
-                let hasKeptTarget = false;
+                // 获取当前下拉框中的所有选项值
+                const existingOptions = new Set();
+                const duplicates = [];
 
-                // 遍历所有选项
                 $characterSelect.find('option').each(function() {
                     const $opt = $(this);
-                    const optText = $opt.text().trim();
-                    
-                    // 只处理记忆书
-                    if (optText.startsWith('Memory_Context_')) {
-                        // 如果是正主
-                        if (optText === targetBookName) {
-                            if (hasKeptTarget) {
-                                // 之前已经留过一个了，这是重复的 -> 删！
-                                $opt.remove();
-                            } else {
-                                // 这是第一个，保留
-                                hasKeptTarget = true;
-                            }
-                        } 
-                        // 如果不是正主 (旧的/别人的) -> 删！
-                        // 这一步能把你说的“别的角色的幽灵书”从界面上干掉
-                        else {
-                            $opt.remove();
-                        }
+                    const optVal = $opt.val();
+
+                    // 检测真正的重复项（同一个值出现多次）
+                    if (existingOptions.has(optVal)) {
+                        duplicates.push($opt);
+                    } else {
+                        existingOptions.add(optVal);
                     }
                 });
 
-                // 如果正主被误删了或者本来就没有，加回去
-                if (targetBookName && !hasKeptTarget) {
+                // 只删除真正的重复项（幽灵条目）
+                duplicates.forEach($opt => {
+                    console.log(`🧹 [自动绑定] 移除重复选项: ${$opt.val()}`);
+                    $opt.remove();
+                });
+
+                // 如果目标书不在下拉框里（新创建的书），临时添加一个 Option
+                // 这样 Select2 才能正确选中它
+                if (targetBookName && !existingOptions.has(targetBookName)) {
+                    console.log(`➕ [自动绑定] 添加新选项: ${targetBookName}`);
                     const newOption = new Option(targetBookName, targetBookName, true, true);
                     $characterSelect.append(newOption);
                 }
 
-                // 强制刷新选中状态
-                // 这一步确保 UI 上的钩子和 cleanList 数据一致
+                // 🔑 关键修复：强制清空并重新设置选中状态
+                // 步骤1：先完全清空所有选中状态（包括 Select2 的内部缓存）
+                $characterSelect.val(null).trigger('change');
+                console.log('🧹 [自动绑定] 已清空所有选中状态');
+
+                // 步骤2：明确设置每个选项的 selected 属性
+                $characterSelect.find('option').each(function() {
+                    const $opt = $(this);
+                    const optVal = $opt.val();
+
+                    // 如果是记忆书
+                    if (optVal && optVal.startsWith('Memory_Context_')) {
+                        // 如果在 cleanList 里，标记为选中
+                        if (cleanList.includes(optVal)) {
+                            $opt.prop('selected', true);
+                        } else {
+                            // 不在 cleanList 里（其他会话的书），明确取消选中
+                            $opt.prop('selected', false);
+                            console.log(`🚫 [自动绑定] 取消选中其他会话的书: ${optVal}`);
+                        }
+                    }
+                });
+
+                // 步骤3：使用 Select2 标准方法重新设置选中值
                 $characterSelect.val(cleanList).trigger('change');
-                
-                // 延时再触发一次 Select2 内部更新，确保视觉同步
+
+                // 步骤4：延时再触发一次 Select2 内部更新，确保视觉同步
                 setTimeout(() => {
                     $characterSelect.trigger('change.select2');
-                }, 50);
+                }, 100);
+
+                console.log(`✅ [自动绑定] UI更新完成，当前绑定:`, cleanList);
             }
 
         } catch (error) {
@@ -8388,25 +8496,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         name: worldBookName
                     };
 
-                    // 5. 关键步骤：模拟文件上传 (V8 方案)
-                    const $fileInput = $('#world_import_file');
-                    if ($fileInput.length === 0) {
-                        throw new Error('未找到上传控件 #world_import_file，请确保位于酒馆主界面。');
+                    // 5. 获取CSRF令牌
+                    let csrfToken = '';
+                    try { csrfToken = await getCsrfToken(); } catch (e) {}
+
+                    // 6. 关键步骤：智能同步 (自动判断创建/更新，防止幽灵条目)
+                    console.log('⚡ [强制覆盖] 准备智能同步，条目数:', Object.keys(importEntries).length);
+                    const syncResult = await smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
+
+                    if (!syncResult.success) {
+                        throw new Error(syncResult.error || '同步失败');
                     }
 
-                    // 创建虚拟文件
-                    const file = new File([JSON.stringify(finalJson)], `${worldBookName}.json`, { type: "application/json" });
-
-                    // 利用 DataTransfer 注入
-                    const dataTransfer = new DataTransfer();
-                    dataTransfer.items.add(file);
-                    $fileInput[0].files = dataTransfer.files;
-
-                    // 触发导入
-                    console.log('⚡ [强制覆盖] 触发前端模拟导入...');
-                    $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
-
-                    // 6. 更新本地缓存 (防止后续自动任务冲突)
+                    // 7. 更新本地缓存 (防止后续自动任务冲突)
                     if (typeof globalWorldInfoEntriesCache !== 'undefined') {
                         globalWorldInfoEntriesCache = importEntries;
                         globalLastWorldInfoUid = maxUid;
@@ -8416,17 +8518,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         toastr.success(`已重置并加载 ${summarySheet.r.length} 条记录`, '覆盖成功');
                     }
 
-                    // 7. 自动绑定（只有开启了自动绑定才执行）
-                    if (C.autoBindWI) {
-                        console.log('⏳ [强制覆盖] 等待文件系统响应 (1.5s)...');
-                        setTimeout(async () => {
-                            console.log('🔗 [强制覆盖] 正在执行自动绑定...');
-                            await autoBindWorldInfo(worldBookName, true);
+                    // 8. 等待处理（首次创建需要等待UI刷新）
+                    if (syncResult.mode === 'create') {
+                        console.log('⏳ [强制覆盖] 首次创建，等待文件系统响应 (1.5s)...');
+                        await new Promise(r => setTimeout(r, 1500));
+                    }
 
-                            if (typeof toastr !== 'undefined') {
-                                toastr.success('已重新绑定当前世界书', '绑定更新');
-                            }
-                        }, 1500);
+                    // 9. 自动绑定（只有开启了自动绑定才执行）
+                    if (C.autoBindWI) {
+                        console.log('🔗 [强制覆盖] 正在执行自动绑定...');
+                        await autoBindWorldInfo(worldBookName, true);
+
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success('已重新绑定当前世界书', '绑定更新');
+                        }
                     } else {
                         console.log('⏭️ [强制覆盖] 自动绑定已禁用，跳过绑定');
                     }

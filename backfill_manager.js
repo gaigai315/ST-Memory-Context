@@ -583,7 +583,7 @@
                     }
 
                     successCount++;
-                    
+
                     // ✅ 仅聊天模式更新进度条 (修复你的担心)
                     if (batch.type === 'chat') {
                         actualProgress = batch.end;
@@ -592,6 +592,21 @@
                     }
 
                     if (typeof toastr !== 'undefined') toastr.success(`任务 ${batchNum}/${batches.length} 完成`, '进度');
+
+                    // ⏳ [新增] 批次间延迟，防止API限流
+                    const C = window.Gaigai.config_obj || {};
+                    if (C.autoBackfillDelay && i < batches.length - 1) {
+                        console.log('⏳ [Batch Backfill] Cooling down for 5s to avoid rate limit...');
+                        // 分秒检查停止标志，确保UI及时响应
+                        for (let delay = 5; delay > 0; delay--) {
+                            if (window.Gaigai.stopBatchBackfill) break;
+                            updateStatus(`⏳ 冷却中，避免触发限流 (${delay}秒)...`, '#ffc107');
+                            await new Promise(r => setTimeout(r, 1000));
+                        }
+                    }
+
+                    // 🛑 检查点：延迟后立即检查停止标志
+                    if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
                 } catch (error) {
                     // ✨✨✨ 修复：如果用户已经点了停止，直接退出，不要弹窗问废话
@@ -924,10 +939,36 @@
             try {
                 const callIndependentAPI = window.Gaigai.tools.callIndependentAPI;
                 const callTavernAPI = window.Gaigai.tools.callTavernAPI;
-                if (window.Gaigai.config.useIndependentAPI) {
-                    result = await callIndependentAPI(messages);
-                } else {
-                    result = await callTavernAPI(messages);
+
+                // 🔄 [新增] 重试逻辑：捕获"Stream response content is empty"错误并重试一次
+                let attemptCount = 0;
+                const maxAttempts = 2; // 最多尝试2次（初次 + 重试1次）
+
+                while (attemptCount < maxAttempts) {
+                    try {
+                        if (window.Gaigai.config.useIndependentAPI) {
+                            result = await callIndependentAPI(messages);
+                        } else {
+                            result = await callTavernAPI(messages);
+                        }
+                        break; // 成功则跳出循环
+                    } catch (apiError) {
+                        attemptCount++;
+                        const errorMsg = String(apiError.message || apiError || '');
+
+                        // 检查是否是空响应错误
+                        if (errorMsg.includes('Stream response content is empty') && attemptCount < maxAttempts) {
+                            console.warn(`⚠️ [API重试] 检测到空响应，等待2秒后重试 (尝试 ${attemptCount}/${maxAttempts})...`);
+                            if (typeof toastr !== 'undefined') {
+                                toastr.warning('检测到API空响应，2秒后自动重试...', '自动重试', { timeOut: 2000 });
+                            }
+                            await new Promise(r => setTimeout(r, 2000));
+                            continue; // 继续下一次尝试
+                        } else {
+                            // 不是空响应错误，或已达最大重试次数，抛出异常
+                            throw apiError;
+                        }
+                    }
                 }
             } catch (e) {
                 console.error('请求失败', e);
