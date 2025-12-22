@@ -5105,10 +5105,73 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         // 开始恢复（根据模式智能恢复）
                         if (importMode === 'full') {
-                            // 全量恢复：覆盖所有表格
-                            m.s.forEach((sheet, i) => {
-                                if (sheetsData[i]) sheet.from(sheetsData[i]);
-                            });
+                            // ✨✨✨ 全量恢复：支持动态表格结构适配 ✨✨✨
+
+                            // 🔍 检查备份文件是否包含表格结构信息（n 和 c 字段）
+                            const hasStructureInfo = sheetsData.every(sheet =>
+                                sheet && typeof sheet === 'object' && sheet.n && Array.isArray(sheet.c)
+                            );
+
+                            if (hasStructureInfo) {
+                                console.log('📋 [导入] 检测到表格结构信息，开始重塑表格结构...');
+
+                                // 1️⃣ 提取数据表的结构信息（排除最后一个总结表）
+                                const newCustomTables = [];
+                                for (let i = 0; i < sheetsData.length - 1; i++) {
+                                    const sheet = sheetsData[i];
+                                    if (sheet && sheet.n && Array.isArray(sheet.c)) {
+                                        newCustomTables.push({
+                                            name: sheet.n,
+                                            columns: sheet.c
+                                        });
+                                    }
+                                }
+
+                                // 2️⃣ 更新全局配置
+                                if (newCustomTables.length > 0) {
+                                    C.customTables = newCustomTables;
+                                    console.log(`✅ [导入] 已更新表格结构配置（${newCustomTables.length} 个数据表）`);
+
+                                    // 3️⃣ 保存到 localStorage
+                                    try {
+                                        localStorage.setItem('gg_config', JSON.stringify(C));
+                                        console.log('💾 [导入] 表格结构已保存到 localStorage');
+                                    } catch (e) {
+                                        console.error('❌ [导入] localStorage 保存失败:', e);
+                                    }
+
+                                    // 4️⃣ 重建表格对象（使用新结构）
+                                    try {
+                                        m.initTables(sheetsData, false);
+                                        console.log('🔧 [导入] 表格对象已根据备份结构重建');
+                                    } catch (e) {
+                                        console.error('❌ [导入] initTables 失败:', e);
+                                        await customAlert('重建表格结构失败: ' + e.message, '错误');
+                                        return;
+                                    }
+
+                                    // 5️⃣ 同步到云端
+                                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                                        window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                                            console.warn('⚠️ [导入] 云端同步失败:', err);
+                                        });
+                                        console.log('☁️ [导入] 已触发云端同步');
+                                    }
+                                }
+                            } else {
+                                // ⚠️ 向后兼容：旧版备份文件缺少结构信息，使用传统填充方式
+                                console.log('⚠️ [导入] 未检测到表格结构信息，使用传统填充方式');
+                                m.s.forEach((sheet, i) => {
+                                    if (sheetsData[i]) sheet.from(sheetsData[i]);
+                                });
+                            }
+
+                            // 6️⃣ 填充数据（如果已重建结构，from 方法会智能处理）
+                            if (hasStructureInfo) {
+                                // 重建后，数据已经在 initTables 中加载，这里只需刷新
+                                console.log('✅ [导入] 表格数据已通过 initTables 加载');
+                            }
+
                         } else if (importMode === 'details') {
                             // 仅恢复数据表（不含最后一个总结表）
                             for (let i = 0; i < m.s.length - 1 && i < sheetsData.length; i++) {
