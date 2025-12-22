@@ -7734,12 +7734,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <input type="checkbox" id="gg_c_limit_on" ${C.contextLimit ? 'checked' : ''}>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <label style="font-weight: 600;">👁️ 楼层折叠</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; opacity: 0.5; pointer-events: none;">
+                <label style="font-weight: 600;">👁️ 楼层折叠 (维护中)</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">显</span>
-                    <input type="number" id="gg_c_uifold_count" value="${C.uiFoldCount || 50}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
-                    <input type="checkbox" id="gg_c_uifold_on" ${C.uiFold ? 'checked' : ''}>
+                    <input type="number" id="gg_c_uifold_count" value="${C.uiFoldCount || 50}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);" disabled>
+                    <input type="checkbox" id="gg_c_uifold_on" ${C.uiFold ? 'checked' : ''} disabled>
                 </div>
             </div>
         </div>
@@ -9202,148 +9202,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
     }
 
-    // ✨✨✨ UI 折叠逻辑 (v5.1 修复版：嵌入式布局) ✨✨✨
+    // ✨✨✨ UI 折叠逻辑 (暂时禁用 - 维护中) ✨✨✨
     function applyUiFold() {
-        const $chat = $('#chat');
-        // 获取真实消息总数（排除隐藏标签）
-        const total = $chat.find('.mes').length;
-        // 获取用户设置的保留条数
-        const keep = C.uiFoldCount || 50;
-        // 每次多看几条
-        const STEP = 10;
+        // ⚠️ 功能暂时禁用，只保留清理逻辑，防止旧的折叠效果残留
 
-        // 初始化状态变量（如果不存在）
-        if (typeof window.Gaigai.foldOffset === 'undefined') window.Gaigai.foldOffset = 0;
-        if (typeof window.Gaigai.lastHideCount === 'undefined') window.Gaigai.lastHideCount = -1;
+        // 移除已存在的样式标签
+        $('#gaigai-fold-style').remove();
 
-        // ✅ Clean Disable: If feature is OFF, clean up and exit
-        if (!C.uiFold || total <= keep) {
-            // Only clean up if we previously had the feature enabled
-            if (window.Gaigai.lastHideCount !== -1) {
-                $('#gaigai-fold-style').remove();
-                $('#g-fold-controls').remove();
-                window.Gaigai.lastHideCount = -1;
-                window.Gaigai.foldOffset = 0;
-                console.log('🧹 [Fold] Feature disabled, cleaned up DOM');
-            }
-            return;
-        }
+        // 移除已存在的控制按钮
+        $('#g-fold-controls').remove();
 
-        // 计算需要隐藏的数量
-        let hideCount = total - keep - window.Gaigai.foldOffset;
-        if (hideCount < 0) hideCount = 0;
+        // 重置状态变量
+        window.Gaigai.lastHideCount = -1;
+        window.Gaigai.foldOffset = 0;
 
-        // ✅ Early Exit: If state hasn't changed AND DOM exists, do nothing
-        const $existingStyle = $('#gaigai-fold-style');
-        const $existingControls = $('#g-fold-controls');
-
-        if (hideCount === window.Gaigai.lastHideCount &&
-            $existingStyle.length > 0 &&
-            $existingControls.length > 0) {
-            console.log(`⏭️ [Fold] State unchanged (hiding ${hideCount}), skipping DOM update`);
-            return;
-        }
-
-        console.log(`🔄 [Fold] State changed: ${window.Gaigai.lastHideCount} → ${hideCount}, updating DOM`);
-
-        // ✅ Graceful Update: Update existing style tag content
-        const css = `
-            /* 隐藏前 N 条消息 */
-            #chat > .mes:nth-child(-n+${hideCount}) {
-                display: ${hideCount > 0 ? 'none' : 'block'} !important;
-            }
-            /* 嵌入式控制条样式 (修复版) */
-            #g-fold-controls {
-                width: 100%;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 10px;
-                padding: 10px 0;
-                margin-bottom: 10px; /* 与下方消息拉开距离 */
-                background: transparent;
-            }
-            .g-fold-btn {
-                padding: 6px 16px; border-radius: 20px;
-                background: rgba(0,0,0,0.6); color: #fff; cursor: pointer;
-                font-size: 12px; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.2);
-                transition: all 0.2s; user-select: none; display: flex; align-items: center; gap: 6px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            }
-            .g-fold-btn:hover { background: rgba(0,0,0,0.8); transform: scale(1.05); }
-            .g-fold-btn i { font-size: 14px; }
-        `;
-
-        if ($existingStyle.length > 0) {
-            // Update existing style tag
-            $existingStyle.text(css);
-        } else {
-            // Create new style tag
-            $('<style id="gaigai-fold-style">').text(css).appendTo('head');
-        }
-
-        // ✅ Graceful Update: Update control buttons content
-        let controlsHTML = '';
-
-        // 按钮A: 再看10条
-        if (hideCount > 0) {
-            controlsHTML += `<div class="g-fold-btn" data-action="load-more" title="上方还有 ${hideCount} 条被折叠">
-                <i class="fa-solid fa-clock-rotate-left"></i> 展开 ${STEP} 条 (剩余 ${hideCount})
-            </div>`;
-        }
-
-        // 按钮B: 恢复折叠
-        if (window.Gaigai.foldOffset > 0) {
-            controlsHTML += `<div class="g-fold-btn" data-action="reset">
-                <i class="fa-solid fa-compress"></i> 收起折叠
-            </div>`;
-        }
-
-        if ($existingControls.length > 0) {
-            // Update existing controls
-            if (controlsHTML) {
-                $existingControls.html(controlsHTML);
-
-                // Re-bind event handlers (since we replaced HTML)
-                $existingControls.find('[data-action="load-more"]').on('click', () => {
-                    window.Gaigai.foldOffset += STEP;
-                    applyUiFold();
-                });
-
-                $existingControls.find('[data-action="reset"]').on('click', () => {
-                    window.Gaigai.foldOffset = 0;
-                    applyUiFold();
-                });
-            } else {
-                // No buttons needed, remove controls
-                $existingControls.remove();
-            }
-        } else {
-            // Create new controls if needed
-            if (controlsHTML) {
-                const $ctrlDiv = $('<div>', {
-                    id: 'g-fold-controls',
-                    html: controlsHTML
-                });
-
-                // Bind event handlers
-                $ctrlDiv.find('[data-action="load-more"]').on('click', () => {
-                    window.Gaigai.foldOffset += STEP;
-                    applyUiFold();
-                });
-
-                $ctrlDiv.find('[data-action="reset"]').on('click', () => {
-                    window.Gaigai.foldOffset = 0;
-                    applyUiFold();
-                });
-
-                // ✨ 关键修复：插入到 #chat 容器的最前面
-                $chat.prepend($ctrlDiv);
-            }
-        }
-
-        // ✅ Update state tracker
-        window.Gaigai.lastHideCount = hideCount;
+        console.log('🧹 [Fold] Feature is currently disabled (under maintenance), cleaned up DOM');
     }
 
     // ========================================================================
