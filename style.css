@@ -1,4 +1,4 @@
-/* Gaigai v1.4.5 */
+/* Gaigai v1.4.6 */
 
 :root {
     --g-c: #888888;
@@ -1280,4 +1280,48 @@
     .g-p textarea {
         min-height: 120px !important;
     }
+}
+
+/* ==========================================
+   📖 总结表（笔记本视图）隐藏状态样式
+   ========================================== */
+
+/* 隐藏状态的笔记本页面容器 */
+.g-book-view[style*="opacity: 0.5"]::before {
+    content: '已归档';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+
+    /* 文字样式 */
+    font-size: 80px;
+    font-weight: 900;
+    letter-spacing: 10px;
+    white-space: nowrap;
+    user-select: none;
+    pointer-events: none;
+
+    /* 颜色：半透明红色，白天晚上都明显 */
+    color: rgba(220, 53, 69, 0.15);
+
+    /* 边框 */
+    border: 6px solid rgba(220, 53, 69, 0.2);
+    padding: 20px 60px;
+    border-radius: 15px;
+
+    z-index: 10;
+}
+
+/* 添加半透明遮罩 */
+.g-book-view[style*="opacity: 0.5"]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.05);
+    pointer-events: none;
+    z-index: 5;
 }
