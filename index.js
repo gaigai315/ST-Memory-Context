@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.5
+// 记忆表格 v1.4.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.5 启动');
+    console.log('🚀 记忆表格 v1.4.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.5';
+    const V = 'v1.4.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -479,474 +479,6 @@
             console.error('❌ 获取CSRF令牌失败:', error);
             // 最后的兜底：如果获取失败，返回空字符串，有时酒馆后端在某些配置下不需要
             return '';
-        }
-    }
-
-    // ========================================================================
-    // ✨ 智能世界书同步辅助函数 (V6.0 防幽灵条目版)
-    // ========================================================================
-    /**
-     * 智能同步世界书：自动判断是首次创建还是更新
-     * @param {string} worldBookName - 世界书名称
-     * @param {object} importEntries - 条目数据
-     * @param {string} csrfToken - CSRF令牌
-     * @returns {Promise<{mode: 'create'|'update', success: boolean}>}
-     */
-    async function smartSyncWorldInfo(worldBookName, importEntries, csrfToken) {
-        try {
-            // 步骤1：检查书是否已存在
-            let bookExists = false;
-
-            // 方法A：检查内存（最快）
-            if (typeof window.world_info !== 'undefined' && window.world_info[worldBookName]) {
-                bookExists = true;
-                console.log(`✅ [智能同步] 内存检测: 书已存在`);
-            }
-
-            // 方法B：API检查（更准确）
-            if (!bookExists) {
-                try {
-                    const getRes = await fetch('/api/worldinfo/get', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({})
-                    });
-                    if (getRes.ok) {
-                        const allWorldBooks = await getRes.json();
-                        bookExists = Array.isArray(allWorldBooks) && allWorldBooks.includes(worldBookName);
-                        console.log(`✅ [智能同步] API检测: 书${bookExists ? '已存在' : '不存在'}`);
-                    }
-                } catch (e) {
-                    console.warn('⚠️ [智能同步] API检测失败，回退到创建模式');
-                }
-            }
-
-            // 步骤2：根据存在状态选择同步策略
-            if (bookExists) {
-                // ==================== 更新模式：内存热更新 + API保存 ====================
-                console.log('⚡ [智能同步] 使用【热更新模式】- 不触发UI重复加载');
-
-                // 2.1 更新内存数据
-                if (typeof window.world_info !== 'undefined' && window.world_info[worldBookName]) {
-                    window.world_info[worldBookName].entries = importEntries;
-                    console.log('✅ [智能同步] 内存数据已更新');
-                }
-
-                // 2.2 调用API保存到硬盘
-                const finalJson = { entries: importEntries, name: worldBookName };
-                const saveRes = await fetch('/api/worldinfo/edit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                    body: JSON.stringify({ name: worldBookName, data: finalJson })
-                });
-
-                if (saveRes.ok) {
-                    console.log('💾 [智能同步] 硬盘保存成功 (API模式)');
-                    return { mode: 'update', success: true };
-                } else {
-                    throw new Error(`API保存失败: ${saveRes.status}`);
-                }
-
-            } else {
-                // ==================== 创建模式：模拟文件上传 ====================
-                console.log('📤 [智能同步] 使用【上传模式】- 首次创建，触发UI刷新');
-
-                const finalJson = { entries: importEntries };
-                const $fileInput = $('#world_import_file');
-
-                if ($fileInput.length === 0) {
-                    throw new Error('未找到上传控件 #world_import_file');
-                }
-
-                const file = new File([JSON.stringify(finalJson)], `${worldBookName}.json`, { type: "application/json" });
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                $fileInput[0].files = dataTransfer.files;
-                $fileInput[0].dispatchEvent(new Event('change', { bubbles: true }));
-
-                console.log('✅ [智能同步] 上传触发成功，等待ST处理...');
-                return { mode: 'create', success: true };
-            }
-
-        } catch (error) {
-            console.error('❌ [智能同步] 异常:', error);
-            return { mode: 'error', success: false, error: error.message };
-        }
-    }
-
-    // ========================================================================
-    // ✨ 世界书同步：V6.0 智能防幽灵版
-    // 改进点：防抖(5s) -> 强制等待(3s) -> 智能检测是否已存在 -> 选择同步策略
-    // ========================================================================
-    let syncDebounceTimer = null;
-    let globalLastWorldInfoUid = -1;
-    let globalWorldInfoEntriesCache = {};
-    let worldInfoSyncQueue = Promise.resolve();
-
-    async function syncToWorldInfo(content) {
-        // 1. 基础检查
-        if (!C.syncWorldInfo) return Promise.resolve();
-
-        // 2. 防抖：重置倒计时
-        if (syncDebounceTimer) {
-            clearTimeout(syncDebounceTimer);
-            console.log('⏳ [世界书同步] 倒计时重置 (5s)...');
-        }
-
-        // 3. 设置 5秒 防抖 (给AI生成留足时间)
-        syncDebounceTimer = setTimeout(async () => {
-            try {
-                // 🛑 步骤 A: 先进行强制等待 (IO缓冲)
-                // 这里的 5000ms 不仅是为了防文件锁，更是为了让数据彻底落稳
-                console.log('⏳ [IO缓冲] 等待 5秒，确保数据完整并释放锁...');
-                await new Promise(r => setTimeout(r, 5000)); 
-
-                // 🔄 步骤 B: 等待结束后，再获取表格数据！(关键修改)
-                // 这样能确保我们读到的是等待结束后的最新、最全的数据
-                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
-                if (!summarySheet || summarySheet.r.length === 0) {
-                    console.log('⚠️ [世界书同步] 表格为空，跳过');
-                    return;
-                }
-
-                console.log(`⚡ [世界书同步] 开始打包 ${summarySheet.r.length} 条数据...`);
-
-                // --- 准备数据 ---
-                const uniqueId = m.gid() || "Unknown_Chat";
-                const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                const worldBookName = "Memory_Context_" + safeName;
-                const importEntries = {};
-                let maxUid = -1;
-
-                // 构建全量数据
-                summarySheet.r.forEach((row, index) => {
-                    const uid = index;
-                    maxUid = uid;
-                    const title = row[0] || '无标题';
-                    const rowContent = row[1] || '';
-                    const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
-
-                    importEntries[uid] = {
-                        uid: uid,
-                        key: ["总结", "summary", "前情提要", "memory", "记忆"],
-                        keysecondary: [],
-                        comment: `[绑定对话: ${safeName}] 自动同步于 ${new Date().toLocaleString()}`,
-                        content: `【${title}${note}】\n${rowContent}`,
-                        constant: true,
-                        vectorized: false,
-                        enabled: true,
-                        position: 1,
-                        order: 100,
-                        extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
-                    };
-                });
-
-                // 🔥 关键修复：上传文件只需要 entries，不需要 name 包装（根据V10测试结果）
-                const finalJson = { entries: importEntries };
-
-                // 获取 CSRF
-                let csrfToken = '';
-                try { csrfToken = await getCsrfToken(); } catch (e) {}
-
-                // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
-                console.log('🔍 [世界书同步] 扫描并清理旧文件...');
-                try {
-                    // 4.1 获取服务器上所有的世界书列表
-                    const getRes = await fetch('/api/worldinfo/get', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({})
-                    });
-
-                    if (getRes.ok) {
-                        const allWorldBooks = await getRes.json();
-
-                        // 4.2 严格筛选：只删除当前会话的旧版本文件
-                        const filesToDelete = [];
-
-                        if (Array.isArray(allWorldBooks)) {
-                            allWorldBooks.forEach(fileName => {
-                                if (typeof fileName === 'string' &&
-                                    fileName.startsWith('Memory_Context_') &&  // 必须是记忆书
-                                    fileName.includes(safeName) &&              // 必须包含当前会话ID
-                                    fileName !== worldBookName) {               // 不能是即将上传的新文件
-                                    filesToDelete.push(fileName);
-                                }
-                            });
-                        }
-
-                        console.log(`📋 [世界书同步] 找到 ${filesToDelete.length} 个旧文件需要清理:`, filesToDelete);
-
-                        // 4.3 使用 Promise.all 并发删除所有旧文件，等待全部完成
-                        if (filesToDelete.length > 0) {
-                            const deletePromises = filesToDelete.map(async (oldBookName) => {
-                                try {
-                                    const delRes = await fetch('/api/worldinfo/delete', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                                        body: JSON.stringify({ name: oldBookName })
-                                    });
-
-                                    if (delRes.ok) {
-                                        console.log(`✅ [世界书同步] 已删除旧文件: ${oldBookName}`);
-                                        return { success: true, name: oldBookName };
-                                    } else {
-                                        console.warn(`⚠️ [世界书同步] 删除 ${oldBookName} 失败 (${delRes.status})`);
-                                        return { success: false, name: oldBookName, status: delRes.status };
-                                    }
-                                } catch (delErr) {
-                                    console.warn(`⚠️ [世界书同步] 删除 ${oldBookName} 异常:`, delErr);
-                                    return { success: false, name: oldBookName, error: delErr.message };
-                                }
-                            });
-
-                            // 等待所有删除操作完成
-                            const deleteResults = await Promise.all(deletePromises);
-                            const successCount = deleteResults.filter(r => r.success).length;
-                            console.log(`🧹 [世界书同步] 清理完成: ${successCount}/${filesToDelete.length} 个文件已删除`);
-                        } else {
-                            console.log('✨ [世界书同步] 没有旧文件需要清理');
-                        }
-                    } else {
-                        console.warn(`⚠️ [世界书同步] 获取世界书列表失败 (${getRes.status})，跳过清理`);
-                    }
-                } catch (e) {
-                    console.warn('⚠️ [世界书同步] 扫描清理过程异常，继续上传:', e);
-                }
-
-
-
-                // 🛑 核心修复：给文件系统喘息时间，防止 500 错误导致的连带写入失败
-                console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
-                await new Promise(r => setTimeout(r, 1500));
-
-                // --- 5. 智能同步 (自动判断创建/更新，防止幽灵条目) ---
-                console.log('⚡ [世界书同步] 准备智能同步，条目数:', Object.keys(importEntries).length);
-                const syncResult = await smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
-
-                // 更新缓存
-                globalWorldInfoEntriesCache = importEntries;
-                globalLastWorldInfoUid = maxUid;
-
-                // 🛑 步骤 C: 等待 ST 处理 (只有首次创建需要等待UI刷新)
-                if (syncResult.mode === 'create') {
-                    console.log('⏳ [世界书同步] 首次创建，等待 SillyTavern 处理导入 (2s)...');
-                    await new Promise(r => setTimeout(r, 2000));
-                } else if (syncResult.mode === 'update') {
-                    console.log('✅ [世界书同步] 热更新完成，无需等待UI刷新');
-                }
-
-                // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
-                if (C.autoBindWI) {
-                    console.log('🔗 [世界书同步] 准备自动绑定到角色卡...');
-                    await autoBindWorldInfo(worldBookName);
-                } else {
-                    console.log('⏭️ [世界书同步] 自动绑定已禁用，跳过绑定');
-                }
-
-            } catch (error) {
-                console.error('❌ [世界书同步] 异常:', error);
-            }
-        }, 5000); // 5秒防抖
-
-        return Promise.resolve();
-    }
-
-   /**
-     * 🔗 自动绑定记忆世界书 (V5.0 逻辑回归+去重修正版)
-     * 恢复了原版的库存检查逻辑，同时加入了强力的UI去重
-     */
-    async function autoBindWorldInfo(baseBookName = null, forceBind = false) {
-        if (!C.autoBindWI) return;
-
-        const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) 
-            ? SillyTavern.getContext() 
-            : null;
-
-        if (!ctx) return;
-
-       try {
-            // ==================== 🕵️‍♂️ 步骤1：恢复库存检查 (找回丢失的逻辑) ====================
-            // 我们必须先知道酒馆里到底有哪些书，才能决定绑谁，不能瞎猜
-            let allBookNames = [];
-            
-            // A. 从下拉框获取
-            $('#world_editor_select option').each(function() {
-                const name = $(this).text().trim();
-                if (name && name !== '新建' && !name.includes('---')) {
-                    allBookNames.push(name);
-                }
-            });
-
-            // B. 从全局变量获取 (双重保险)
-            try {
-                if (typeof window.world_names !== 'undefined' && Array.isArray(window.world_names)) {
-                    allBookNames = [...new Set([...allBookNames, ...window.world_names])];
-                } else if (typeof window.world_info === 'object') {
-                    // 兼容不同版本的酒馆数据结构
-                    if (Array.isArray(window.world_info)) allBookNames.push(...window.world_info.map(b => b.name || b));
-                    else allBookNames.push(...Object.keys(window.world_info));
-                }
-            } catch(e) {}
-            
-            allBookNames = [...new Set(allBookNames)]; // 去重
-
-            // ==================== 🎯 步骤2：锁定目标 (精准匹配) ====================
-            let targetBookName = null;
-            
-            if (baseBookName) {
-                targetBookName = baseBookName;
-            } else {
-                // 计算当前会话的唯一标识
-                let uniqueId = null;
-                if (ctx.chatMetadata && ctx.chatMetadata.file_name) {
-                    uniqueId = ctx.chatMetadata.file_name;
-                } else if (typeof window.selected_chat === 'string') {
-                    uniqueId = window.selected_chat.replace(/\.jsonl?$/i, "");
-                } else {
-                    uniqueId = ctx.chatId;
-                }
-
-                if (uniqueId) {
-                    // 尝试匹配：优先匹配包含 ID 且存在于 allBookNames 里的书
-                    const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                    
-                    // 1. 优先找包含时间戳的精准匹配
-                    const timeMatch = uniqueId.match(/\d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s/);
-                    if (timeMatch) {
-                        targetBookName = allBookNames.find(b => b.includes(timeMatch[0]) && b.startsWith('Memory_Context_'));
-                    }
-                    
-                    // 2. 如果没找到，找包含 safeName 的最新一本
-                    if (!targetBookName) {
-                        const candidates = allBookNames.filter(b => b.includes(safeName) && b.startsWith('Memory_Context_'));
-                        if (candidates.length > 0) {
-                            candidates.sort(); // 按时间排序
-                            targetBookName = candidates[candidates.length - 1]; // 取最新的
-                        }
-                    }
-                }
-            }
-
-            // ==================== 🧹 步骤3-6：数据清洗 (严厉模式) ====================
-            
-            const charId = ctx.characterId;
-            if (charId === undefined || charId === null) return;
-            const character = ctx.characters[charId];
-            if (!character || !character.data) return;
-
-            if (!character.data.extensions) character.data.extensions = {};
-            if (!Array.isArray(character.data.extensions.world_info)) character.data.extensions.world_info = [];
-
-            let currentList = character.data.extensions.world_info;
-            const cleanList = []; 
-
-            // 核心逻辑：只保留非记忆书 + 当前目标书
-            // 其他所有的 Memory_Context_ (无论是旧的、别的角色的) 统统丢弃
-            currentList.forEach(book => {
-                if (typeof book !== 'string' || !book.startsWith('Memory_Context_')) {
-                    cleanList.push(book); // 保留用户自己的书
-                } else if (book === targetBookName) {
-                    cleanList.push(book); // 保留当前正主
-                }
-                // else: 丢弃！(解决你说的“绑定了其他角色卡世界书”的问题)
-            });
-
-            // 如果目标书存在(已生成)且没在列表里，加进去
-            // 这里用 allBookNames 校验，防止绑定不存在的书报错
-            if (targetBookName && !cleanList.includes(targetBookName)) {
-                if (allBookNames.includes(targetBookName) || forceBind) {
-                    cleanList.push(targetBookName);
-                    // console.log(`✅ [自动绑定] 挂载新书: ${targetBookName}`);
-                }
-            }
-
-            // 保存数据
-            const newJson = JSON.stringify(cleanList.slice().sort());
-            const oldJson = JSON.stringify(currentList.slice().sort());
-            
-            if (newJson !== oldJson) {
-                character.data.extensions.world_info = cleanList;
-                if (ctx.characters && ctx.characters[charId]) {
-                    ctx.characters[charId].data.extensions.world_info = cleanList;
-                }
-                try {
-                    if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter(); 
-                    else if (typeof window.saveCharacterDebounced === 'function') window.saveCharacterDebounced();
-                } catch (e) {}
-            }
-
-            // ==================== 🛡️ 步骤7：UI 标准刷新 (V6.0 防幽灵绑定版) ====================
-            // 只更新选中状态，不暴力删除/添加 DOM 节点（除非是真正的重复项）
-
-            const $characterSelect = $('.character_extra_world_info_selector');
-            if ($characterSelect.length > 0) {
-                // 获取当前下拉框中的所有选项值
-                const existingOptions = new Set();
-                const duplicates = [];
-
-                $characterSelect.find('option').each(function() {
-                    const $opt = $(this);
-                    const optVal = $opt.val();
-
-                    // 检测真正的重复项（同一个值出现多次）
-                    if (existingOptions.has(optVal)) {
-                        duplicates.push($opt);
-                    } else {
-                        existingOptions.add(optVal);
-                    }
-                });
-
-                // 只删除真正的重复项（幽灵条目）
-                duplicates.forEach($opt => {
-                    console.log(`🧹 [自动绑定] 移除重复选项: ${$opt.val()}`);
-                    $opt.remove();
-                });
-
-                // 如果目标书不在下拉框里（新创建的书），临时添加一个 Option
-                // 这样 Select2 才能正确选中它
-                if (targetBookName && !existingOptions.has(targetBookName)) {
-                    console.log(`➕ [自动绑定] 添加新选项: ${targetBookName}`);
-                    const newOption = new Option(targetBookName, targetBookName, true, true);
-                    $characterSelect.append(newOption);
-                }
-
-                // 🔑 关键修复：强制清空并重新设置选中状态
-                // 步骤1：先完全清空所有选中状态（包括 Select2 的内部缓存）
-                $characterSelect.val(null).trigger('change');
-                console.log('🧹 [自动绑定] 已清空所有选中状态');
-
-                // 步骤2：明确设置每个选项的 selected 属性
-                $characterSelect.find('option').each(function() {
-                    const $opt = $(this);
-                    const optVal = $opt.val();
-
-                    // 如果是记忆书
-                    if (optVal && optVal.startsWith('Memory_Context_')) {
-                        // 如果在 cleanList 里，标记为选中
-                        if (cleanList.includes(optVal)) {
-                            $opt.prop('selected', true);
-                        } else {
-                            // 不在 cleanList 里（其他会话的书），明确取消选中
-                            $opt.prop('selected', false);
-                            console.log(`🚫 [自动绑定] 取消选中其他会话的书: ${optVal}`);
-                        }
-                    }
-                });
-
-                // 步骤3：使用 Select2 标准方法重新设置选中值
-                $characterSelect.val(cleanList).trigger('change');
-
-                // 步骤4：延时再触发一次 Select2 内部更新，确保视觉同步
-                setTimeout(() => {
-                    $characterSelect.trigger('change.select2');
-                }, 100);
-
-                console.log(`✅ [自动绑定] UI更新完成，当前绑定:`, cleanList);
-            }
-
-        } catch (error) {
-            console.error('❌ [自动绑定] 异常:', error);
         }
     }
 
@@ -1700,6 +1232,10 @@
                 const globalConfigStr = localStorage.getItem(CK);
                 const globalConfig = globalConfigStr ? JSON.parse(globalConfigStr) : {};
 
+                // ✅ 读取全局 API 配置 (用于 summarySource)
+                const globalApiStr = localStorage.getItem(AK);
+                const globalApiConfig = globalApiStr ? JSON.parse(globalApiStr) : {};
+
                 // --- 1. 开关类 (优先用全局，无全局用默认) ---
                 C.enabled = globalConfig.enabled !== undefined ? globalConfig.enabled : true;
                 C.autoBackfill = globalConfig.autoBackfill !== undefined ? globalConfig.autoBackfill : false;
@@ -1728,8 +1264,9 @@
                 C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
 
                 // --- 5. API 相关 (总结源) ---
-                if (globalConfig.summarySource !== undefined) API_CONFIG.summarySource = globalConfig.summarySource;
-                else API_CONFIG.summarySource = 'table'; // 默认值
+                // ✅ 修复：从 gg_api (AK) 中读取全局默认值，而不是 gg_config (CK)
+                if (globalApiConfig.summarySource !== undefined) API_CONFIG.summarySource = globalApiConfig.summarySource;
+                else API_CONFIG.summarySource = 'table'; // 仅当从未保存过时才默认为 table
 
                 console.log('🧹 [配置清洗] 内存状态已重置为全局/默认值，准备加载会话专属配置...');
             } catch (e) {
@@ -4210,14 +3747,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const content = row[1] || '';
 
         // 3. 样式处理
-        const hiddenStyle = isHidden ? 'opacity: 0.5; position: relative;' : '';
-        const watermark = isHidden
-            ? `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                           font-size: 80px; font-weight: bold; color: rgba(141, 110, 99, 0.1);
-                           pointer-events: none; z-index: 0; user-select: none;">
-                    已归档
-                </div>`
-            : '';
+        const hiddenStyle = isHidden ? 'opacity: 0.5; position: relative;' : 'position: relative;';
+        const watermark = '';
 
         // 4. 元数据栏（日期等）
         let metaSection = '';
@@ -5695,7 +5226,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 const currentPageNum = currentBookPage + 1; // 转为人类可读的页码
                 const totalPages = sh.r.length;
-                const isCurrentHidden = isSummarized(8, currentBookPage);
+                const isCurrentHidden = isSummarized(ti, currentBookPage);
 
                 $box.append(`<div style="font-weight:bold; font-size:15px; text-align:center; color:${UI.tc};">👁️ 总结显/隐控制</div>`);
                 $box.append(`<div style="font-size:12px; color:${UI.tc}; opacity:0.6; text-align:center; margin-bottom:5px;">当前：第 ${currentPageNum} / ${totalPages} 篇</div>`);
@@ -5719,7 +5250,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     html: isCurrentHidden ? '👁️ 显示当前页 (第' + currentPageNum + '篇)' : '🙈 隐藏当前页 (第' + currentPageNum + '篇)',
                     css: btnCss
                 }).on('click', () => {
-                    toggleRow(8, currentBookPage);
+                    toggleRow(ti, currentBookPage);
                     finish(`第 ${currentPageNum} 篇状态已切换`);
                 });
 
@@ -5828,8 +5359,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 刷新总结视图
                     const renderBookUI = window.Gaigai.renderBookUI || (function(){}); // 防止未引用
                     // 重新渲染当前页
-                    if ($('.g-t.act').data('i') === 8) {
-                         refreshTable(8); // 使用 refreshTable 刷新
+                    if ($('.g-t.act').data('i') === ti) {
+                         refreshTable(ti); // 使用 refreshTable 刷新
                     }
                     $overlay.remove();
                     if (typeof toastr !== 'undefined') toastr.success(msg);
@@ -7676,13 +7207,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (serverData.api) {
                 const currentSumIdx = API_CONFIG.lastSummaryIndex;
                 const currentBfIdx = API_CONFIG.lastBackfillIndex;
+                const currentSumSrc = API_CONFIG.summarySource; // ✅ 新增备份：保护总结来源（会话独立配置）
+
                 Object.assign(API_CONFIG, serverData.api);
+
                 // 恢复运行时指针（防止云端旧指针覆盖本地新进度）
                 if (currentSumIdx !== undefined && currentSumIdx > (serverData.api.lastSummaryIndex || 0)) {
                     API_CONFIG.lastSummaryIndex = currentSumIdx;
                 }
                 if (currentBfIdx !== undefined && currentBfIdx > (serverData.api.lastBackfillIndex || 0)) {
                     API_CONFIG.lastBackfillIndex = currentBfIdx;
+                }
+
+                // ✅ 新增恢复：恢复总结来源（防止全局配置覆盖当前会话的独立设置）
+                if (currentSumSrc !== undefined) {
+                    API_CONFIG.summarySource = currentSumSrc;
+                    console.log(`🔒 [会话隔离] 已保护当前会话的总结来源设置: ${currentSumSrc}`);
                 }
             }
 
@@ -8059,6 +7599,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         window.isEditingConfig = true; // 标记开始编辑配置，防止后台同步覆盖用户输入
 
         setTimeout(() => {
+            // ✅✅✅ [修复] 强制同步 UI 状态与内存配置
+            // 优先读取 API_CONFIG.summarySource，如果未定义则默认为 'table' (与定义保持一致)
+            const currentSummarySource = API_CONFIG.summarySource || 'table';
+
+            // 1. 先重置所有选中状态
+            $('input[name="cfg-sum-src"]').prop('checked', false);
+
+            // 2. 根据当前值选中对应的按钮
+            const $targetRadio = $(`input[name="cfg-sum-src"][value="${currentSummarySource}"]`);
+            if ($targetRadio.length > 0) {
+                $targetRadio.prop('checked', true);
+            } else {
+                // 兜底：如果值不对，默认选中 table
+                $('input[name="cfg-sum-src"][value="table"]').prop('checked', true);
+            }
+
+            // 3. 触发 change 事件以更新关联 UI (如显示/隐藏子选项)
+            $('input[name="cfg-sum-src"]:checked').trigger('change');
+
+            console.log(`✅ [配置面板] 总结模式 UI 已同步为: ${currentSummarySource}`);
+
             // ✅✅✅ 新增：重置追溯进度
             $('#gg_reset_bf_range_btn').on('click', async function () {
                 API_CONFIG.lastBackfillIndex = 0;
@@ -8131,6 +7692,39 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoSummary = isChecked;
                 m.save();
                 console.log('💾 [每聊配置] 已保存自动总结设置到当前聊天:', isChecked);
+            });
+
+            // ✨✨✨ [关键修复] 总结来源单选按钮的 change 事件监听器 ✨✨✨
+            $('input[name="cfg-sum-src"]').on('change', function () {
+                // 🛡️ 防止配置恢复期间触发保存
+                if (isRestoringSettings) {
+                    console.log('⏸️ [cfg-sum-src] 配置恢复中，跳过保存');
+                    return;
+                }
+
+                const selectedSource = $(this).val();
+                console.log(`🔄 [总结来源] 用户选择了: ${selectedSource}`);
+
+                // ✅ 更新 API_CONFIG
+                API_CONFIG.summarySource = selectedSource;
+
+                // ✅ 保存到 localStorage
+                try {
+                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                } catch (e) {
+                    console.error('❌ [cfg-sum-src] localStorage 写入失败:', e);
+                }
+
+                // ✅ Per-Chat Configuration: Save to current chat immediately
+                m.save();
+                console.log('💾 [每聊配置] 已保存总结来源设置到当前聊天:', selectedSource);
+
+                // ✅ 同步到云端
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [总结来源] 云端同步失败:', err);
+                    });
+                }
             });
 
             // 💉 注入记忆表格说明图标点击事件
@@ -8679,17 +8273,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 6. 关键步骤：智能同步 (自动判断创建/更新，防止幽灵条目)
                     console.log('⚡ [强制覆盖] 准备智能同步，条目数:', Object.keys(importEntries).length);
-                    const syncResult = await smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
+                    const syncResult = await window.Gaigai.WI.smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
 
                     if (!syncResult.success) {
                         throw new Error(syncResult.error || '同步失败');
                     }
 
-                    // 7. 更新本地缓存 (防止后续自动任务冲突)
-                    if (typeof globalWorldInfoEntriesCache !== 'undefined') {
-                        globalWorldInfoEntriesCache = importEntries;
-                        globalLastWorldInfoUid = maxUid;
-                    }
+                    // ✅ 7. 本地缓存由 WI 模块自动管理，此处不需要手动更新
 
                     if (typeof toastr !== 'undefined') {
                         toastr.success(`已重置并加载 ${summarySheet.r.length} 条记录`, '覆盖成功');
@@ -8704,7 +8294,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 9. 自动绑定（只有开启了自动绑定才执行）
                     if (C.autoBindWI) {
                         console.log('🔗 [强制覆盖] 正在执行自动绑定...');
-                        await autoBindWorldInfo(worldBookName, true);
+                        await window.Gaigai.WI.autoBindWorldInfo(worldBookName, true);
 
                         if (typeof toastr !== 'undefined') {
                             toastr.success('已重新绑定当前世界书', '绑定更新');
@@ -9089,18 +8679,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         console.log('🔒 [ochat] 会话切换锁已启用');
 
         // ✨✨✨ [防串味补丁] 切换会话时，彻底重置世界书同步缓存 ✨✨✨
-        if (typeof globalWorldInfoEntriesCache !== 'undefined') {
-            globalWorldInfoEntriesCache = {}; // 清空条目缓存
-            globalLastWorldInfoUid = -1;      // 重置 UID 计数器
-            worldInfoSyncQueue = Promise.resolve(); // 重置队列
-
-            // 清理防抖计时器
-            if (syncDebounceTimer) {
-                clearTimeout(syncDebounceTimer);
-                syncDebounceTimer = null;
-            }
-
-            console.log('🧹 [ochat] 已重置世界书同步缓存，防止跨会话污染');
+        if (window.Gaigai && window.Gaigai.WI && typeof window.Gaigai.WI.resetState === 'function') {
+            window.Gaigai.WI.resetState();
+            console.log('🧹 [ochat] 世界书同步状态已重置');
         }
 
         // 🛑 FIX: Must await global config BEFORE loading chat specific config
@@ -9213,7 +8794,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             console.log('🔗 [ochat] 执行自动绑定...');
-            await autoBindWorldInfo();
+            await window.Gaigai.WI.autoBindWorldInfo();
         }, 700);
 
         // 🔓 性能优化：解锁，允许用户操作
@@ -9648,28 +9229,48 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                     .done(function () {
                         console.log('✅ [Loader] backfill_manager.js 加载成功');
 
-                        // 🆕 加载 summary_manager.js
-                        const summaryManagerUrl = `${EXTENSION_PATH}/summary_manager.js`;
-                        $.getScript(summaryManagerUrl)
+                        // 🆕 加载 world_info.js (必须在 summary_manager 之前加载)
+                        const worldInfoUrl = `${EXTENSION_PATH}/world_info.js`;
+                        $.getScript(worldInfoUrl)
                             .done(function () {
-                                console.log('✅ [Loader] summary_manager.js 加载成功');
+                                console.log('✅ [Loader] world_info.js 加载成功');
 
-                                // ✨ 验证模块是否成功挂载
-                                if (!window.Gaigai.SummaryManager) {
-                                    console.error('⚠️ [Loader] window.Gaigai.SummaryManager 未成功挂载！');
-                                    console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
-                                }
-                                if (!window.Gaigai.BackfillManager) {
-                                    console.error('⚠️ [Loader] window.Gaigai.BackfillManager 未成功挂载！');
-                                    console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
-                                }
+                                // 🆕 加载 summary_manager.js
+                                const summaryManagerUrl = `${EXTENSION_PATH}/summary_manager.js`;
+                                $.getScript(summaryManagerUrl)
+                                    .done(function () {
+                                        console.log('✅ [Loader] summary_manager.js 加载成功');
 
-                                // 所有依赖加载完后，再启动主初始化流程
-                                setTimeout(tryInit, 500);
+                                        // ✨ 验证模块是否成功挂载
+                                        if (!window.Gaigai.SummaryManager) {
+                                            console.error('⚠️ [Loader] window.Gaigai.SummaryManager 未成功挂载！');
+                                            console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                        }
+                                        if (!window.Gaigai.BackfillManager) {
+                                            console.error('⚠️ [Loader] window.Gaigai.BackfillManager 未成功挂载！');
+                                            console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
+                                        }
+                                        if (!window.Gaigai.WI) {
+                                            console.error('⚠️ [Loader] window.Gaigai.WI 未成功挂载！');
+                                            console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
+                                        }
+
+                                        // 所有依赖加载完后，再启动主初始化流程
+                                        setTimeout(tryInit, 500);
+                                    })
+                                    .fail(function (jqxhr, settings, exception) {
+                                        console.error('❌ [Loader] summary_manager.js 加载失败！');
+                                        console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                        console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
+                                        console.error(`📍 错误详情:`, exception);
+                                        console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
+                                        // 即使加载失败，也继续初始化（降级模式）
+                                        setTimeout(tryInit, 500);
+                                    });
                             })
                             .fail(function (jqxhr, settings, exception) {
-                                console.error('❌ [Loader] summary_manager.js 加载失败！');
-                                console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                console.error('❌ [Loader] world_info.js 加载失败！');
+                                console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
                                 console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                                 console.error(`📍 错误详情:`, exception);
                                 console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
@@ -9722,7 +9323,8 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
         updateCurrentSnapshot: updateCurrentSnapshot,  // ✅ 子模块需要
         refreshTable: refreshTable,  // ✅ 子模块需要
         updateTabCount: updateTabCount,  // ✅ 子模块需要
-        syncToWorldInfo: syncToWorldInfo,  // ✅ 总结模块需要同步到世界书
+        syncToWorldInfo: (...args) => window.Gaigai.WI.syncToWorldInfo(...args),  // ✅ 总结模块需要同步到世界书（兼容性包装）
+        getCsrfToken: getCsrfToken,  // ✅ WI 模块需要
         customRetryAlert: customRetryAlert  // ✅ 重试弹窗
     });
 
@@ -9814,9 +9416,7 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>✨ 折叠楼层：</strong>折叠楼层功能暂时关闭</li>
-                        <li><strong>🔧 流式空回：</strong>优化空回问题，避免过度清洗</li>
-                        <li><strong>✨ 会话隔离：</strong>确保会话设置独立配置数据</li>
+                        <li><strong>🔧 优化自动总结：</strong>修复自动总结功能无法保存的问题</li>
                     </ul>
                 </div>
 

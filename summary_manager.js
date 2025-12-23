@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.4.5
+ * @version 1.4.6
  * @author Gaigai Team
  */
 
@@ -994,8 +994,19 @@
                                     transition: 'all 0.2s'
                                 }
                             }).on('click', () => {
-                                sourceTables.forEach(t => t.clear());
-                                finish('✅ 原始数据已清空，总结已归档。');
+                                // ✅ 动态遍历清空所有数据表（排除最后一个总结表）
+                                const totalTables = m.s.length;
+                                const dataTableCount = totalTables - 1; // 排除总结表
+
+                                console.log(`🗑️ [批量清空] 正在清空前 ${dataTableCount} 个数据表...`);
+
+                                for (let i = 0; i < dataTableCount; i++) {
+                                    if (m.s[i]) {
+                                        m.s[i].clear();
+                                    }
+                                }
+
+                                finish('✅ 所有原始数据表已清空，总结已归档。');
                             });
 
                             const $btnHide = $('<button>', {
@@ -1013,13 +1024,24 @@
                                     transition: 'all 0.2s'
                                 }
                             }).on('click', () => {
-                                sourceTables.forEach(table => {
-                                    const ti = m.all().indexOf(table);
-                                    if (ti !== -1) {
-                                        for (let ri = 0; ri < table.r.length; ri++) window.Gaigai.markAsSummarized(ti, ri);
+                                // ✅ 动态遍历：获取当前内存中所有数据表（排除最后一个总结表）
+                                // 这样无论用户有 1 个还是 10 个数据表，都能正确覆盖
+                                const totalTables = m.s.length;
+                                const dataTableCount = totalTables - 1; // 排除总结表
+
+                                console.log(`🙈 [批量隐藏] 正在处理前 ${dataTableCount} 个数据表...`);
+
+                                for (let i = 0; i < dataTableCount; i++) {
+                                    const table = m.s[i];
+                                    if (table && table.r && table.r.length > 0) {
+                                        // 将该表所有行标记为已总结
+                                        for (let ri = 0; ri < table.r.length; ri++) {
+                                            window.Gaigai.markAsSummarized(i, ri);
+                                        }
                                     }
-                                });
-                                finish('✅ 原始数据已标记为已总结（绿色）。');
+                                }
+
+                                finish('✅ 所有原始数据表已标记为已总结（绿色）。');
                             });
 
                             const $btnKeep = $('<button>', {
