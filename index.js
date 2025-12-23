@@ -5792,9 +5792,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         // Custom 模式用这个传 Key (通过 Header 注入)
                         custom_include_headers: {
-                            "Content-Type": "application/json",
-                            // 👇 在这里加上这一行（注意上一行末尾要加个逗号）
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            "Content-Type": "application/json"
                         },
 
                         model: model,
@@ -6898,9 +6896,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 2. 构造 Headers
                     const customHeaders = {
-                        "Content-Type": "application/json",
-                        // 👇 只需要在这里插入这一行，变量名 customHeaders 千万不要改！
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        "Content-Type": "application/json"
                     };
 
                     // 3. 【关键修改】鉴权逻辑分离
