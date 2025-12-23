@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.6
+// 记忆表格 v1.4.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.6 启动');
+    console.log('🚀 记忆表格 v1.4.7 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.6';
+    const V = 'v1.4.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -5080,45 +5080,116 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         $('#g-ex').off('click').on('click', showExportOptions);
         $('#g-reset-width').off('click').on('click', showViewSettings);
-        // ✅✅ 新增：清空表格（保留总结）
-        $('#g-clear-tables').off('click').on('click', async function () {
+        // ✅✅✅ [升级版] 清空表格（带指针控制选项）
+        $('#g-clear-tables').off('click').on('click', function () {
             const hasSummary = m.sm.has();
-            const tableCount = m.all().length - 1; // 动态计算数据表数量（排除总结表）
-            let confirmMsg = '确定清空所有详细表格吗？\n\n';
+            const tableCount = m.all().length - 1; // 排除总结表
 
+            // 1. 准备弹窗样式变量
+            const isDark = UI.darkMode;
+            const bgColor = isDark ? '#1e1e1e' : '#fff';
+            const txtColor = isDark ? '#e0e0e0' : UI.tc;
+            const borderColor = isDark ? 'rgba(255,255,255,0.15)' : '#ddd';
+
+            // 2. 创建弹窗 DOM
+            const id = 'clear-options-' + Date.now();
+            const $overlay = $('<div>', {
+                id: id,
+                css: {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.6)', zIndex: 10000020,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }
+            });
+
+            const $box = $('<div>', {
+                css: {
+                    background: bgColor, color: txtColor,
+                    borderRadius: '12px', padding: '24px',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '400px', maxWidth: '90vw',
+                    border: '1px solid ' + borderColor,
+                    display: 'flex', flexDirection: 'column', gap: '12px'
+                }
+            });
+
+            // 3. 提示文案
+            let tipText = `⚠️ <strong>确定要清空 ${tableCount} 个详细表格吗？</strong><br><br>`;
             if (hasSummary) {
-                confirmMsg += '✅ 记忆总结将会保留\n';
-                confirmMsg += `🗑️ ${tableCount}个数据表格的详细数据将被清空\n\n`;
-                confirmMsg += '建议先导出备份。';
-            } else {
-                confirmMsg += '⚠️ 当前没有总结，此操作将清空所有表格！\n\n建议先导出备份。';
+                tipText += `<span style="color:#28a745">✅ 记忆总结将会保留</span><br>`;
             }
+            tipText += `此操作将永久删除详情表内容。<br><br>请选择对<strong>【批量填表进度指针】</strong>的处理方式：`;
 
-            if (!await customConfirm(confirmMsg, '清空表格')) return;
+            $box.append(`<div style="font-size:16px; font-weight:bold; margin-bottom:4px;">🧹 清空表格选项</div>`);
+            $box.append(`<div style="font-size:13px; opacity:0.9; line-height:1.5;">${tipText}</div>`);
 
-            // 只清空数据表（保留最后一个总结表）
-            m.all().slice(0, -1).forEach(s => s.clear());
-            clearSummarizedMarks();
-            lastManualEditTime = Date.now(); // ✨ 新增
+            // 4. 定义执行函数
+            const executeClear = async (resetPointer) => {
+                // A. 清空数据表
+                m.all().slice(0, -1).forEach(s => s.clear());
+                clearSummarizedMarks();
+                lastManualEditTime = Date.now();
 
-            // ✅ 重置追溯进度（数据表已空，需要重新从头追溯）
-            API_CONFIG.lastBackfillIndex = 0;
-            // ⚠️ 不重置 lastSummaryIndex（总结表还在，进度保持不变）
+                // B. 处理指针
+                let msg = '';
+                if (resetPointer) {
+                    API_CONFIG.lastBackfillIndex = 0;
+                    msg = '✅ 表格已清空，进度指针已重置为 0。';
+                } else {
+                    // 保持原样
+                    msg = `✅ 表格已清空，进度指针保留在第 ${API_CONFIG.lastBackfillIndex} 层。`;
+                }
 
-            // ✅ 保存配置到本地和云端
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-            await saveAllSettingsToCloud();
+                // C. 保存配置和数据
+                try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch(e){}
 
-            m.save(true); // 传入 true 跳过熔断保护，因为这是用户主动的清空操作
+                // 同步到云端 (保存配置变更)
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    await saveAllSettingsToCloud();
+                }
 
-            await customAlert(hasSummary ?
-                '✅ 表格已清空，总结已保留\n\n追溯进度已重置，总结进度保持不变。\n下次聊天时AI会看到总结，从第0行开始记录新数据。' :
-                '✅ 所有表格已清空\n\n追溯进度已重置。',
-                '完成'
-            );
+                // 强制保存数据到当前会话 (支持会话隔离)
+                m.save(true);
 
-            $('#g-pop').remove();
-            shw();
+                // D. 刷新界面
+                $overlay.remove();
+                if (typeof shw === 'function') shw();
+
+                if (typeof toastr !== 'undefined') toastr.success(msg);
+                else alert(msg);
+            };
+
+            // 5. 按钮组
+            // 按钮A：保留指针 (推荐用于清理已总结内容)
+            const $btnKeep = $('<button>', {
+                html: '📉 <strong>保留进度 (仅清数据)</strong><br><span style="font-size:10px; opacity:0.8">适合清理旧数据，AI 将继续往后填表</span>',
+                css: {
+                    padding: '10px', border: 'none', borderRadius: '6px',
+                    background: '#17a2b8', color: '#fff', cursor: 'pointer', textAlign: 'left'
+                }
+            }).click(() => executeClear(false));
+
+            // 按钮B：重置指针 (完全重开)
+            const $btnReset = $('<button>', {
+                html: '🔄 <strong>完全重置 (清数据+归零)</strong><br><span style="font-size:10px; opacity:0.8">适合想要彻底重新开始追溯</span>',
+                css: {
+                    padding: '10px', border: 'none', borderRadius: '6px',
+                    background: '#dc3545', color: '#fff', cursor: 'pointer', textAlign: 'left'
+                }
+            }).click(() => executeClear(true));
+
+            // 按钮C：取消
+            const $btnCancel = $('<button>', {
+                text: '取消',
+                css: {
+                    padding: '10px', border: '1px solid ' + borderColor, borderRadius: '6px',
+                    background: 'transparent', color: txtColor, cursor: 'pointer'
+                }
+            }).click(() => $overlay.remove());
+
+            $box.append($btnKeep, $btnReset, $btnCancel);
+            $overlay.append($box);
+            $('body').append($overlay);
         });
 
         // ✅✅ 修改：全部清空（含总结）
@@ -9416,7 +9487,7 @@ console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>🔧 优化自动总结：</strong>修复自动总结功能无法保存的问题</li>
+                        <li><strong>🔧 优化清表按钮：</strong>新增清表按钮的功能分为清指针或保留指针</li>
                     </ul>
                 </div>
 
