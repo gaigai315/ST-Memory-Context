@@ -1208,8 +1208,8 @@
 
             // 等待最后一批数据的世界书同步防抖结束
             if (successCount > 0 && !window.Gaigai.stopBatch) {
-                console.log('⏳ [分批结束] 正在等待最后一次世界书同步完成 (6s)...');
-                await new Promise(r => setTimeout(r, 6000));
+                console.log('⏳ [分批结束] 正在等待最后一次世界书同步完成 (11s = 5s防抖 + 5s缓冲 + 1s余量)...');
+                await new Promise(r => setTimeout(r, 11000));
             }
 
             // ✅ 任务结束：重置状态
