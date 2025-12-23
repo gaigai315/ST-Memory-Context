@@ -1115,7 +1115,7 @@
             const id = this.gid();
             if (!id) return;
             const ctx = this.ctx();
-            
+
             // 计算当前内存中的总行数
             const totalRows = this.s.reduce((acc, sheet) => acc + (sheet.r ? sheet.r.length : 0), 0);
 
@@ -1136,7 +1136,7 @@
                         if (localRows > 5 && totalRows < 2) {
                             console.error(`🛑 [严重熔断] 拦截了一次毁灭性保存！`);
                             console.error(`   原因：内存数据(${totalRows}行) 远少于 本地存档(${localRows}行)。可能因加载失败导致。`);
-                            
+
                             // 仅提示一次，防止刷屏
                             if (!window.hasShownSaveWarning) {
                                 if (typeof toastr !== 'undefined') toastr.error('⚠️ 数据加载异常，已阻止自动保存以保护存档！\n请尝试刷新页面。', '熔断保护');
@@ -1145,8 +1145,8 @@
                             return; // ⛔️ 终止保存
                         }
                     }
-                } catch(e) { 
-                    console.error('熔断检查出错', e); 
+                } catch (e) {
+                    console.error('熔断检查出错', e);
                 }
             }
 
@@ -1197,7 +1197,7 @@
             };
 
             try { localStorage.setItem(`${SK}_${id}`, JSON.stringify(data)); } catch (e) { }
-            
+
             // 云端同步逻辑 (保持不变)
             if (C.cloudSync) {
                 try {
@@ -1215,7 +1215,7 @@
                                 } catch (err) {
                                     console.error('❌ saveChat 执行失败:', err);
                                 }
-                            }, 2000); 
+                            }, 2000);
                         }
                     }
                 } catch (e) { }
@@ -1489,7 +1489,7 @@
     }
 
     // ✅✅✅ [核心修复] 强力回档函数 (最终逻辑修正版)
-   // ✅✅✅ [核心修复] 强力回档函数 (支持强制模式)
+    // ✅✅✅ [核心修复] 强力回档函数 (支持强制模式)
     function restoreSnapshot(msgIndex, force = false) {
         try {
             const key = msgIndex.toString();
@@ -1530,13 +1530,13 @@
                 summarizedRows = {};
             }
 
-           // 5. 强制锁定保存
+            // 5. 强制锁定保存
             // 既然回档成功了，就重置编辑时间，防止死循环
             lastManualEditTime = 0;
-            
+
             // ✨✨✨ 修复：传入 true，强制绕过熔断保护 ✨✨✨
             // 因为回档是把数据恢复到旧状态（可能是空的），这是有意为之，不是BUG
-            m.save(true); 
+            m.save(true);
 
             const totalRecords = m.s.reduce((sum, s) => sum + s.r.length, 0);
             console.log(`✅ [完美回档] 快照${key}已恢复 - 当前行数:${totalRecords}`);
@@ -1586,7 +1586,7 @@
         const queue = [{ node: data, depth: 0 }];
         while (queue.length > 0) {
             const { node, depth } = queue.shift();
-            
+
             if (depth > 3) continue; // 不扫描太深
 
             if (Array.isArray(node)) {
@@ -2210,14 +2210,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 objMatches.forEach(jsonStr => {
                     try {
                         // 简单的修复单引号 JSON (容错)
-                        const validJson = jsonStr.replace(/'/g, '"'); 
+                        const validJson = jsonStr.replace(/'/g, '"');
                         const obj = JSON.parse(validJson);
-                        
+
                         if (obj.function && Array.isArray(obj.args)) {
                             const fnName = obj.function.replace('Row', '').toLowerCase();
                             const args = obj.args;
                             let parsed = null;
-                            
+
                             if (obj.function.includes('insert') && args.length >= 2) parsed = { ti: args[0], ri: null, d: args[1] };
                             else if (obj.function.includes('update') && args.length >= 3) parsed = { ti: args[0], ri: args[1], d: args[2] };
                             else if (obj.function.includes('delete') && args.length >= 2) parsed = { ti: args[0], ri: args[1], d: null };
@@ -2400,7 +2400,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 strPrompt += `表${i} ${displayName}: 下一行请用索引 ${nextIndex}\n`;
             });
 
-             // ✨✨✨ 新增的规则 ✨✨✨
+            // ✨✨✨ 新增的规则 ✨✨✨
             strPrompt += '[索引结束]\n\n🛑 严禁在回复中输出表格样式或[当前索引状态]！\n✅ 你只需在正文结束后，使用 <Memory> 标签包裹指令即可。';
         }
 
@@ -2710,16 +2710,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             ? `url("${UI.bookBg}")` // 如果用户自定义了图，就保持用户的
             : `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"), linear-gradient(to bottom, #2b2b2b, #1a1a1a)`;
 
-       // ✅ 🌙 Dark Mode: 动态变量定义 (深色毛玻璃版)
+        // ✅ 🌙 Dark Mode: 动态变量定义 (深色毛玻璃版)
         const isDark = UI.darkMode;
         // 窗口背景：降低透明度到 0.75，让模糊效果透出来，颜色改为深灰黑
         const bg_window = isDark ? 'rgba(25, 25, 25, 0.75)' : 'rgba(252, 252, 252, 0.85)';
         // 面板背景：不再用实色，改为半透明黑，叠加在窗口上增加层次感
-        const bg_panel  = isDark ? 'rgba(0, 0, 0, 0.25)' : '#fcfcfc';
-        const bg_header = UI.c; 
+        const bg_panel = isDark ? 'rgba(0, 0, 0, 0.25)' : '#fcfcfc';
+        const bg_header = UI.c;
         // 输入框：半透明黑，带有磨砂感
-        const bg_input  = isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.8)';
-        const color_text = UI.tc; 
+        const bg_input = isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.8)';
+        const color_text = UI.tc;
         // 边框：稍微亮一点的白色半透明，营造玻璃边缘感
         const color_border = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.15)';
         const bg_table_wrap = isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.3)';
@@ -3473,7 +3473,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
         }
     `;
-        
+
         $('#gaigai-theme').remove();
         $('<style id="gaigai-theme">').text(style).appendTo('head');
     }
@@ -3555,14 +3555,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('#big-editor').focus();
             $('#save-edit').on('click', function () {
                 const newValue = $('#big-editor').val();
-                
+
                 if (sh && sh.r[ri]) {
                     sh.r[ri][ci] = newValue;
                 }
 
-                lastManualEditTime = Date.now(); 
+                lastManualEditTime = Date.now();
                 m.save(true);
-                
+
                 updateCurrentSnapshot();
 
                 // ✅ 修复：限定范围，只更新当前表格(g-tbc data-i=ti)里面的那个格子
@@ -4056,7 +4056,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (!sh || sh.r.length === 0) return;
 
             // === 修复开始：定义夜间模式颜色 ===
-            const isDark = UI.darkMode; 
+            const isDark = UI.darkMode;
             const boxBg = isDark ? '#1e1e1e' : '#fff'; // 背景色：黑/白
             const borderCol = isDark ? 'rgba(255,255,255,0.15)' : '#ddd'; // 边框色
             const btnCancelBg = isDark ? '#333' : '#fff'; // 取消按钮背景
@@ -4094,35 +4094,35 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const $btnShow = $('<button>', { text: '👁️ 全部显示 (白色)' })
                 .attr('style', btnStyle)
                 .on('click', () => {
-                if (!summarizedRows[ti]) summarizedRows[ti] = [];
-                summarizedRows[ti] = []; // 清空该表的隐藏列表
-                finish();
-                customAlert('✅ 已将本表所有行设为显示状态', '完成');
-            });
+                    if (!summarizedRows[ti]) summarizedRows[ti] = [];
+                    summarizedRows[ti] = []; // 清空该表的隐藏列表
+                    finish();
+                    customAlert('✅ 已将本表所有行设为显示状态', '完成');
+                });
 
             // 按钮2：全部隐藏
             const $btnHide = $('<button>', { text: '🙈 全部隐藏 (绿色)' })
                 .attr('style', btnStyle)
                 .on('click', () => {
-                if (!summarizedRows[ti]) summarizedRows[ti] = [];
-                // 将所有行索引加入列表
-                summarizedRows[ti] = Array.from({ length: sh.r.length }, (_, k) => k);
-                finish();
-                customAlert('✅ 已将本表所有行设为已总结(隐藏)状态', '完成');
-            });
+                    if (!summarizedRows[ti]) summarizedRows[ti] = [];
+                    // 将所有行索引加入列表
+                    summarizedRows[ti] = Array.from({ length: sh.r.length }, (_, k) => k);
+                    finish();
+                    customAlert('✅ 已将本表所有行设为已总结(隐藏)状态', '完成');
+                });
 
             // 按钮3：仅全选 (保留原有功能)
             const $btnSelect = $('<button>', { text: '✔️ 仅全选' })
                 .attr('style', btnStyle)
                 .on('click', () => {
-                $overlay.remove();
-                // 手动触发原本的全选勾选逻辑
-                const $cb = $(`.g-select-all[data-ti="${ti}"]`);
-                const isChecked = !$cb.prop('checked'); // 切换状态
-                $cb.prop('checked', isChecked);
-                $(`.g-tbc[data-i="${ti}"] .g-row-select`).prop('checked', isChecked);
-                updateSelectedRows();
-            });
+                    $overlay.remove();
+                    // 手动触发原本的全选勾选逻辑
+                    const $cb = $(`.g-select-all[data-ti="${ti}"]`);
+                    const isChecked = !$cb.prop('checked'); // 切换状态
+                    $cb.prop('checked', isChecked);
+                    $(`.g-tbc[data-i="${ti}"] .g-row-select`).prop('checked', isChecked);
+                    updateSelectedRows();
+                });
 
             const $btnCancel = $('<button>', { text: '取消' })
                 .attr('style', `padding:8px; border:1px solid ${borderCol}; background:${btnCancelBg}; border-radius:5px; cursor:pointer; margin-top:5px; color:var(--g-tc) !important;`)
@@ -4383,13 +4383,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const ci = parseInt($(this).data('c'));
             const v = $(this).text().trim(); // 获取你现在看到的文字（哪怕是空的）
             const sh = m.get(ti);
-            
+
             // 确保这行数据存在
             if (sh && sh.r[ri]) {
                 // 🛑 【核心修改】绕过 sh.upd() 智能追加逻辑，直接暴力写入！
                 // 只有这样，你删成空白，它才会真的变成空白
-                sh.r[ri][ci] = v; 
-                
+                sh.r[ri][ci] = v;
+
                 lastManualEditTime = Date.now();
                 m.save(true); // 强制保存，无视熔断保护
                 updateTabCount(ti);
@@ -5141,7 +5141,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 // C. 保存配置和数据
-                try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch(e){}
+                try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
 
                 // 同步到云端 (保存配置变更)
                 if (typeof saveAllSettingsToCloud === 'function') {
@@ -5428,10 +5428,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     saveSummarizedRows();
                     m.save(true);
                     // 刷新总结视图
-                    const renderBookUI = window.Gaigai.renderBookUI || (function(){}); // 防止未引用
+                    const renderBookUI = window.Gaigai.renderBookUI || (function () { }); // 防止未引用
                     // 重新渲染当前页
                     if ($('.g-t.act').data('i') === ti) {
-                         refreshTable(ti); // 使用 refreshTable 刷新
+                        refreshTable(ti); // 使用 refreshTable 刷新
                     }
                     $overlay.remove();
                     if (typeof toastr !== 'undefined') toastr.success(msg);
@@ -5542,7 +5542,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 如果是“独立反代”模式，直接原样返回！
         if (provider === 'proxy_only') {
-            return url.trim(); 
+            return url.trim();
         }
 
 
@@ -5594,7 +5594,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // Data清洗：System -> User (兼容性处理)
         let rawMessages = Array.isArray(prompt) ? prompt : [{ role: 'user', content: String(prompt) }];
-        
+
         // ✨✨✨ 修复：现代模型（OpenAI/Claude/Gemini/Deepseek）都原生支持 system 角色
         // 强制转为 User 会导致 Gemini 在长上下文中触发安全拦截或空回
         const preserveSystem = provider === 'openai' || provider === 'deepseek' || provider === 'claude' || provider === 'gemini' || provider === 'siliconflow' || provider === 'proxy_only' || provider === 'compatible';
@@ -5636,9 +5636,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ========================================
         // 分流逻辑
         // ========================================
-         const useProxy = (provider === 'local' || provider === 'openai' || provider === 'claude'|| provider === 'proxy_only' || provider === 'deepseek'|| provider === 'siliconflow' || provider === 'compatible' || provider === 'gemini');
-         let useDirect = false;
-       // ==========================================
+        const useProxy = (provider === 'local' || provider === 'openai' || provider === 'claude' || provider === 'proxy_only' || provider === 'deepseek' || provider === 'siliconflow' || provider === 'compatible' || provider === 'gemini');
+        let useDirect = false;
+        // ==========================================
         // 🔴 通道 A: 后端代理 (local, openai, claude, proxy_only)
         // ==========================================
         if (useProxy) {
@@ -5654,7 +5654,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log('🔧 [Gemini] 使用 MakerSuite 协议走酒馆后端...');
                     const proxyPayload = {
                         chat_completion_source: "makersuite", // 核心：告诉酒馆这是谷歌
-                        proxy_password: apiKey, 
+                        proxy_password: apiKey,
                         model: model,
                         messages: cleanMessages,
                         temperature: temperature,
@@ -5685,7 +5685,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             if (data.content) return { success: true, summary: data.content };
                             // 通用解析兜底
                             return parseApiResponse(data);
-                        } catch (e) { 
+                        } catch (e) {
                             // 如果不是JSON，可能是纯文本，直接返回
                             if (text && text.length > 0) return { success: true, summary: text };
                         }
@@ -5693,22 +5693,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const errText = await proxyResponse.text();
                     throw new Error(`酒馆后端报错: ${errText.substring(0, 100)}`);
                 }
-            
+
                 // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路
                 // ✨ 修复：排除本地地址 (127.0.0.1/localhost)。
                 // 如果用户用 gcli 等本地转接工具，应该走下面的通用 OpenAI/Custom 协议，那里有完善的安全注入。
-                const isProxyGemini = (provider === 'proxy_only') && 
-                                      model.toLowerCase().includes('gemini') && 
-                                      !apiUrl.includes('127.0.0.1') && 
-                                      !apiUrl.includes('localhost');
+                const isProxyGemini = (provider === 'proxy_only') &&
+                    model.toLowerCase().includes('gemini') &&
+                    !apiUrl.includes('127.0.0.1') &&
+                    !apiUrl.includes('localhost');
 
                 if (isProxyGemini) {
                     // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 修复逻辑) ===
                     console.log('🔧 [智能修正] 命中网页端 Gemini 反代，使用 Makersuite 协议...');
-                    
+
                     // 1. URL 清洗：只留 Base URL
                     let cleanBaseUrl = apiUrl.replace(/\/v1(\/|$)/, '').replace(/\/chat\/completions(\/|$)/, '').replace(/\/+$/, '');
-                    
+
                     // 2. 构造 Makersuite Payload (你验证通过的满分答案)
                     const proxyPayload = {
                         chat_completion_source: "makersuite",
@@ -5756,20 +5756,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     throw new Error(`反代修复模式报错: ${errText}`);
 
                 } else {
-        
-                   // === 智能分流修复 (V1.3.9 核心修正) ===
-                    
+
+                    // === 智能分流修复 (V1.3.9 核心修正) ===
+
                     // 1. 确定模式 (Source)
                     // 抓包显示：兼容端点(compatible)、反代(proxy_only)、本地(local) 必须走 'custom' 模式
                     // 只有 OpenAI 官方/DeepSeek/SiliconFlow 等才走 'openai' 模式
-                    let targetSource = 'openai'; 
+                    let targetSource = 'openai';
                     if (provider === 'claude') targetSource = 'claude';
-                    
+
                     // ✨ 修复：把 compatible 移出 custom 组。
                     // 只有纯反代(proxy_only)和本地(local)才走 custom。
                     // compatible (兼容端点) 保持默认的 'openai' 模式，这样酒馆才会正确处理 Key。
                     if (provider === 'proxy_only' || provider === 'local') targetSource = 'custom';
-                    
+
                     // 2. URL 清洗
                     // OpenAI 模式会自动加 /chat/completions，如果用户填了要剪掉
                     // Custom 模式则原样保留，不做处理
@@ -5781,18 +5781,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 3. 构建完全复刻酒馆行为的 Payload
                     const proxyPayload = {
                         chat_completion_source: targetSource,
-                        
+
                         // 关键修复：Custom 模式依赖 custom_url，OpenAI 模式依赖 reverse_proxy
                         // 我们两个都填上，酒馆后端会各取所需，确保万无一失
-                        reverse_proxy: cleanBaseUrl, 
-                        custom_url: apiUrl, 
+                        reverse_proxy: cleanBaseUrl,
+                        custom_url: apiUrl,
 
                         // OpenAI 模式用这个传 Key
                         proxy_password: apiKey,
-                        
+
                         // Custom 模式用这个传 Key (通过 Header 注入)
                         custom_include_headers: {
-                            "Content-Type": "application/json"
+                            "Content-Type": "application/json",
+                            // 👇 在这里加上这一行（注意上一行末尾要加个逗号）
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                         },
 
                         model: model,
@@ -5809,7 +5811,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // ✨✨✨【Gemini 专享修复】即使是反代/本地，只要模型名含 gemini，强制注入安全设置 ✨✨✨
                     if (model.toLowerCase().includes('gemini')) {
                         console.log('🛡️ [后端代理] 检测到 Gemini 模型，强制注入安全豁免...');
-                        
+
                         // 1. 先定义好配置对象 (关键！不然下面赋值会报错)
                         const safetyConfig = [
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -5821,8 +5823,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         // 2. 暴力注入：把所有可能的字段名都填上
                         // 根据你的测试 A，gemini_safety_settings 是最关键的
-                        proxyPayload.gemini_safety_settings = safetyConfig; 
-                        
+                        proxyPayload.gemini_safety_settings = safetyConfig;
+
                         // 兼容其他可能的情况
                         proxyPayload.safety_settings = safetyConfig;
                         proxyPayload.safetySettings = safetyConfig;
@@ -5849,65 +5851,65 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         body: JSON.stringify(proxyPayload)
                     });
 
-                   // 1. 检查成功状态
-                if (proxyResponse.ok) {
-                    const data = await proxyResponse.json();
-                    const result = parseApiResponse(data);
-                    if (result.success) {
-                        // ✨✨✨ Fallback 保护：如果清洗后内容为空，检查原始数据
-                        if (result.summary && result.summary.trim()) {
-                            const rawSummary = result.summary;
-                            let cleaned = result.summary.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                    // 1. 检查成功状态
+                    if (proxyResponse.ok) {
+                        const data = await proxyResponse.json();
+                        const result = parseApiResponse(data);
+                        if (result.success) {
+                            // ✨✨✨ Fallback 保护：如果清洗后内容为空，检查原始数据
+                            if (result.summary && result.summary.trim()) {
+                                const rawSummary = result.summary;
+                                let cleaned = result.summary.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-                            // 针对截断情况的额外清洗（如果思考没闭合）
-                            cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+                                // 针对截断情况的额外清洗（如果思考没闭合）
+                                cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
 
-                            // 如果清洗后为空，但原始内容不为空，则保留原始内容
-                            if (!cleaned && rawSummary.trim().length > 0) {
-                                console.warn('⚠️ [后端代理清洗] 清洗后内容为空（AI仅输出了思考内容），触发回退保护，保留原文');
-                                result.summary = rawSummary;
-                            } else {
-                                result.summary = cleaned;
-                                if (rawSummary.length !== cleaned.length) {
-                                    console.log(`🧹 [后端代理清洗] 已移除 <think> 标签，清洗前: ${rawSummary.length} 字符，清洗后: ${cleaned.length} 字符`);
+                                // 如果清洗后为空，但原始内容不为空，则保留原始内容
+                                if (!cleaned && rawSummary.trim().length > 0) {
+                                    console.warn('⚠️ [后端代理清洗] 清洗后内容为空（AI仅输出了思考内容），触发回退保护，保留原文');
+                                    result.summary = rawSummary;
+                                } else {
+                                    result.summary = cleaned;
+                                    if (rawSummary.length !== cleaned.length) {
+                                        console.log(`🧹 [后端代理清洗] 已移除 <think> 标签，清洗前: ${rawSummary.length} 字符，清洗后: ${cleaned.length} 字符`);
+                                    }
                                 }
                             }
+                            console.log('✅ [后端代理] 成功');
+                            return result;
                         }
-                        console.log('✅ [后端代理] 成功');
-                        return result;
+                        throw new Error('后端返回数据无法解析');
                     }
-                    throw new Error('后端返回数据无法解析');
+
+                    // 2. 处理错误
+                    const errText = await proxyResponse.text();
+                    const s = proxyResponse.status;
+                    let statusTip = '';
+
+                    // 翻译错误码
+                    if (s === 400) statusTip = ' (请求格式错误/参数不对)';
+                    else if (s === 401) statusTip = ' (未授权/API Key无效)';
+                    else if (s === 403) statusTip = ' (禁止访问/鉴权失败)';
+                    else if (s === 404) statusTip = ' (酒馆后端路由不存在)';
+                    else if (s === 500) statusTip = ' (酒馆内部报错/Python脚本崩溃)';
+                    else if (s === 502) statusTip = ' (网关错误/上游API无响应)';
+                    else if (s === 504) statusTip = ' (后端处理超时/卡死)';
+                    else statusTip = ' (未知网络错误)';
+
+                    // 注意引号是反引号 ` `
+                    console.warn(`⚠️ [后端代理失败] ${s}${statusTip}: ${errText.substring(0, 200)}`);
+
+                    throw new Error(`酒馆后端请求失败 ${s}${statusTip}: ${errText.substring(0, 100)}`);
+
                 }
-
-                // 2. 处理错误
-                const errText = await proxyResponse.text();
-                const s = proxyResponse.status;
-                let statusTip = '';
-
-                // 翻译错误码
-                if (s === 400) statusTip = ' (请求格式错误/参数不对)';
-                else if (s === 401) statusTip = ' (未授权/API Key无效)';
-                else if (s === 403) statusTip = ' (禁止访问/鉴权失败)';
-                else if (s === 404) statusTip = ' (酒馆后端路由不存在)';
-                else if (s === 500) statusTip = ' (酒馆内部报错/Python脚本崩溃)';
-                else if (s === 502) statusTip = ' (网关错误/上游API无响应)';
-                else if (s === 504) statusTip = ' (后端处理超时/卡死)';
-                else statusTip = ' (未知网络错误)';
-
-                // 注意引号是反引号 ` `
-                console.warn(`⚠️ [后端代理失败] ${s}${statusTip}: ${errText.substring(0, 200)}`);
-
-                throw new Error(`酒馆后端请求失败 ${s}${statusTip}: ${errText.substring(0, 100)}`);
-
-                } 
 
             } catch (e) {
                 console.error(`❌ [后端代理] 失败: ${e.message}`);
-                
+
                 // 自动降级逻辑
                 if (provider === 'compatible' || provider === 'openai' || provider === 'gemini') {
                     console.warn('⚠️ [自动降级] 后端代理失败，正在尝试浏览器直连...');
-                    useDirect = true; 
+                    useDirect = true;
                 } else {
                     return {
                         success: false,
@@ -5915,7 +5917,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     };
                 }
             }
-        } 
+        }
 
         // ==========================================
         // 通道 B: 浏览器直连 (compatible, deepseek, gemini)
@@ -5979,7 +5981,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ];
                     }
 
@@ -6195,7 +6198,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         if (fullText) {
                             const rawText = fullText; // 备份一份原始数据
                             let cleaned = fullText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-                            
+
                             // 针对截断情况的额外清洗（如果思考没闭合）
                             cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
 
@@ -6203,10 +6206,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // 这样虽然格式不对，但至少不会报“空内容”错误，用户能看到思考过程
                             if (!cleaned && rawText.trim().length > 0) {
                                 console.warn('⚠️ [流式清洗] 清洗后内容为空（AI仅输出了思考内容），触发回退保护，保留原文');
-                                fullText = rawText; 
+                                fullText = rawText;
                             } else {
                                 fullText = cleaned;
-                                
+
                                 const beforeClean = rawText.length;
                                 const afterClean = fullText.length;
                                 if (beforeClean !== afterClean) {
@@ -6400,7 +6403,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ];
                     }
 
@@ -6507,7 +6511,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         setTimeout(() => {
             // ✅ 🌙 夜间模式切换事件 (带记忆功能)
-            $('#gg_ui_dark_mode').off('change').on('change', function() {
+            $('#gg_ui_dark_mode').off('change').on('change', function () {
                 const isChecked = $(this).is(':checked'); // 目标状态
 
                 // 1. 切换前：先保存【当前模式】的颜色到记忆库
@@ -6554,7 +6558,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 thm();
 
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                    window.Gaigai.saveAllSettingsToCloud().catch(err => {});
+                    window.Gaigai.saveAllSettingsToCloud().catch(err => { });
                 }
             });
 
@@ -6578,7 +6582,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             // 1. 本地文件上传 (转 Base64)
-            $('#gg_bg_file').on('change', function(e) {
+            $('#gg_bg_file').on('change', function (e) {
                 const file = e.target.files[0];
                 if (!file) return;
 
@@ -6588,7 +6592,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 const reader = new FileReader();
-                reader.onload = function(evt) {
+                reader.onload = function (evt) {
                     const base64 = evt.target.result;
                     $('#gg_bg_preview').css('background-image', `url("${base64}")`).text('');
                     UI.bookBg = base64; // 暂存到内存对象
@@ -6597,7 +6601,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // 2. URL 输入
-            $('#gg_bg_url').on('input', function() {
+            $('#gg_bg_url').on('input', function () {
                 const url = $(this).val();
                 if (url) {
                     $('#gg_bg_preview').css('background-image', `url("${url}")`).text('');
@@ -6606,7 +6610,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // 3. 清除按钮
-            $('#gg_btn_clear_bg').on('click', function() {
+            $('#gg_btn_clear_bg').on('click', function () {
                 UI.bookBg = '';
                 $('#gg_bg_preview').css('background-image', '').text('已清除，使用默认');
                 $('#gg_bg_url').val('');
@@ -6767,7 +6771,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         setTimeout(() => {
 
             // === 新增：小眼睛切换功能 ===
-            $('#gg_toggle_key_btn').off('click').on('click', function() {
+            $('#gg_toggle_key_btn').off('click').on('click', function () {
                 const $input = $('#gg_api_key');
                 const $icon = $(this);
                 if ($input.attr('type') === 'password') {
@@ -6846,7 +6850,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // ========================================
                 let apiUrl = ($('#gg_api_url').val() || '').trim().replace(/\/+$/, '');
                 let apiKey = ($('#gg_api_key').val() || '').trim();
-                
+
                 // ✅ 核心修复：提前构造鉴权头 (Bearer sk-...)
                 // 这一点是之前漏掉的，导致部分中转站不认账
                 let authHeader = undefined;
@@ -6858,7 +6862,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 // 🔧 IP 修正
                 if (apiUrl.includes('0.0.0.0')) apiUrl = apiUrl.replace(/0\.0\.0\.0/g, '127.0.0.1');
-                
+
                 // 🔧 URL 智能补全
                 if (typeof processApiUrl === 'function') {
                     apiUrl = processApiUrl(apiUrl, provider);
@@ -6874,7 +6878,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // ========================================
                 // 🔴 强制代理组
                 const forceProxy = (provider === 'local' || provider === 'openai' || provider === 'claude' || provider === 'proxy_only' || provider === 'deepseek' || provider === 'siliconflow');
-                
+
                 // 🟢 优先直连组 (兼容端点放这里，实现双保险)
                 const tryDirect = (provider === 'compatible' || provider === 'gemini');
 
@@ -6884,7 +6888,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const runProxyRequest = async () => {
                     console.log('📡 [后端代理] 正在通过酒馆后端转发请求...');
                     const csrfToken = await getCsrfToken();
-                    
+
                     // 1. 先判断目标源
                     let targetSource = 'custom';
                     // 只有官方 OpenAI/DeepSeek/SiliconFlow 才走 openai 模式 (酒馆自动处理鉴权)
@@ -6894,7 +6898,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 2. 构造 Headers
                     const customHeaders = {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        // 👇 只需要在这里插入这一行，变量名 customHeaders 千万不要改！
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     };
 
                     // 3. 【关键修改】鉴权逻辑分离
@@ -6908,12 +6914,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         chat_completion_source: targetSource,
                         custom_url: apiUrl,       // custom 模式下生效
                         reverse_proxy: apiUrl,    // openai 模式下生效
-                        
+
                         // openai 模式：酒馆读取这个字段
-                        proxy_password: apiKey, 
-                        
+                        proxy_password: apiKey,
+
                         // custom 模式：酒馆读取这个字段里面的 Authorization
-                        custom_include_headers: customHeaders 
+                        custom_include_headers: customHeaders
                     };
 
                     const response = await fetch('/api/backends/chat-completions/status', {
@@ -6926,20 +6932,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const rawData = await response.json();
                         // 尝试解析
                         try { models = parseOpenAIModelsResponse(rawData); } catch (e) { }
-                        
+
                         // 兜底解析
                         if (models.length === 0) {
                             if (rawData?.data && Array.isArray(rawData.data)) models = rawData.data;
                             else if (rawData?.models && Array.isArray(rawData.models)) models = rawData.models;
                             else if (Array.isArray(rawData)) models = rawData;
                         }
-                        
+
                         models = models.map(m => ({ id: m.id || m.model || m.name, name: m.name || m.id || m.model }));
 
                         if (models.length > 0) {
                             console.log(`✅ [后端代理] 成功获取 ${models.length} 个模型`);
                             finish(models);
-                            return true; 
+                            return true;
                         }
                     }
                     throw new Error(`后端代理请求失败: ${response.status}`);
@@ -6986,7 +6992,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
 
                     const resp = await fetch(directUrl, { method: 'GET', headers: headers });
-                    
+
                     // 如果直连也失败，抛出错误进入 catch
                     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
 
@@ -7009,9 +7015,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 } catch (directErr) {
                     // === 最终判决：两个通道都挂了 ===
                     console.error('❌ 拉取失败 (双通道均失败):', directErr);
-                    
+
                     let errorBody = `无法获取模型列表。`;
-                    
+
                     // 只有在后端代理尝试过且失败时，才显示详细对比
                     if (proxyErrorMsg) {
                         errorBody += `\n\n1. 后端代理: ${proxyErrorMsg}`;
@@ -7033,7 +7039,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     } else {
                         alert(errorBody);
                     }
-                    
+
                     btn.text(originalText).prop('disabled', false);
                 }
 
@@ -7225,7 +7231,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         try {
             const ts = localStorage.getItem('gg_timestamp');
             if (ts) localTimestamp = parseInt(ts);
-        } catch (e) {}
+        } catch (e) { }
 
         // 3. 强制从服务器获取 (加时间戳破除缓存)
         try {
@@ -7978,13 +7984,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 btn.text('正在扫描全盘...');
 
                 // === 🌙 变量定义区 ===
-                const isDark = UI.darkMode; 
+                const isDark = UI.darkMode;
                 const bgColor = isDark ? '#1e1e1e' : '#fff';
                 const txtColor = isDark ? '#e0e0e0' : UI.tc;
                 const borderColor = isDark ? '1px solid rgba(255,255,255,0.15)' : 'none';
                 const rowBorder = isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #eee';
                 const shadow = isDark ? '0 10px 40px rgba(0,0,0,0.6)' : '0 5px 20px rgba(0,0,0,0.3)';
-                
+
                 // ✨ 修复关键：定义按钮默认颜色
                 // 如果是夜间模式，按钮文字用浅灰色(#e0e0e0)；如果是白天，用主题色(UI.c)
                 const btnDefColor = isDark ? '#e0e0e0' : UI.c;
@@ -8013,22 +8019,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     return;
                 }
 
-                const $overlay = $('<div>', { css: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.6)', zIndex:20000002, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }});
-                
+                const $overlay = $('<div>', { css: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 20000002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' } });
+
                 const $box = $('<div>', {
                     css: {
                         background: bgColor,
                         color: txtColor,
                         border: borderColor,
-                        width:'500px',
-                        maxWidth:'92vw',
-                        maxHeight:'85vh',
-                        margin:'auto',
-                        padding:'15px',
-                        borderRadius:'12px',
-                        display:'flex',
-                        flexDirection:'column',
-                        overflow:'hidden',
+                        width: '500px',
+                        maxWidth: '92vw',
+                        maxHeight: '85vh',
+                        margin: 'auto',
+                        padding: '15px',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
                         boxShadow: shadow
                     }
                 }).html(`
@@ -8041,11 +8047,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 <tr><th style="padding:10px;">时间</th><th style="width:60px;">数据量</th><th style="width:60px;">操作</th></tr>
                             </thead>
                             <tbody>${backups.map(b => {
-                                const countStyle = b.count > 0 ? 'color:#28a745; font-weight:bold;' : (isDark ? 'color:#777;' : 'color:#999;');
-                                const subTextStyle = isDark ? 'color:#888;' : 'color:#999;';
-                                
-                                // ✨ 修改：按钮 style 中的 color 使用 btnDefColor 变量
-                                return `<tr style="border-bottom:${rowBorder}; transition:background 0.2s;">
+                    const countStyle = b.count > 0 ? 'color:#28a745; font-weight:bold;' : (isDark ? 'color:#777;' : 'color:#999;');
+                    const subTextStyle = isDark ? 'color:#888;' : 'color:#999;';
+
+                    // ✨ 修改：按钮 style 中的 color 使用 btnDefColor 变量
+                    return `<tr style="border-bottom:${rowBorder}; transition:background 0.2s;">
                                     <td style="padding:10px;">
                                         <div style="font-weight:600; margin-bottom:2px;">${b.dateStr}</div>
                                         <div style="font-size:10px; ${subTextStyle} white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${b.id}</div>
@@ -8055,7 +8061,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         <button class="restore-item-btn" data-key="${b.key}" style="padding:4px 10px; cursor:pointer; white-space:nowrap; background:transparent; border:1px solid ${btnBorderColor}; color:${btnDefColor}; border-radius:4px;">恢复</button>
                                     </td>
                                 </tr>`;
-                            }).join('')}</tbody>
+                }).join('')}</tbody>
                         </table>
                     </div>
                     <div style="text-align:right; flex-shrink:0;">
@@ -8067,45 +8073,45 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 $('body').append($overlay);
 
                 $box.find('tr').hover(
-                    function() { $(this).css('background', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'); },
-                    function() { $(this).css('background', 'transparent'); }
+                    function () { $(this).css('background', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'); },
+                    function () { $(this).css('background', 'transparent'); }
                 );
 
                 // ✨ 修复：鼠标移出时，恢复的颜色必须是 btnDefColor，而不是 UI.c
                 $box.find('.restore-item-btn').hover(
-                    function() { 
+                    function () {
                         // 鼠标悬停：背景变主题色，字变白
-                        $(this).css({background: UI.c, color: '#fff', border: `1px solid ${UI.c}`}); 
+                        $(this).css({ background: UI.c, color: '#fff', border: `1px solid ${UI.c}` });
                     },
-                    function() { 
+                    function () {
                         // 鼠标移出：背景变透明，字变回默认色(夜间为白，白天为主题色)
-                        $(this).css({background: 'transparent', color: btnDefColor, border: `1px solid ${btnBorderColor}`}); 
+                        $(this).css({ background: 'transparent', color: btnDefColor, border: `1px solid ${btnBorderColor}` });
                     }
-                ).on('click', async function() {
+                ).on('click', async function () {
                     const key = $(this).data('key');
                     const target = backups.find(b => b.key === key);
-                    if(await customConfirm(`确定回退到 ${target.dateStr} (包含 ${target.count} 行数据) 吗？\n\n⚠️ 当前未保存的内容将会丢失！`, '回档确认')) {
+                    if (await customConfirm(`确定回退到 ${target.dateStr} (包含 ${target.count} 行数据) 吗？\n\n⚠️ 当前未保存的内容将会丢失！`, '回档确认')) {
                         m.s.forEach((sheet, i) => {
                             if (target.data.d[i]) sheet.from(target.data.d[i]);
                             else sheet.clear();
                         });
                         if (target.data.summarized) summarizedRows = target.data.summarized;
                         m.save(true);
-                        shw(); 
+                        shw();
                         $overlay.remove();
                         if (typeof toastr !== 'undefined') toastr.success('✅ 数据已恢复！');
                     }
                 });
 
                 $('#close-rescue').on('click', () => $overlay.remove());
-                
+
                 $overlay.on('click', (e) => {
-                    if(e.target === $overlay[0]) $overlay.remove();
+                    if (e.target === $overlay[0]) $overlay.remove();
                 });
 
                 btn.text(originalText);
             });
-            
+
             // 互斥开关控制
             // ✅✅✅ [关键修复] 从UI同步所有配置到C对象（防止切换开关时丢失未保存的修改）
             function syncUIToConfig() {
@@ -8280,7 +8286,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('#gg_open_pmt').on('click', () => navTo('提示词管理', window.Gaigai.PromptManager.showPromptManager));
 
             // ✨✨✨ 强制覆盖世界书 (V8 终极版：模拟前端导入) ✨✨✨
-            $('#gg_btn_force_sync_wi').off('click').on('click', async function() {
+            $('#gg_btn_force_sync_wi').off('click').on('click', async function () {
                 // 0. 检查世界书同步是否开启
                 if (!C.syncWorldInfo) {
                     await customAlert('⚠️ 世界书同步已关闭\n\n请先在配置中开启【同步到世界书】选项。', '功能未启用');
@@ -8345,7 +8351,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 5. 获取CSRF令牌
                     let csrfToken = '';
-                    try { csrfToken = await getCsrfToken(); } catch (e) {}
+                    try { csrfToken = await getCsrfToken(); } catch (e) { }
 
                     // 6. 关键步骤：智能同步 (自动判断创建/更新，防止幽灵条目)
                     console.log('⚡ [强制覆盖] 准备智能同步，条目数:', Object.keys(importEntries).length);
@@ -8448,10 +8454,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 try {
 
                     // 🛑 [防串味] 执行前再次检查ID，不对立刻停止
-                if (m.gid() !== currentSessionId) {
-                    console.warn('🛑 [安全拦截] 会话已变更，终止写入！');
-                    return;
-                }
+                    if (m.gid() !== currentSessionId) {
+                        console.warn('🛑 [安全拦截] 会话已变更，终止写入！');
+                        return;
+                    }
 
                     // ✨✨✨ [防冲突] 检查是否正在执行总结，避免快照冲突
                     if (window.isSummarizing) {
@@ -8859,7 +8865,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log('🛑 [ochat] 自动绑定已跳过 (用户已禁用)');
                     return;
                 }
-            } catch(e) {
+            } catch (e) {
                 console.warn('⚠️ [ochat] 无法读取配置，使用内存配置');
             }
 
@@ -9141,7 +9147,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             id: 'gaigai-top-btn',
             // 关键：使用 drawer-icon 类名，这样大小、颜色、鼠标悬停效果就和旁边的“A”图标一模一样了
             // ✨✨✨ 修复：添加 closedIcon 类，让它在未激活时保持半透明(变暗)，和其他图标一致
-            class: 'drawer-icon fa-solid fa-table fa-fw interactable closedIcon', 
+            class: 'drawer-icon fa-solid fa-table fa-fw interactable closedIcon',
             title: '记忆表格',
             tabindex: '0'
         }).on('click', function (e) {
@@ -9286,8 +9292,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         return '';
     }
 
-const EXTENSION_PATH = getExtensionPath();
-console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
+    const EXTENSION_PATH = getExtensionPath();
+    console.log('📍 [Gaigai] 动态定位插件路径:', EXTENSION_PATH);
 
     function loadDependencies() {
         // 确保全局对象存在
