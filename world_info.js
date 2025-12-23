@@ -112,12 +112,13 @@
         }
 
         /**
-         * 🌐 同步总结到世界书 (V6.0 智能防幽灵版)
+         * 🌐 同步总结到世界书 (V7.0 追加/覆盖双模式版)
          * 特点：防抖(5s) -> 强制等待(3s) -> 智能检测是否已存在 -> 选择同步策略
          * @param {string} content - 总结内容（可选，不传则自动读取表格）
+         * @param {boolean} isForce - 是否强制覆盖模式（默认 false 为追加模式）
          * @returns {Promise<void>}
          */
-        async syncToWorldInfo(content) {
+        async syncToWorldInfo(content = null, isForce = false) {
             const m = window.Gaigai.m;
             const C = window.Gaigai.config_obj;
 
@@ -142,149 +143,19 @@
                     console.log('⏳ [IO缓冲] 等待 5秒，确保数据完整并释放锁...');
                     await new Promise(r => setTimeout(r, 5000));
 
-                    // 🔄 步骤 B: 等待结束后，再获取表格数据！(关键修改)
-                    // 这样能确保我们读到的是等待结束后的最新、最全的数据
-                    const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
-                    if (!summarySheet || summarySheet.r.length === 0) {
-                        console.log('⚠️ [世界书同步] 表格为空，跳过');
-                        return;
-                    }
-
-                    console.log(`⚡ [世界书同步] 开始打包 ${summarySheet.r.length} 条数据...`);
-
-                    // --- 准备数据 ---
-                    const uniqueId = m.gid() || "Unknown_Chat";
-                    const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                    const worldBookName = "Memory_Context_" + safeName;
-                    const importEntries = {};
-                    let maxUid = -1;
-
-                    // 构建全量数据
-                    summarySheet.r.forEach((row, index) => {
-                        const uid = index;
-                        maxUid = uid;
-                        const title = row[0] || '无标题';
-                        const rowContent = row[1] || '';
-                        const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
-
-                        importEntries[uid] = {
-                            uid: uid,
-                            key: ["总结", "summary", "前情提要", "memory", "记忆"],
-                            keysecondary: [],
-                            comment: `[绑定对话: ${safeName}] 自动同步于 ${new Date().toLocaleString()}`,
-                            content: `【${title}${note}】\n${rowContent}`,
-                            constant: true,
-                            vectorized: false,
-                            enabled: true,
-                            position: 1,
-                            order: 100,
-                            extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
-                        };
-                    });
-
-                    // 🔥 关键修复：上传文件只需要 entries，不需要 name 包装（根据V10测试结果）
-                    const finalJson = { entries: importEntries };
-
-                    // 获取 CSRF
-                    let csrfToken = '';
-                    try {
-                        csrfToken = await window.Gaigai.getCsrfToken();
-                    } catch (e) {
-                        console.warn('⚠️ [世界书同步] 获取CSRF Token失败:', e);
-                    }
-
-                    // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
-                    console.log('🔍 [世界书同步] 扫描并清理旧文件...');
-                    try {
-                        // 4.1 获取服务器上所有的世界书列表
-                        const getRes = await fetch('/api/worldinfo/get', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                            body: JSON.stringify({})
-                        });
-
-                        if (getRes.ok) {
-                            const allWorldBooks = await getRes.json();
-
-                            // 4.2 严格筛选：只删除当前会话的旧版本文件
-                            const filesToDelete = [];
-
-                            if (Array.isArray(allWorldBooks)) {
-                                allWorldBooks.forEach(fileName => {
-                                    if (typeof fileName === 'string' &&
-                                        fileName.startsWith('Memory_Context_') &&  // 必须是记忆书
-                                        fileName.includes(safeName) &&              // 必须包含当前会话ID
-                                        fileName !== worldBookName) {               // 不能是即将上传的新文件
-                                        filesToDelete.push(fileName);
-                                    }
-                                });
-                            }
-
-                            console.log(`📋 [世界书同步] 找到 ${filesToDelete.length} 个旧文件需要清理:`, filesToDelete);
-
-                            // 4.3 使用 Promise.all 并发删除所有旧文件，等待全部完成
-                            if (filesToDelete.length > 0) {
-                                const deletePromises = filesToDelete.map(async (oldBookName) => {
-                                    try {
-                                        const delRes = await fetch('/api/worldinfo/delete', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                                            body: JSON.stringify({ name: oldBookName })
-                                        });
-
-                                        if (delRes.ok) {
-                                            console.log(`✅ [世界书同步] 已删除旧文件: ${oldBookName}`);
-                                            return { success: true, name: oldBookName };
-                                        } else {
-                                            console.warn(`⚠️ [世界书同步] 删除 ${oldBookName} 失败 (${delRes.status})`);
-                                            return { success: false, name: oldBookName, status: delRes.status };
-                                        }
-                                    } catch (delErr) {
-                                        console.warn(`⚠️ [世界书同步] 删除 ${oldBookName} 异常:`, delErr);
-                                        return { success: false, name: oldBookName, error: delErr.message };
-                                    }
-                                });
-
-                                // 等待所有删除操作完成
-                                const deleteResults = await Promise.all(deletePromises);
-                                const successCount = deleteResults.filter(r => r.success).length;
-                                console.log(`🧹 [世界书同步] 清理完成: ${successCount}/${filesToDelete.length} 个文件已删除`);
-                            } else {
-                                console.log('✨ [世界书同步] 没有旧文件需要清理');
-                            }
-                        } else {
-                            console.warn(`⚠️ [世界书同步] 获取世界书列表失败 (${getRes.status})，跳过清理`);
-                        }
-                    } catch (e) {
-                        console.warn('⚠️ [世界书同步] 扫描清理过程异常，继续上传:', e);
-                    }
-
-                    // 🛑 核心修复：给文件系统喘息时间，防止 500 错误导致的连带写入失败
-                    console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
-                    await new Promise(r => setTimeout(r, 1500));
-
-                    // --- 5. 智能同步 (自动判断创建/更新，防止幽灵条目) ---
-                    console.log('⚡ [世界书同步] 准备智能同步，条目数:', Object.keys(importEntries).length);
-                    const syncResult = await this.smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
-
-                    // 更新缓存
-                    this.globalWorldInfoEntriesCache = importEntries;
-                    this.globalLastWorldInfoUid = maxUid;
-
-                    // 🛑 步骤 C: 等待 ST 处理 (只有首次创建需要等待UI刷新)
-                    if (syncResult.mode === 'create') {
-                        console.log('⏳ [世界书同步] 首次创建，等待 SillyTavern 处理导入 (2s)...');
-                        await new Promise(r => setTimeout(r, 2000));
-                    } else if (syncResult.mode === 'update') {
-                        console.log('✅ [世界书同步] 热更新完成，无需等待UI刷新');
-                    }
-
-                    // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
-                    if (C.autoBindWI) {
-                        console.log('🔗 [世界书同步] 准备自动绑定到角色卡...');
-                        await this.autoBindWorldInfo(worldBookName);
+                    // ==================== 🔀 模式分支 ====================
+                    if (isForce) {
+                        // 📋 强制覆盖模式：读取整个总结表，完全覆盖世界书
+                        console.log('🔥 [世界书同步] 模式：强制覆盖（镜像全表）');
+                        await this._syncFullTable(m, C);
+                    } else if (content && content.trim()) {
+                        // ➕ 追加模式：仅追加单条内容，不影响现有条目
+                        console.log('➕ [世界书同步] 模式：追加新内容');
+                        await this._syncAppendContent(content, m, C);
                     } else {
-                        console.log('⏭️ [世界书同步] 自动绑定已禁用，跳过绑定');
+                        // 🔄 默认行为：如果没有 content 且未强制覆盖，读取表格同步
+                        console.log('🔄 [世界书同步] 模式：默认（读取表格镜像）');
+                        await this._syncFullTable(m, C);
                     }
 
                 } catch (error) {
@@ -293,6 +164,275 @@
             }, 5000); // 5秒防抖
 
             return Promise.resolve();
+        }
+
+        /**
+         * 🔥 私有方法：强制覆盖模式（读取整个总结表，覆盖世界书）
+         * @private
+         */
+        async _syncFullTable(m, C) {
+            try {
+                // 🔄 步骤 B: 等待结束后，再获取表格数据！(关键修改)
+                // 这样能确保我们读到的是等待结束后的最新、最全的数据
+                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
+                if (!summarySheet || summarySheet.r.length === 0) {
+                    console.log('⚠️ [世界书同步] 表格为空，跳过');
+                    return;
+                }
+
+                console.log(`⚡ [世界书同步-覆盖] 开始打包 ${summarySheet.r.length} 条数据...`);
+
+                // --- 准备数据 ---
+                const uniqueId = m.gid() || "Unknown_Chat";
+                const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
+                const worldBookName = "Memory_Context_" + safeName;
+                const importEntries = {};
+                let maxUid = -1;
+
+                // 构建全量数据
+                summarySheet.r.forEach((row, index) => {
+                    const uid = index;
+                    maxUid = uid;
+                    const title = row[0] || '无标题';
+                    const rowContent = row[1] || '';
+                    const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
+
+                    importEntries[uid] = {
+                        uid: uid,
+                        key: ["总结", "summary", "前情提要", "memory", "记忆"],
+                        keysecondary: [],
+                        comment: `[绑定对话: ${safeName}] 自动同步于 ${new Date().toLocaleString()}`,
+                        content: `【${title}${note}】\n${rowContent}`,
+                        constant: true,
+                        vectorized: false,
+                        enabled: true,
+                        position: 1,
+                        order: 100,
+                        extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
+                    };
+                });
+
+                // 🔥 关键修复：上传文件只需要 entries，不需要 name 包装（根据V10测试结果）
+                const finalJson = { entries: importEntries };
+
+                // 获取 CSRF
+                let csrfToken = '';
+                try {
+                    csrfToken = await window.Gaigai.getCsrfToken();
+                } catch (e) {
+                    console.warn('⚠️ [世界书同步-覆盖] 获取CSRF Token失败:', e);
+                }
+
+                // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
+                console.log('🔍 [世界书同步-覆盖] 扫描并清理旧文件...');
+                try {
+                    // 4.1 获取服务器上所有的世界书列表
+                    const getRes = await fetch('/api/worldinfo/get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        body: JSON.stringify({})
+                    });
+
+                    if (getRes.ok) {
+                        const allWorldBooks = await getRes.json();
+
+                        // 4.2 严格筛选：只删除当前会话的旧版本文件
+                        const filesToDelete = [];
+
+                        if (Array.isArray(allWorldBooks)) {
+                            allWorldBooks.forEach(fileName => {
+                                if (typeof fileName === 'string' &&
+                                    fileName.startsWith('Memory_Context_') &&  // 必须是记忆书
+                                    fileName.includes(safeName) &&              // 必须包含当前会话ID
+                                    fileName !== worldBookName) {               // 不能是即将上传的新文件
+                                    filesToDelete.push(fileName);
+                                }
+                            });
+                        }
+
+                        console.log(`📋 [世界书同步-覆盖] 找到 ${filesToDelete.length} 个旧文件需要清理:`, filesToDelete);
+
+                        // 4.3 使用 Promise.all 并发删除所有旧文件，等待全部完成
+                        if (filesToDelete.length > 0) {
+                            const deletePromises = filesToDelete.map(async (oldBookName) => {
+                                try {
+                                    const delRes = await fetch('/api/worldinfo/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                                        body: JSON.stringify({ name: oldBookName })
+                                    });
+
+                                    if (delRes.ok) {
+                                        console.log(`✅ [世界书同步-覆盖] 已删除旧文件: ${oldBookName}`);
+                                        return { success: true, name: oldBookName };
+                                    } else {
+                                        console.warn(`⚠️ [世界书同步-覆盖] 删除 ${oldBookName} 失败 (${delRes.status})`);
+                                        return { success: false, name: oldBookName, status: delRes.status };
+                                    }
+                                } catch (delErr) {
+                                    console.warn(`⚠️ [世界书同步-覆盖] 删除 ${oldBookName} 异常:`, delErr);
+                                    return { success: false, name: oldBookName, error: delErr.message };
+                                }
+                            });
+
+                            // 等待所有删除操作完成
+                            const deleteResults = await Promise.all(deletePromises);
+                            const successCount = deleteResults.filter(r => r.success).length;
+                            console.log(`🧹 [世界书同步-覆盖] 清理完成: ${successCount}/${filesToDelete.length} 个文件已删除`);
+                        } else {
+                            console.log('✨ [世界书同步-覆盖] 没有旧文件需要清理');
+                        }
+                    } else {
+                        console.warn(`⚠️ [世界书同步-覆盖] 获取世界书列表失败 (${getRes.status})，跳过清理`);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [世界书同步-覆盖] 扫描清理过程异常，继续上传:', e);
+                }
+
+                // 🛑 核心修复：给文件系统喘息时间，防止 500 错误导致的连带写入失败
+                console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
+                await new Promise(r => setTimeout(r, 1500));
+
+                // --- 5. 智能同步 (自动判断创建/更新，防止幽灵条目) ---
+                console.log('⚡ [世界书同步-覆盖] 准备智能同步，条目数:', Object.keys(importEntries).length);
+                const syncResult = await this.smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
+
+                // 更新缓存
+                this.globalWorldInfoEntriesCache = importEntries;
+                this.globalLastWorldInfoUid = maxUid;
+
+                // 🛑 步骤 C: 等待 ST 处理 (只有首次创建需要等待UI刷新)
+                if (syncResult.mode === 'create') {
+                    console.log('⏳ [世界书同步-覆盖] 首次创建，等待 SillyTavern 处理导入 (2s)...');
+                    await new Promise(r => setTimeout(r, 2000));
+                } else if (syncResult.mode === 'update') {
+                    console.log('✅ [世界书同步-覆盖] 热更新完成，无需等待UI刷新');
+                }
+
+                // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
+                if (C.autoBindWI) {
+                    console.log('🔗 [世界书同步-覆盖] 准备自动绑定到角色卡...');
+                    await this.autoBindWorldInfo(worldBookName);
+                } else {
+                    console.log('⏭️ [世界书同步-覆盖] 自动绑定已禁用，跳过绑定');
+                }
+
+            } catch (error) {
+                console.error('❌ [世界书同步-覆盖] 异常:', error);
+            }
+        }
+
+        /**
+         * ➕ 私有方法：追加模式（仅追加新内容，不影响现有条目）
+         * @private
+         * @param {string} content - 要追加的总结内容
+         * @param {Object} m - Memory 对象
+         * @param {Object} C - 配置对象
+         */
+        async _syncAppendContent(content, m, C) {
+            try {
+                // --- 准备基础数据 ---
+                const uniqueId = m.gid() || "Unknown_Chat";
+                const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
+                const worldBookName = "Memory_Context_" + safeName;
+
+                // 获取 CSRF
+                let csrfToken = '';
+                try {
+                    csrfToken = await window.Gaigai.getCsrfToken();
+                } catch (e) {
+                    console.warn('⚠️ [世界书同步-追加] 获取CSRF Token失败:', e);
+                }
+
+                // --- 1. 获取现有世界书数据 ---
+                console.log(`🔍 [世界书同步-追加] 尝试读取现有世界书: ${worldBookName}`);
+                let existingEntries = {};
+                let maxExistingUid = -1;
+
+                try {
+                    const getRes = await fetch('/api/worldinfo/get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        body: JSON.stringify({ name: worldBookName })
+                    });
+
+                    if (getRes.ok) {
+                        const bookData = await getRes.json();
+
+                        // 解析现有条目
+                        if (bookData && bookData.entries && typeof bookData.entries === 'object') {
+                            existingEntries = bookData.entries;
+
+                            // 计算现有最大 UID
+                            Object.keys(existingEntries).forEach(key => {
+                                const uid = parseInt(key);
+                                if (!isNaN(uid) && uid > maxExistingUid) {
+                                    maxExistingUid = uid;
+                                }
+                            });
+
+                            console.log(`✅ [世界书同步-追加] 找到现有条目 ${Object.keys(existingEntries).length} 条，最大UID: ${maxExistingUid}`);
+                        } else {
+                            console.log('📝 [世界书同步-追加] 世界书存在但无条目，将创建第一条');
+                        }
+                    } else if (getRes.status === 404) {
+                        console.log('📝 [世界书同步-追加] 世界书不存在，将创建新书');
+                    } else {
+                        console.warn(`⚠️ [世界书同步-追加] 获取世界书失败 (${getRes.status})，将创建新书`);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [世界书同步-追加] 读取现有数据异常，将创建新书:', e);
+                }
+
+                // --- 2. 构建新条目 ---
+                const newUid = maxExistingUid + 1;
+                const newEntry = {
+                    uid: newUid,
+                    key: ["总结", "summary", "前情提要", "memory", "记忆"],
+                    keysecondary: [],
+                    comment: `[绑定对话: ${safeName}] 追加于 ${new Date().toLocaleString()}`,
+                    content: content,
+                    constant: true,
+                    vectorized: false,
+                    enabled: true,
+                    position: 1,
+                    order: 100,
+                    extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
+                };
+
+                // --- 3. 合并条目 ---
+                const mergedEntries = { ...existingEntries, [newUid]: newEntry };
+                console.log(`➕ [世界书同步-追加] 新增条目 UID ${newUid}，总条目数: ${Object.keys(mergedEntries).length}`);
+
+                // --- 4. 同步到服务器（始终使用智能同步，避免 UI 重复刷新）---
+                console.log('⚡ [世界书同步-追加] 准备同步到服务器...');
+                const syncResult = await this.smartSyncWorldInfo(worldBookName, mergedEntries, csrfToken);
+
+                // 更新缓存
+                this.globalWorldInfoEntriesCache = mergedEntries;
+                this.globalLastWorldInfoUid = newUid;
+
+                // 🛑 等待 ST 处理 (只有首次创建需要等待UI刷新)
+                if (syncResult.mode === 'create') {
+                    console.log('⏳ [世界书同步-追加] 首次创建，等待 SillyTavern 处理导入 (2s)...');
+                    await new Promise(r => setTimeout(r, 2000));
+                } else if (syncResult.mode === 'update') {
+                    console.log('✅ [世界书同步-追加] 热更新完成，无需等待UI刷新');
+                }
+
+                // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
+                if (C.autoBindWI) {
+                    console.log('🔗 [世界书同步-追加] 准备自动绑定到角色卡...');
+                    await this.autoBindWorldInfo(worldBookName);
+                } else {
+                    console.log('⏭️ [世界书同步-追加] 自动绑定已禁用，跳过绑定');
+                }
+
+                console.log('✅ [世界书同步-追加] 追加操作完成');
+
+            } catch (error) {
+                console.error('❌ [世界书同步-追加] 异常:', error);
+            }
         }
 
         /**
@@ -346,15 +486,9 @@
                 if (baseBookName) {
                     targetBookName = baseBookName;
                 } else {
-                    // 计算当前会话的唯一标识
-                    let uniqueId = null;
-                    if (ctx.chatMetadata && ctx.chatMetadata.file_name) {
-                        uniqueId = ctx.chatMetadata.file_name;
-                    } else if (typeof window.selected_chat === 'string') {
-                        uniqueId = window.selected_chat.replace(/\.jsonl?$/i, "");
-                    } else {
-                        uniqueId = ctx.chatId;
-                    }
+                    // ✅ 修复1：使用统一的 m.gid() 确保 ID 一致性
+                    const m = window.Gaigai.m;
+                    const uniqueId = m ? m.gid() : null;
 
                     if (uniqueId) {
                         // 尝试匹配：优先匹配包含 ID 且存在于 allBookNames 里的书
@@ -454,9 +588,11 @@
                     });
 
                     // 删除重复项和过期的记忆书（统一处理）
+                    // ✅ 修复2：删除前清除 selected 属性，防止 Select2 幽灵缓存
                     duplicates.forEach($opt => {
                         console.log(`🧹 [自动绑定] 移除选项: ${$opt.val()}`);
-                        $opt.remove();
+                        $opt.removeAttr('selected');  // 先清除选中状态
+                        $opt.remove();                 // 再物理删除节点
                     });
 
                     // 如果目标书不在下拉框里（新创建的书），临时添加一个 Option
