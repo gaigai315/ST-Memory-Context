@@ -5809,18 +5809,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // ✨✨✨【Gemini 专享修复】即使是反代/本地，只要模型名含 gemini，强制注入安全设置 ✨✨✨
                     if (model.toLowerCase().includes('gemini')) {
                         console.log('🛡️ [后端代理] 检测到 Gemini 模型，强制注入安全豁免...');
-                        // 注入 OpenAI 格式的安全设置 (兼容大多数中转)
-                        proxyPayload.safety_settings = [
+                        
+                        // 1. 先定义好配置对象 (关键！不然下面赋值会报错)
+                        const safetyConfig = [
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ];
-                        // 注入 Gemini 原生格式 (双重保险)
-                        proxyPayload.safetySettings = proxyPayload.safety_settings;
-                        // 注入酒馆专用字段 (三重保险)
-                        proxyPayload.gemini_safety_settings = proxyPayload.safety_settings;
+
+                        // 2. 暴力注入：把所有可能的字段名都填上
+                        // 根据你的测试 A，gemini_safety_settings 是最关键的
+                        proxyPayload.gemini_safety_settings = safetyConfig; 
+                        
+                        // 兼容其他可能的情况
+                        proxyPayload.safety_settings = safetyConfig;
+                        proxyPayload.safetySettings = safetyConfig;
                     }
 
                     // 4. 动态鉴权头处理 (关键修复！)
