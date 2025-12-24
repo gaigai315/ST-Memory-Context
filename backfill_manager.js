@@ -977,11 +977,45 @@
                     return { success: false, reason: 'max_retry_reached' };
                 }
 
-                const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
-                const errorMsg = `批量填表失败：${e.message}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
+                // 🛑 【重要】检查错误类型，针对性处理
+                const errorText = String(e.message || e || '');
+
+                // 🛑 如果是 Key 错误（401/Unauthorized），直接报错并停止，防止死循环
+                if (errorText.includes('Unauthorized') || errorText.includes('401')) {
+                    await window.Gaigai.customAlert(
+                        `🛑 API Key 错误或已失效！\n\n错误信息：${errorText}\n\n请前往配置页面检查您的 API Key 设置。`,
+                        '⚠️ 认证失败'
+                    );
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
+                // 🛑 如果是 Gemini 安全拦截（No message generated），提示用户
+                if (errorText.includes('No message generated')) {
+                    await window.Gaigai.customAlert(
+                        `🛑 AI 安全拦截！\n\n错误信息：${errorText}\n\n可能原因：\n1. Gemini 模型检测到敏感内容并拒绝生成\n2. 请尝试调整聊天内容或更换模型`,
+                        '⚠️ 安全拦截'
+                    );
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
+                // 其他错误：使用 customRetryAlert 提供"重试"和"放弃"选项
+                const customRetryAlert = window.Gaigai.customRetryAlert;
+                if (!customRetryAlert) {
+                    // 如果 customRetryAlert 不存在，降级为普通弹窗
+                    await window.Gaigai.customAlert(`批量填表失败：${errorText}`, '⚠️ 生成异常');
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
+                const errorMsg = `批量填表失败：${errorText}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
-                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite);
-                return { success: false, reason: 'api_error' };
+
+                if (shouldRetry) {
+                    // 用户点击"重试"，递归调用
+                    return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite);
+                } else {
+                    // 用户点击"放弃"，停止递归
+                    return { success: false, reason: 'user_cancelled' };
+                }
             } finally {
                 window.isSummarizing = false;
             }
@@ -1252,11 +1286,45 @@
                     return { success: false, reason: 'max_retry_reached' };
                 }
 
-                const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
-                const errorMsg = `表格优化失败：${e.message}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
+                // 🛑 【重要】检查错误类型，针对性处理
+                const errorText = String(e.message || e || '');
+
+                // 🛑 如果是 Key 错误（401/Unauthorized），直接报错并停止，防止死循环
+                if (errorText.includes('Unauthorized') || errorText.includes('401')) {
+                    await window.Gaigai.customAlert(
+                        `🛑 API Key 错误或已失效！\n\n错误信息：${errorText}\n\n请前往配置页面检查您的 API Key 设置。`,
+                        '⚠️ 认证失败'
+                    );
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
+                // 🛑 如果是 Gemini 安全拦截（No message generated），提示用户
+                if (errorText.includes('No message generated')) {
+                    await window.Gaigai.customAlert(
+                        `🛑 AI 安全拦截！\n\n错误信息：${errorText}\n\n可能原因：\n1. Gemini 模型检测到敏感内容并拒绝生成\n2. 请尝试调整表格内容或更换模型`,
+                        '⚠️ 安全拦截'
+                    );
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
+                // 其他错误：使用 customRetryAlert 提供"重试"和"放弃"选项
+                const customRetryAlert = window.Gaigai.customRetryAlert;
+                if (!customRetryAlert) {
+                    // 如果 customRetryAlert 不存在，降级为普通弹窗
+                    await window.Gaigai.customAlert(`表格优化失败：${errorText}`, '⚠️ 生成异常');
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
+                const errorMsg = `表格优化失败：${errorText}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ 生成异常');
-                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1);
-                return { success: false, reason: 'api_error' };
+
+                if (shouldRetry) {
+                    // 用户点击"重试"，递归调用
+                    return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1);
+                } else {
+                    // 用户点击"放弃"，停止递归
+                    return { success: false, reason: 'user_cancelled' };
+                }
             } finally {
                 window.isSummarizing = false;
             }
