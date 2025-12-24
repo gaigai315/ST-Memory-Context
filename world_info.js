@@ -4,7 +4,7 @@
  * 功能：处理记忆总结与 SillyTavern 世界书的同步和绑定
  * 包含：防抖同步、智能创建/更新、自动绑定角色卡
  *
- * @version 1.4.7
+ * @version 1.4.8
  * @author Gaigai Team
  */
 
@@ -20,6 +20,18 @@
             this.worldInfoSyncQueue = Promise.resolve();
 
             console.log('✅ [WorldInfoManager] 初始化完成');
+        }
+
+        /**
+         * 🧼 [辅助方法] 获取稳定的世界书名称 (去除 Branch 后缀)
+         * 目的：让主线和所有分支共用同一个世界书文件，防止文件爆炸
+         */
+        _getStableBookName(gid) {
+            if (!gid) return "Memory_Context_Unknown";
+            // 移除 _Branch 及其后面的所有内容
+            const stableId = gid.split('_Branch')[0];
+            const safeName = stableId.replace(/[\\/:*?"<>|]/g, "_");
+            return "Memory_Context_" + safeName;
         }
 
         /**
@@ -183,9 +195,9 @@
                 console.log(`⚡ [世界书同步-覆盖] 开始打包 ${summarySheet.r.length} 条数据...`);
 
                 // --- 准备数据 ---
+                const worldBookName = this._getStableBookName(m.gid());
                 const uniqueId = m.gid() || "Unknown_Chat";
                 const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                const worldBookName = "Memory_Context_" + safeName;
                 const importEntries = {};
                 let maxUid = -1;
 
@@ -305,16 +317,13 @@
                 if (syncResult.mode === 'create') {
                     console.log('⏳ [世界书同步-覆盖] 首次创建，等待 SillyTavern 处理导入 (2s)...');
                     await new Promise(r => setTimeout(r, 2000));
+
+                    // 📢 提示用户手动绑定世界书
+                    if (typeof toastr !== 'undefined') {
+                        toastr.info(`世界书 "${worldBookName}" 已创建，请手动在角色卡中绑定`, '世界书同步', { timeOut: 5000 });
+                    }
                 } else if (syncResult.mode === 'update') {
                     console.log('✅ [世界书同步-覆盖] 热更新完成，无需等待UI刷新');
-                }
-
-                // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
-                if (C.autoBindWI) {
-                    console.log('🔗 [世界书同步-覆盖] 准备自动绑定到角色卡...');
-                    await this.autoBindWorldInfo(worldBookName);
-                } else {
-                    console.log('⏭️ [世界书同步-覆盖] 自动绑定已禁用，跳过绑定');
                 }
 
             } catch (error) {
@@ -332,9 +341,9 @@
         async _syncAppendContent(content, m, C) {
             try {
                 // --- 准备基础数据 ---
+                const worldBookName = this._getStableBookName(m.gid());
                 const uniqueId = m.gid() || "Unknown_Chat";
                 const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                const worldBookName = "Memory_Context_" + safeName;
 
                 // 获取 CSRF
                 let csrfToken = '';
@@ -416,16 +425,13 @@
                 if (syncResult.mode === 'create') {
                     console.log('⏳ [世界书同步-追加] 首次创建，等待 SillyTavern 处理导入 (2s)...');
                     await new Promise(r => setTimeout(r, 2000));
+
+                    // 📢 提示用户手动绑定世界书
+                    if (typeof toastr !== 'undefined') {
+                        toastr.info(`世界书 "${worldBookName}" 已创建，请手动在角色卡中绑定`, '世界书同步', { timeOut: 5000 });
+                    }
                 } else if (syncResult.mode === 'update') {
                     console.log('✅ [世界书同步-追加] 热更新完成，无需等待UI刷新');
-                }
-
-                // ✨ 自动绑定到角色卡 (只有开启了自动绑定才执行)
-                if (C.autoBindWI) {
-                    console.log('🔗 [世界书同步-追加] 准备自动绑定到角色卡...');
-                    await this.autoBindWorldInfo(worldBookName);
-                } else {
-                    console.log('⏭️ [世界书同步-追加] 自动绑定已禁用，跳过绑定');
                 }
 
                 console.log('✅ [世界书同步-追加] 追加操作完成');
@@ -436,192 +442,14 @@
         }
 
         /**
-         * 🔗 自动绑定记忆世界书 (V5.0 逻辑回归+去重修正版)
-         * 恢复了原版的库存检查逻辑，同时加入了强力的UI去重
+         * 🔗 自动绑定记忆世界书 (已禁用)
+         * 此功能已移除，保留空函数体防止外部调用报错
          * @param {string} baseBookName - 指定要绑定的书名（可选）
          * @param {boolean} forceBind - 强制绑定（即使书不存在也添加）
          * @returns {Promise<void>}
          */
         async autoBindWorldInfo(baseBookName = null, forceBind = false) {
-            // ✅ 修复：获取全局配置对象
-            const C = window.Gaigai.config_obj;
-
-            if (!C || !C.autoBindWI) return;
-
-            const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
-                ? SillyTavern.getContext()
-                : null;
-
-            if (!ctx) return;
-
-            try {
-                // ==================== 🕵️‍♂️ 步骤1：恢复库存检查 (找回丢失的逻辑) ====================
-                // 我们必须先知道酒馆里到底有哪些书，才能决定绑谁，不能瞎猜
-                let allBookNames = [];
-
-                // A. 从下拉框获取
-                $('#world_editor_select option').each(function() {
-                    const name = $(this).text().trim();
-                    if (name && name !== '新建' && !name.includes('---')) {
-                        allBookNames.push(name);
-                    }
-                });
-
-                // B. 从全局变量获取 (双重保险)
-                try {
-                    if (typeof window.world_names !== 'undefined' && Array.isArray(window.world_names)) {
-                        allBookNames = [...new Set([...allBookNames, ...window.world_names])];
-                    } else if (typeof window.world_info === 'object') {
-                        // 兼容不同版本的酒馆数据结构
-                        if (Array.isArray(window.world_info)) allBookNames.push(...window.world_info.map(b => b.name || b));
-                        else allBookNames.push(...Object.keys(window.world_info));
-                    }
-                } catch(e) {}
-
-                allBookNames = [...new Set(allBookNames)]; // 去重
-
-                // ==================== 🎯 步骤2：锁定目标 (精准匹配) ====================
-                let targetBookName = null;
-
-                if (baseBookName) {
-                    targetBookName = baseBookName;
-                } else {
-                    // ✅ 修复1：使用统一的 m.gid() 确保 ID 一致性
-                    const m = window.Gaigai.m;
-                    const uniqueId = m ? m.gid() : null;
-
-                    if (uniqueId) {
-                        // 尝试匹配：优先匹配包含 ID 且存在于 allBookNames 里的书
-                        const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-
-                        // 1. 优先找包含时间戳的精准匹配
-                        const timeMatch = uniqueId.match(/\d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s/);
-                        if (timeMatch) {
-                            targetBookName = allBookNames.find(b => b.includes(timeMatch[0]) && b.startsWith('Memory_Context_'));
-                        }
-
-                        // 2. 如果没找到，找包含 safeName 的最新一本
-                        if (!targetBookName) {
-                            const candidates = allBookNames.filter(b => b.includes(safeName) && b.startsWith('Memory_Context_'));
-                            if (candidates.length > 0) {
-                                candidates.sort(); // 按时间排序
-                                targetBookName = candidates[candidates.length - 1]; // 取最新的
-                            }
-                        }
-                    }
-                }
-
-                // ==================== 🧹 步骤3-6：数据清洗 (严厉模式) ====================
-
-                const charId = ctx.characterId;
-                if (charId === undefined || charId === null) return;
-                const character = ctx.characters[charId];
-                if (!character || !character.data) return;
-
-                if (!character.data.extensions) character.data.extensions = {};
-                if (!Array.isArray(character.data.extensions.world_info)) character.data.extensions.world_info = [];
-
-                let currentList = character.data.extensions.world_info;
-                const cleanList = [];
-
-                // 核心逻辑：只保留非记忆书 + 当前目标书
-                // 其他所有的 Memory_Context_ (无论是旧的、别的角色的) 统统丢弃
-                currentList.forEach(book => {
-                    if (typeof book !== 'string' || !book.startsWith('Memory_Context_')) {
-                        cleanList.push(book); // 保留用户自己的书
-                    } else if (book === targetBookName) {
-                        cleanList.push(book); // 保留当前正主
-                    }
-                    // else: 丢弃！(解决你说的"绑定了其他角色卡世界书"的问题)
-                });
-
-                // 如果目标书存在(已生成)且没在列表里，加进去
-                // 这里用 allBookNames 校验，防止绑定不存在的书报错
-                if (targetBookName && !cleanList.includes(targetBookName)) {
-                    if (allBookNames.includes(targetBookName) || forceBind) {
-                        cleanList.push(targetBookName);
-                        // console.log(`✅ [自动绑定] 挂载新书: ${targetBookName}`);
-                    }
-                }
-
-                // 保存数据
-                const newJson = JSON.stringify(cleanList.slice().sort());
-                const oldJson = JSON.stringify(currentList.slice().sort());
-
-                if (newJson !== oldJson) {
-                    character.data.extensions.world_info = cleanList;
-                    if (ctx.characters && ctx.characters[charId]) {
-                        ctx.characters[charId].data.extensions.world_info = cleanList;
-                    }
-                    try {
-                        if (typeof ctx.saveCharacter === 'function') await ctx.saveCharacter();
-                        else if (typeof window.saveCharacterDebounced === 'function') window.saveCharacterDebounced();
-                    } catch (e) {}
-                }
-
-                // ==================== 🛡️ 步骤7：UI 标准刷新 (V6.0 防幽灵绑定版) ====================
-                // 只更新选中状态，不暴力删除/添加 DOM 节点（除非是真正的重复项）
-
-                const $characterSelect = $('.character_extra_world_info_selector');
-                if ($characterSelect.length > 0) {
-                    // 获取当前下拉框中的所有选项值
-                    const existingOptions = new Set();
-                    const duplicates = [];
-
-                    $characterSelect.find('option').each(function() {
-                        const $opt = $(this);
-                        const optVal = $opt.val();
-
-                        // 1. 标记真正的重复项 (同名选项出现多次)
-                        if (existingOptions.has(optVal)) {
-                            duplicates.push($opt);
-                            return; // 继续下一次循环
-                        }
-                        existingOptions.add(optVal);
-
-                        // 2. 🔥 [新增] 强力清洗：物理删除不属于当前会话的记忆书选项
-                        // 逻辑：如果它是记忆书(Memory_Context_开头)，但不在我们要保留的 cleanList 里，说明是残留项，直接标记删除！
-                        if (optVal && typeof optVal === 'string' && optVal.startsWith('Memory_Context_') && !cleanList.includes(optVal)) {
-                            console.log(`🔥 [UI强力清洗] 标记移除过期/无关选项: ${optVal}`);
-                            duplicates.push($opt);
-                        }
-                    });
-
-                    // 删除重复项和过期的记忆书（统一处理）
-                    // ✅ 修复2：删除前清除 selected 属性，防止 Select2 幽灵缓存
-                    duplicates.forEach($opt => {
-                        console.log(`🧹 [自动绑定] 移除选项: ${$opt.val()}`);
-                        $opt.removeAttr('selected');  // 先清除选中状态
-                        $opt.remove();                 // 再物理删除节点
-                    });
-
-                    // 如果目标书不在下拉框里（新创建的书），临时添加一个 Option
-                    // 这样 Select2 才能正确选中它
-                    if (targetBookName && !existingOptions.has(targetBookName)) {
-                        console.log(`➕ [自动绑定] 添加新选项: ${targetBookName}`);
-                        const newOption = new Option(targetBookName, targetBookName, true, true);
-                        $characterSelect.append(newOption);
-                    }
-
-                    // 🔑 关键修复：强制清空并重新设置选中状态
-                    // 步骤1：先完全清空所有选中状态（包括 Select2 的内部缓存）
-                    $characterSelect.val(null).trigger('change');
-                    console.log('🧹 [自动绑定] 已清空所有选中状态');
-
-                    // 步骤2：使用 Select2 标准方法重新设置选中值
-                    $characterSelect.val(cleanList).trigger('change');
-
-                    // 步骤3：延时再触发一次 Select2 内部更新，确保视觉同步
-                    setTimeout(() => {
-                        $characterSelect.trigger('change.select2');
-                    }, 100);
-
-                    console.log(`✅ [自动绑定] UI更新完成，当前绑定:`, cleanList);
-                }
-
-            } catch (error) {
-                console.error('❌ [自动绑定] 异常:', error);
-            }
+            console.log('ℹ️ [自动绑定] 此功能已禁用，请手动在角色卡中绑定世界书');
         }
 
         /**

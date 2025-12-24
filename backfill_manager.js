@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.4.7
+ * @version 1.4.8
  * @author Gaigai Team
  */
 
@@ -650,8 +650,9 @@
                 window.Gaigai.m.save();
 
                 // ✅✅✅ 批量任务完成后，强制更新快照，确保与实时填表同步
-                const updateCurrentSnapshot = window.Gaigai.updateCurrentSnapshot || (() => {});
-                updateCurrentSnapshot();
+                if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                    window.Gaigai.updateCurrentSnapshot();
+                }
                 console.log('📸 [批量填表完成] 已更新当前楼层快照');
             }
 
@@ -739,7 +740,7 @@
             let validCount = 0;
 
             const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
-            const filterContentByTags = window.Gaigai.tools.filterContentByTags; // ✅ 修复：使用正确的引用路径
+            const filterContentByTags = window.Gaigai.tools.filterContentByTags;
 
             // ✅ [性能优化] 分块处理大量消息，防止UI卡死
             const CHUNK_SIZE = 30; // 每 30 条消息让浏览器喘息一次
@@ -751,7 +752,7 @@
 
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
-                content = filterContentByTags(content);
+                content = window.Gaigai.tools.filterContentByTags(content);
                 if (content && content.trim()) {
                     const isUser = msg.is_user || msg.role === 'user';
                     const role = isUser ? 'user' : 'assistant';
@@ -780,17 +781,16 @@
             if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
                 const char = ctx.characters[ctx.characterId];
                 // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                const filterContentByTags = window.Gaigai.tools.filterContentByTags;
                 if (char.description) {
-                    const cleanedDesc = filterContentByTags(char.description);
+                    const cleanedDesc = window.Gaigai.tools.filterContentByTags(char.description);
                     if (cleanedDesc) contextBlock += `\n[人物简介]\n${cleanedDesc}\n`;
                 }
                 if (char.personality) {
-                    const cleanedPers = filterContentByTags(char.personality);
+                    const cleanedPers = window.Gaigai.tools.filterContentByTags(char.personality);
                     if (cleanedPers) contextBlock += `\n[性格/设定]\n${cleanedPers}\n`;
                 }
                 if (char.scenario) {
-                    const cleanedScen = filterContentByTags(char.scenario);
+                    const cleanedScen = window.Gaigai.tools.filterContentByTags(char.scenario);
                     if (cleanedScen) contextBlock += `\n[场景/背景]\n${cleanedScen}\n`;
                 }
             }
@@ -937,9 +937,6 @@
             let result;
             window.isSummarizing = true;
             try {
-                const callIndependentAPI = window.Gaigai.tools.callIndependentAPI;
-                const callTavernAPI = window.Gaigai.tools.callTavernAPI;
-
                 // 🔄 [新增] 重试逻辑：捕获"Stream response content is empty"错误并重试一次
                 let attemptCount = 0;
                 const maxAttempts = 2; // 最多尝试2次（初次 + 重试1次）
@@ -947,9 +944,9 @@
                 while (attemptCount < maxAttempts) {
                     try {
                         if (window.Gaigai.config.useIndependentAPI) {
-                            result = await callIndependentAPI(messages);
+                            result = await window.Gaigai.tools.callIndependentAPI(messages);
                         } else {
-                            result = await callTavernAPI(messages);
+                            result = await window.Gaigai.tools.callTavernAPI(messages);
                         }
                         break; // 成功则跳出循环
                     } catch (apiError) {
@@ -1032,16 +1029,13 @@
                 }
 
                     if (isSilentMode) {
-                        const prs = window.Gaigai.tools.prs;
-                        const exe = window.Gaigai.tools.exe;
-
                         // ✨ 先剥离标签和注释，提取纯指令文本（修复静默模式解析问题）
                         let innerText = finalOutput
                             .replace(/<\/?Memory>/gi, '') // 移除 <Memory> 标签
                             .replace(/<!--/g, '')         // 移除 HTML 注释头
                             .replace(/-->/g, '')          // 移除 HTML 注释尾
                             .trim();
-                        const cs = prs(innerText);
+                        const cs = window.Gaigai.tools.prs(innerText);
                         if (cs.length > 0) {
                             // ✅✅✅ [重构模式] 静默模式下的事务性安全清空
                             // ✅ 动态判断：targetIndex 必须是有效的数据表索引（排除总结表）
@@ -1056,14 +1050,15 @@
                                 }
                             }
 
-                            exe(cs);
+                            window.Gaigai.tools.exe(cs);
                             window.lastManualEditTime = Date.now();
                             window.Gaigai.config.lastBackfillIndex = end;
                             try { localStorage.setItem('gg_api', JSON.stringify(window.Gaigai.config)); } catch (e) { }
                             if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud().catch(e => { });
                             m.save();
-                            const updateCurrentSnapshot = window.Gaigai.updateCurrentSnapshot || (() => {});
-                            updateCurrentSnapshot();
+                            if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                                window.Gaigai.updateCurrentSnapshot();
+                            }
                             const modeText = isManual ? '手动填表' : '自动填表';
                             if (typeof toastr !== 'undefined') toastr.success(`${modeText}已完成`, '记忆表格', { timeOut: 1000, preventDuplicates: true });
                             if ($('#g-pop').length > 0) {
@@ -1242,12 +1237,10 @@
             let result;
             window.isSummarizing = true;
             try {
-                const callIndependentAPI = window.Gaigai.tools.callIndependentAPI;
-                const callTavernAPI = window.Gaigai.tools.callTavernAPI;
                 if (API_CONFIG.useIndependentAPI) {
-                    result = await callIndependentAPI(messages);
+                    result = await window.Gaigai.tools.callIndependentAPI(messages);
                 } else {
-                    result = await callTavernAPI(messages);
+                    result = await window.Gaigai.tools.callTavernAPI(messages);
                 }
             } catch (e) {
                 console.error('❌ [表格优化] API 请求失败', e);
@@ -1310,8 +1303,6 @@
                 }
 
                 // ✨ 解析指令（使用 prs 解析器）
-                const prs = window.prs;
-                const exe = window.Gaigai.tools.exe;
 
                 // 先剥离标签和注释，提取纯指令文本
                 let innerText = finalOutput
@@ -1320,7 +1311,7 @@
                     .replace(/-->/g, '')          // 移除 HTML 注释尾
                     .trim();
 
-                const cs = prs(innerText);
+                const cs = window.Gaigai.tools.prs(innerText);
 
                 if (cs.length === 0) {
                     await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
@@ -1418,8 +1409,9 @@
             // 3. 保存
             window.lastManualEditTime = Date.now();
             m.save();
-            const updateCurrentSnapshot = window.Gaigai.updateCurrentSnapshot || (() => {});
-            updateCurrentSnapshot();
+            if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                window.Gaigai.updateCurrentSnapshot();
+            }
 
             if (typeof toastr !== 'undefined') {
                 toastr.success(`表格优化完成！已执行 ${commands.length} 条指令`, '表格优化', { timeOut: 2000 });
@@ -1441,7 +1433,6 @@
         _showTableOptimizationConfirm(content, targetIndex, commands, regenParams, m) {
             const self = this;
             const UI = window.Gaigai.ui;
-            const esc = window.Gaigai.esc;
 
             // 🔒 关键修复：记录弹窗打开时的会话ID
             const initialSessionId = m.gid();
@@ -1461,7 +1452,7 @@
                         💡 点击 <strong>[确认]</strong> 将先清空表${targetIndex} (${sheetName})，然后写入优化后的内容。<br>
                         ⚠️ 原始数据将被完全替换，请谨慎操作！
                     </p>
-                    <textarea id="gg_opt_popup_editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(content)}</textarea>
+                    <textarea id="gg_opt_popup_editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${window.Gaigai.esc(content)}</textarea>
                     <div style="margin-top:12px; display: flex; gap: 10px;">
                         <button id="gg_opt_popup_cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃</button>
                         ${regenParams ? '<button id="gg_opt_popup_regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
@@ -1548,14 +1539,13 @@
                         }
 
                         // 重新解析用户可能修改过的内容
-                        const prs = window.prs;
                         let innerText = finalContent
                             .replace(/<\/?Memory>/gi, '')
                             .replace(/<!--/g, '')
                             .replace(/-->/g, '')
                             .trim();
 
-                        const newCs = prs(innerText);
+                        const newCs = window.Gaigai.tools.prs(innerText);
 
                         if (newCs.length === 0) {
                             await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
@@ -1595,7 +1585,6 @@
         showBackfillEditPopup(content, newIndex = null, regenParams = null) {
             const self = this;
             const UI = window.Gaigai.ui;
-            const esc = window.Gaigai.esc;
             const m = window.Gaigai.m;
 
             // 🔒 关键修复：记录弹窗打开时的会话ID
@@ -1619,7 +1608,7 @@
                     ✅ AI 已生成指令，请检查。<br>
                     💡 点击 <strong>[确认]</strong> 将写入数据并继续，点击 <strong>[放弃]</strong> 将终止后续任务。
                 </p>
-                <textarea id="gg_bf_popup-editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; color: ${UI.tc}; background: transparent;">${esc(content)}</textarea>
+                <textarea id="gg_bf_popup-editor" style="width:100%; height:350px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6; color: ${UI.tc}; background: transparent;">${window.Gaigai.esc(content)}</textarea>
                 <div style="margin-top:12px; display: flex; gap: 10px; flex-shrink: 0;">
                     <button id="gg_bf_popup-cancel" style="padding:8px 16px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🚫 放弃任务</button>
                     ${regenParams ? '<button id="gg_bf_popup-regen" style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px; flex: 1;">🔄 重新生成</button>' : ''}
@@ -1797,15 +1786,15 @@
                         console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 准备保存数据`);
 
                         m.save();
-                        const updateCurrentSnapshot = window.Gaigai.updateCurrentSnapshot || (() => {});
-                        updateCurrentSnapshot();
+                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                            window.Gaigai.updateCurrentSnapshot();
+                        }
 
                         // 关闭弹窗
                         $o.remove();
 
                         // 刷新UI
-                        const shw = window.Gaigai.shw;
-                        if (shw) shw();
+                        if (window.Gaigai.shw) window.Gaigai.shw();
 
                         // ✨ 告诉外部：成功了
                         resolve({ success: true });
@@ -1837,13 +1826,12 @@
             // 构建聊天历史
             const chatSlice = ctx.chat.slice(regenParams.start, regenParams.end);
             const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
-            const filterContentByTags = window.Gaigai.tools.filterContentByTags; // ✅ 修复：使用正确的引用路径
 
             chatSlice.forEach(msg => {
                 if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
-                content = filterContentByTags(content);
+                content = window.Gaigai.tools.filterContentByTags(content);
                 if (content && content.trim()) {
                     const isUser = msg.is_user || msg.role === 'user';
                     const role = isUser ? 'user' : 'assistant';
@@ -1857,17 +1845,16 @@
             if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
                 const char = ctx.characters[ctx.characterId];
                 // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                const filterContentByTags = window.Gaigai.tools.filterContentByTags;
                 if (char.description) {
-                    const cleanedDesc = filterContentByTags(char.description);
+                    const cleanedDesc = window.Gaigai.tools.filterContentByTags(char.description);
                     if (cleanedDesc) contextBlock += `\n[人物简介]\n${cleanedDesc}\n`;
                 }
                 if (char.personality) {
-                    const cleanedPers = filterContentByTags(char.personality);
+                    const cleanedPers = window.Gaigai.tools.filterContentByTags(char.personality);
                     if (cleanedPers) contextBlock += `\n[性格/设定]\n${cleanedPers}\n`;
                 }
                 if (char.scenario) {
-                    const cleanedScen = filterContentByTags(char.scenario);
+                    const cleanedScen = window.Gaigai.tools.filterContentByTags(char.scenario);
                     if (cleanedScen) contextBlock += `\n[场景/背景]\n${cleanedScen}\n`;
                 }
             }
@@ -1988,10 +1975,8 @@
             let result;
             window.isSummarizing = true;
             try {
-                const callIndependentAPI = window.Gaigai.tools.callIndependentAPI;
-                const callTavernAPI = window.Gaigai.tools.callTavernAPI;
-                if (window.Gaigai.config.useIndependentAPI) result = await callIndependentAPI(messages);
-                else result = await callTavernAPI(messages);
+                if (window.Gaigai.config.useIndependentAPI) result = await window.Gaigai.tools.callIndependentAPI(messages);
+                else result = await window.Gaigai.tools.callTavernAPI(messages);
             } finally {
                 window.isSummarizing = false;
             }
