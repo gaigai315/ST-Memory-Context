@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.7
+// 记忆表格 v1.4.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.7 启动');
+    console.log('🚀 记忆表格 v1.4.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.7';
+    const V = 'v1.4.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -53,6 +53,7 @@
         autoSummaryFloor: 50,          // ✅ 50层触发
         autoSummaryPrompt: true,       // ✅ 默认静默发起（不弹窗确认）
         autoSummarySilent: true,       // ✅ 默认静默保存（不弹窗编辑）
+        autoSummaryTargetTables: [],   // 🆕 自动总结的目标表格索引（空数组表示全部）
         autoSummaryDelay: true,        // ✅ 开启延迟
         autoSummaryDelayCount: 4,      // ✅ 延迟4楼
         autoBackfill: false,           // ❌ 默认关闭批量填表（避免与实时填表冲突）
@@ -1222,40 +1223,34 @@
             }
         }
 
-        // ✨✨✨ 核心修复：从角色存档恢复进度指针
+        // ✨✨✨ 核心修复：从角色存档恢复进度指针 (含分支继承补丁)
         load() {
             const id = this.gid();
             if (!id) return;
 
-            // ✅ Per-Chat Configuration: STEP 1 - 彻底重置为全局默认 (防止上一个会话的数据残留)
+            // ✅ Per-Chat Configuration: STEP 1 - 彻底重置为全局默认
             try {
                 const globalConfigStr = localStorage.getItem(CK);
                 const globalConfig = globalConfigStr ? JSON.parse(globalConfigStr) : {};
-
-                // ✅ 读取全局 API 配置 (用于 summarySource)
                 const globalApiStr = localStorage.getItem(AK);
                 const globalApiConfig = globalApiStr ? JSON.parse(globalApiStr) : {};
 
-                // --- 1. 开关类 (优先用全局，无全局用默认) ---
+                // --- 1. 开关类 ---
                 C.enabled = globalConfig.enabled !== undefined ? globalConfig.enabled : true;
                 C.autoBackfill = globalConfig.autoBackfill !== undefined ? globalConfig.autoBackfill : false;
                 C.autoSummary = globalConfig.autoSummary !== undefined ? globalConfig.autoSummary : true;
-
-                // --- 2. 数值/参数类 (必须重置，否则会串味) ---
+                // --- 2. 数值类 ---
                 C.autoBackfillFloor = globalConfig.autoBackfillFloor !== undefined ? globalConfig.autoBackfillFloor : 20;
                 C.autoSummaryFloor = globalConfig.autoSummaryFloor !== undefined ? globalConfig.autoSummaryFloor : 50;
                 C.autoBackfillDelay = globalConfig.autoBackfillDelay !== undefined ? globalConfig.autoBackfillDelay : true;
                 C.autoBackfillDelayCount = globalConfig.autoBackfillDelayCount !== undefined ? globalConfig.autoBackfillDelayCount : 6;
                 C.autoSummaryDelay = globalConfig.autoSummaryDelay !== undefined ? globalConfig.autoSummaryDelay : true;
                 C.autoSummaryDelayCount = globalConfig.autoSummaryDelayCount !== undefined ? globalConfig.autoSummaryDelayCount : 4;
-
-                // --- 3. 静默/弹窗设置 ---
+                // --- 3. 其他 ---
                 C.autoBackfillPrompt = globalConfig.autoBackfillPrompt !== undefined ? globalConfig.autoBackfillPrompt : true;
                 C.autoBackfillSilent = globalConfig.autoBackfillSilent !== undefined ? globalConfig.autoBackfillSilent : true;
                 C.autoSummaryPrompt = globalConfig.autoSummaryPrompt !== undefined ? globalConfig.autoSummaryPrompt : true;
                 C.autoSummarySilent = globalConfig.autoSummarySilent !== undefined ? globalConfig.autoSummarySilent : true;
-
-                // --- 4. 其他功能设置 ---
                 C.contextLimit = globalConfig.contextLimit !== undefined ? globalConfig.contextLimit : true;
                 C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
                 C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
@@ -1263,10 +1258,8 @@
                 C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : true;
                 C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
 
-                // --- 5. API 相关 (总结源) ---
-                // ✅ 修复：从 gg_api (AK) 中读取全局默认值，而不是 gg_config (CK)
                 if (globalApiConfig.summarySource !== undefined) API_CONFIG.summarySource = globalApiConfig.summarySource;
-                else API_CONFIG.summarySource = 'table'; // 仅当从未保存过时才默认为 table
+                else API_CONFIG.summarySource = 'table';
 
                 console.log('🧹 [配置清洗] 内存状态已重置为全局/默认值，准备加载会话专属配置...');
             } catch (e) {
@@ -1274,33 +1267,40 @@
             }
 
             if (this.id !== id) {
-                // 🔄 检测到会话/角色切换，重置所有状态
+                // 🔄 检测到会话切换
                 this.id = id;
-                // 使用当前配置的表格结构（如有自定义则用自定义，否则用默认）
                 const tableDef = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
                     ? C.customTables
                     : DEFAULT_TABLES;
-                this.initTables(tableDef, false); // 🔥 关键修复：切换会话时不保留旧数据
+                this.initTables(tableDef, false);
                 lastInternalSaveTime = 0;
-                summarizedRows = {}; // ✅ 核心修复：清空"已总结行"状态，防止跨会话串味
-                userColWidths = {};   // ✅ 核心修复：清空列宽设置，防止跨会话串味
-                userRowHeights = {};  // ✅ 核心修复：清空行高设置，防止跨会话串味
-
-                // ✅ [修复] 会话切换时，重置进度指针（防止跨会话污染）
+                summarizedRows = {};
+                userColWidths = {};
+                userRowHeights = {};
                 API_CONFIG.lastSummaryIndex = 0;
                 API_CONFIG.lastBackfillIndex = 0;
                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
 
-                console.log(`🔄 [会话切换] ID: ${id}，已重置所有状态 (包括已总结行、列宽、行高、进度指针)`);
+                console.log(`🔄 [会话切换] ID: ${id}，已重置所有状态`);
             }
-            let cloudData = null; let localData = null;
+
+            let cloudData = null;
+            let localData = null;
             if (C.cloudSync) { try { const ctx = this.ctx(); if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) cloudData = ctx.chatMetadata.gaigai; } catch (e) { } }
 
             // 🛡️ [防串味修复] 检查云端数据是否属于当前角色
             if (cloudData) {
+                // ✨ 智能分支补丁：如果当前是分支 (ID含Branch)，允许继承 ID 不匹配的父级数据
+                const isBranch = id.includes('_Branch') || id.includes('Branch') || id.includes('分支');
+
                 if (cloudData.id !== id) {
-                    console.warn(`🔴 [数据隔离] 云端数据 ID 不匹配，已忽略。云端 ID: ${cloudData.id}，当前 ID: ${id}`);
-                    cloudData = null; // 丢弃错误的云端数据，防止串味
+                    if (isBranch) {
+                        console.log(`🌿 [分支继承] 检测到分支模式，允许继承父会话数据 (Cloud: ${cloudData.id} -> Curr: ${id})`);
+                        // 允许通过，不置空 cloudData
+                    } else {
+                        console.warn(`🔴 [数据隔离] 云端数据 ID 不匹配，已忽略。云端 ID: ${cloudData.id}，当前 ID: ${id}`);
+                        cloudData = null;
+                    }
                 } else {
                     console.log(`✅ [数据验证] 云端数据 ID 匹配: ${id}`);
                 }
@@ -1308,13 +1308,11 @@
 
             try { const sv = localStorage.getItem(`${SK}_${id}`); if (sv) localData = JSON.parse(sv); } catch (e) { }
 
-            // 🛡️ [防串味修复] 检查本地数据是否属于当前角色
+            // 🛡️ [防串味修复] 检查本地数据
             if (localData) {
                 if (localData.id !== id) {
-                    console.warn(`🔴 [数据隔离] 本地数据 ID 不匹配，已忽略。本地 ID: ${localData.id}，当前 ID: ${id}`);
-                    localData = null; // 丢弃错误的本地数据，防止串味
-                } else {
-                    console.log(`✅ [数据验证] 本地数据 ID 匹配: ${id}`);
+                    console.warn(`🔴 [数据隔离] 本地数据 ID 不匹配，已忽略。`);
+                    localData = null;
                 }
             }
 
@@ -1324,86 +1322,38 @@
             else if (localData) finalData = localData;
 
             if (finalData && finalData.ts <= lastInternalSaveTime) return;
-            if (finalData && finalData.v && finalData.d) {
-                // ✅ 新增：如果存档里有结构定义，先重塑表格
-                if (finalData.structure && Array.isArray(finalData.structure) && finalData.structure.length > 0) {
-                    console.log(`🏗️ [结构恢复] 检测到专属表结构（${finalData.structure.length}个表），正在重塑...`);
-                    this.initTables(finalData.structure, false);
-                    console.log(`✅ [结构恢复] 表格结构已恢复为角色专属配置`);
-                } else {
-                    console.log(`ℹ️ [结构恢复] 存档无专属结构，使用当前配置的表结构`);
-                }
 
-                // ✅ 恢复结构绑定状态
+            if (finalData && finalData.v && finalData.d) {
+                // 恢复结构
+                if (finalData.structure && Array.isArray(finalData.structure) && finalData.structure.length > 0) {
+                    console.log(`🏗️ [结构恢复] 检测到专属表结构...`);
+                    this.initTables(finalData.structure, false);
+                }
                 this.structureBound = finalData.structureBound || false;
 
-                // 然后才是填充数据
+                // 恢复数据
                 finalData.d.forEach((sd, i) => { if (this.s[i]) this.s[i].from(sd); });
                 if (finalData.summarized) summarizedRows = finalData.summarized;
                 if (finalData.colWidths) userColWidths = finalData.colWidths;
                 if (finalData.rowHeights) userRowHeights = finalData.rowHeights;
 
-                // ✅ 恢复进度指针 (关键修复)
+                // 恢复进度
                 if (finalData.meta) {
                     if (finalData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = finalData.meta.lastSum;
                     if (finalData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = finalData.meta.lastBf;
-
-                    // 同步回全局配置，确保 shcf 显示正确
                     localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-                    console.log(`✅ [进度恢复] 总结指针: ${API_CONFIG.lastSummaryIndex}, 填表指针: ${API_CONFIG.lastBackfillIndex}`);
                 }
-                // ✅ [修复] 删除了旧版的强制归零逻辑
-                // 如果存档中没有 meta 信息，保持当前内存中的配置不变
-                // 这样可以兼容旧版存档，同时不会丢失用户的进度
 
-                // ✅ Per-Chat Configuration: STEP 2 - 强制应用存档中的独立配置
-                // ✨✨✨ 会话完全隔离：只要存档中有配置，就无条件应用，不做时间戳对比
-                // 这样可以确保会话 A 的修改永远不会影响会话 B
+                // 恢复配置
                 if (finalData.config) {
-                    if (finalData.config.enabled !== undefined) C.enabled = finalData.config.enabled;
-                    if (finalData.config.autoBackfill !== undefined) C.autoBackfill = finalData.config.autoBackfill;
-                    if (finalData.config.autoSummary !== undefined) C.autoSummary = finalData.config.autoSummary;
-                    if (finalData.config.autoBackfillFloor !== undefined) C.autoBackfillFloor = finalData.config.autoBackfillFloor;
-                    if (finalData.config.autoSummaryFloor !== undefined) C.autoSummaryFloor = finalData.config.autoSummaryFloor;
-                    // ✨ 特殊处理：将存档中的 summarySource 恢复回 API_CONFIG
+                    Object.assign(C, finalData.config);
+                    // 恢复特殊配置
                     if (finalData.config.summarySource !== undefined) API_CONFIG.summarySource = finalData.config.summarySource;
-
-                    // ✨ 恢复隐藏楼层设置
-                    if (finalData.config.contextLimit !== undefined) C.contextLimit = finalData.config.contextLimit;
-                    if (finalData.config.contextLimitCount !== undefined) C.contextLimitCount = finalData.config.contextLimitCount;
-
-                    // ✨ 恢复标签过滤设置
-                    if (finalData.config.filterTags !== undefined) C.filterTags = finalData.config.filterTags;
-                    if (finalData.config.filterTagsWhite !== undefined) C.filterTagsWhite = finalData.config.filterTagsWhite;
-
-                    // ✨ 恢复世界书设置
-                    if (finalData.config.syncWorldInfo !== undefined) C.syncWorldInfo = finalData.config.syncWorldInfo;
-                    if (finalData.config.autoBindWI !== undefined) C.autoBindWI = finalData.config.autoBindWI;
-
-                    // ✨ 恢复批量填表细节
-                    if (finalData.config.autoBackfillDelay !== undefined) C.autoBackfillDelay = finalData.config.autoBackfillDelay;
-                    if (finalData.config.autoBackfillDelayCount !== undefined) C.autoBackfillDelayCount = finalData.config.autoBackfillDelayCount;
-                    if (finalData.config.autoBackfillPrompt !== undefined) C.autoBackfillPrompt = finalData.config.autoBackfillPrompt;
-                    if (finalData.config.autoBackfillSilent !== undefined) C.autoBackfillSilent = finalData.config.autoBackfillSilent;
-
-                    // ✨ 恢复自动总结细节
-                    if (finalData.config.autoSummaryDelay !== undefined) C.autoSummaryDelay = finalData.config.autoSummaryDelay;
-                    if (finalData.config.autoSummaryDelayCount !== undefined) C.autoSummaryDelayCount = finalData.config.autoSummaryDelayCount;
-                    if (finalData.config.autoSummaryPrompt !== undefined) C.autoSummaryPrompt = finalData.config.autoSummaryPrompt;
-                    if (finalData.config.autoSummarySilent !== undefined) C.autoSummarySilent = finalData.config.autoSummarySilent;
-
-                    console.log('✅ [每聊配置] 已恢复当前会话的独立设置 (忽略时间戳):', finalData.config);
-                } else {
-                    console.log('ℹ️ [每聊配置] 此会话无专属配置，使用全局默认值');
+                    console.log('✅ [每聊配置] 已恢复');
                 }
 
                 lastInternalSaveTime = finalData.ts;
             }
-            // ✅ [修复] 删除了 finalData 为 null 时强制归零的逻辑
-            // 理由：
-            // 1. 会话切换时已经在 1217-1220 行重置了进度指针
-            // 2. 如果是同一会话但没有存档数据（例如临时加载失败），应该保持当前内存中的值
-            // 3. 避免因临时性的数据读取失败而丢失用户的进度
         }
 
         gid() {
@@ -4730,9 +4680,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 for (let i = 0; i < sheetsData.length - 1; i++) {
                                     const sheet = sheetsData[i];
                                     if (sheet && sheet.n && Array.isArray(sheet.c)) {
+                                        // ✅ 修复：必须使用 'n' 和 'c' 以匹配系统标准，否则刷新后结构丢失
                                         newCustomTables.push({
-                                            name: sheet.n,
-                                            columns: sheet.c
+                                            n: sheet.n,
+                                            c: sheet.c
                                         });
                                     }
                                 }
@@ -4752,6 +4703,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                                     // 4️⃣ 重建表格对象（使用新结构）
                                     try {
+                                        // 注意：initTables 只建立结构，不填充数据
                                         m.initTables(sheetsData, false);
                                         console.log('🔧 [导入] 表格对象已根据备份结构重建');
                                     } catch (e) {
@@ -4771,16 +4723,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             } else {
                                 // ⚠️ 向后兼容：旧版备份文件缺少结构信息，使用传统填充方式
                                 console.log('⚠️ [导入] 未检测到表格结构信息，使用传统填充方式');
-                                m.s.forEach((sheet, i) => {
-                                    if (sheetsData[i]) sheet.from(sheetsData[i]);
-                                });
+                                // 旧逻辑不需要重建结构，直接填数据
                             }
 
-                            // 6️⃣ 填充数据（如果已重建结构，from 方法会智能处理）
-                            if (hasStructureInfo) {
-                                // 重建后，数据已经在 initTables 中加载，这里只需刷新
-                                console.log('✅ [导入] 表格数据已通过 initTables 加载');
-                            }
+                            // 6️⃣ ✅ 修复核心 BUG：显式填充数据！
+                            // 无论是否重建了结构，都需要把 sheetsData 里的行数据 (r) 填入表格
+                            console.log('🔄 [导入] 正在填充表格数据...');
+                            m.s.forEach((sheet, i) => {
+                                if (sheetsData[i]) {
+                                    sheet.from(sheetsData[i]); // 这一步才是真正恢复数据的关键
+                                }
+                            });
+                            console.log('✅ [导入] 数据填充完毕');
 
                         } else if (importMode === 'details') {
                             // 仅恢复数据表（不含最后一个总结表）
@@ -7576,6 +7530,40 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </label>
                 </div>
 
+                <!-- 🆕 表格选择区域（仅在"仅表格"模式下显示） -->
+                <div id="gg_auto_sum_table_selector" style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 8px; ${API_CONFIG.summarySource === 'table' ? '' : 'display:none;'}">
+                    <div style="font-weight: 600; margin-bottom: 6px; color: #388e3c; font-size: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🎯 选择要总结的表格：</span>
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" id="gg_auto_sum_select_all" style="padding: 2px 6px; background: rgba(76, 175, 80, 0.2); color: #388e3c; border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 3px; cursor: pointer; font-size: 9px;">全选</button>
+                            <button type="button" id="gg_auto_sum_deselect_all" style="padding: 2px 6px; background: rgba(0, 0, 0, 0.05); color: #666; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 3px; cursor: pointer; font-size: 9px;">全不选</button>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 120px; overflow-y: auto;">
+                        ${(() => {
+                            const dataTables = m.s.slice(0, -1);
+                            const selectedTables = C.autoSummaryTargetTables || [];
+                            return dataTables.map((sheet, i) => {
+                                const rowCount = sheet.r ? sheet.r.length : 0;
+                                const tableName = sheet.n || `表${i}`;
+                                const isChecked = selectedTables.length === 0 || selectedTables.includes(i);
+                                return `
+                                    <label style="display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 3px; cursor: pointer; font-size: 11px; transition: background 0.2s;"
+                                           onmouseover="this.style.background='rgba(76, 175, 80, 0.1)'"
+                                           onmouseout="this.style.background='transparent'">
+                                        <input type="checkbox" class="gg-auto-sum-table-select" value="${i}" ${isChecked ? 'checked' : ''} style="margin: 0;">
+                                        <span style="flex: 1;">${tableName}</span>
+                                        <span style="font-size: 9px; opacity: 0.6;">(${rowCount}行)</span>
+                                    </label>
+                                `;
+                            }).join('');
+                        })()}
+                    </div>
+                    <div style="font-size: 9px; color: #666; margin-top: 4px;">
+                        💡 默认全选所有表格，可手动勾选需要参与自动总结的表格
+                    </div>
+                </div>
+
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:8px; border-left:2px solid rgba(255,152,0,0.3); font-size:11px;">
                     <input type="checkbox" id="gg_c_auto_sum_delay" ${C.autoSummaryDelay ? 'checked' : ''} style="margin:0;">
                     <label for="gg_c_auto_sum_delay" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin:0;">
@@ -7631,15 +7619,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </label>
             <div style="font-size: 10px; color: #666; margin-top: 6px; margin-left: 22px; line-height: 1.4;">
                 将总结内容自动写入名为 <strong>[Memory_Context_Auto]</strong> 的世界书（常驻条目，触发词：总结/summary/前情提要/memory）
-            </div>
-
-            <!-- ✨ 自动绑定到角色卡 -->
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-top: 8px; margin-left: 22px;">
-                <input type="checkbox" id="gg_c_auto_bind_wi" ${C.autoBindWI !== false ? 'checked' : ''}>
-                <span style="font-size: 11px;">🔗 自动绑定到角色卡</span>
-            </label>
-            <div style="font-size: 9px; color: #888; margin-top: 2px; margin-left: 44px; line-height: 1.3;">
-                自动将当前会话的记忆书挂载到角色卡，并移除其他会话的记忆书。
             </div>
 
             <!-- ✨✨✨ 新增：手动覆盖按钮区域 ✨✨✨ -->
@@ -7770,6 +7749,26 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoSummary = isChecked;
                 m.save();
                 console.log('💾 [每聊配置] 已保存自动总结设置到当前聊天:', isChecked);
+            });
+
+            // 🆕 总结来源单选按钮的 UI 联动（控制表格选择区域的显示/隐藏）
+            $('input[name="cfg-sum-src"]').on('change', function() {
+                const selectedSource = $(this).val();
+                if (selectedSource === 'table') {
+                    $('#gg_auto_sum_table_selector').slideDown(200);
+                } else {
+                    $('#gg_auto_sum_table_selector').slideUp(200);
+                }
+            });
+
+            // 🆕 表格选择 - 全选按钮
+            $('#gg_auto_sum_select_all').on('click', function() {
+                $('.gg-auto-sum-table-select').prop('checked', true);
+            });
+
+            // 🆕 表格选择 - 全不选按钮
+            $('#gg_auto_sum_deselect_all').on('click', function() {
+                $('.gg-auto-sum-table-select').prop('checked', false);
             });
 
             // ✨✨✨ [关键修复] 总结来源单选按钮的 change 事件监听器 ✨✨✨
@@ -8141,6 +8140,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoBindWI = $('#gg_c_auto_bind_wi').is(':checked');
                 API_CONFIG.summarySource = $('input[name="cfg-sum-src"]:checked').val();
 
+                // 🆕 收集表格选择
+                const selectedTables = [];
+                $('.gg-auto-sum-table-select:checked').each(function() {
+                    selectedTables.push(parseInt($(this).val()));
+                });
+                // 如果全选了或者都没选，存为空数组（表示默认全部）；否则存具体索引
+                const totalDataTables = m.s.length - 1;
+                if (selectedTables.length === totalDataTables || selectedTables.length === 0) {
+                    C.autoSummaryTargetTables = [];
+                } else {
+                    C.autoSummaryTargetTables = selectedTables;
+                }
+                console.log('📊 [配置保存] 自动总结目标表格:', C.autoSummaryTargetTables.length === 0 ? '全部' : C.autoSummaryTargetTables);
+
                 // 保存到 localStorage
                 try {
                     localStorage.setItem(CK, JSON.stringify(C));
@@ -8281,7 +8294,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('#gg_open_api').on('click', () => navTo('AI总结配置', shapi));
             $('#gg_open_pmt').on('click', () => navTo('提示词管理', window.Gaigai.PromptManager.showPromptManager));
 
-            // ✨✨✨ 强制覆盖世界书 (V8 终极版：模拟前端导入) ✨✨✨
+            // ✨✨✨ 强制覆盖世界书 (手动绑定版) ✨✨✨
             $('#gg_btn_force_sync_wi').off('click').on('click', async function () {
                 // 0. 检查世界书同步是否开启
                 if (!C.syncWorldInfo) {
@@ -8289,7 +8302,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     return;
                 }
 
-                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
+                const summarySheet = m.get(m.s.length - 1);
 
                 // 1. 安全拦截
                 if (!summarySheet || summarySheet.r.length === 0) {
@@ -8298,7 +8311,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 // 2. 确认提示
-                const confirmMsg = `⚠️ 确定要强制覆盖吗？\n\n1. 当前世界书将被【清空】。\n2. 总结表中的 ${summarySheet.r.length} 条记录将被写入。`;
+                const confirmMsg = `⚠️ 确定要强制覆盖吗？\n\n1. 将重新生成当前角色的记忆世界书文件。\n2. 总结表中的 ${summarySheet.r.length} 条记录将被写入。`;
                 if (!await customConfirm(confirmMsg, '覆盖确认')) {
                     return;
                 }
@@ -8311,16 +8324,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 3. 准备基础信息
                     const uniqueId = m.gid() || "Unknown_Chat";
                     const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                    const worldBookName = "Memory_Context_" + safeName;
+                    const worldBookName = "Memory_Context_" + safeName; // 简化书名逻辑，保持一致
 
                     // 4. 构建标准 World Info JSON
                     const importEntries = {};
-                    let maxUid = -1;
 
                     summarySheet.r.forEach((row, index) => {
-                        const uid = index; // 重置 UID，从 0 开始顺序排列
-                        maxUid = uid;
-
+                        const uid = index;
                         const title = row[0] || '无标题';
                         const content = row[1] || '';
                         const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
@@ -8334,51 +8344,34 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             constant: true,
                             vectorized: false,
                             enabled: true,
-                            position: 1, // 角色定义后
+                            position: 1,
                             order: 100,
                             extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
                         };
                     });
 
-                    const finalJson = {
-                        entries: importEntries,
-                        name: worldBookName
-                    };
-
                     // 5. 获取CSRF令牌
                     let csrfToken = '';
                     try { csrfToken = await getCsrfToken(); } catch (e) { }
 
-                    // 6. 关键步骤：智能同步 (自动判断创建/更新，防止幽灵条目)
-                    console.log('⚡ [强制覆盖] 准备智能同步，条目数:', Object.keys(importEntries).length);
+                    // 6. 智能同步 (只负责文件生成)
+                    console.log('⚡ [强制覆盖] 准备生成文件...');
                     const syncResult = await window.Gaigai.WI.smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
 
                     if (!syncResult.success) {
                         throw new Error(syncResult.error || '同步失败');
                     }
 
-                    // ✅ 7. 本地缓存由 WI 模块自动管理，此处不需要手动更新
-
+                    // 7. 成功提示 (引导用户手动绑定)
                     if (typeof toastr !== 'undefined') {
-                        toastr.success(`已重置并加载 ${summarySheet.r.length} 条记录`, '覆盖成功');
-                    }
-
-                    // 8. 等待处理（首次创建需要等待UI刷新）
-                    if (syncResult.mode === 'create') {
-                        console.log('⏳ [强制覆盖] 首次创建，等待文件系统响应 (1.5s)...');
-                        await new Promise(r => setTimeout(r, 1500));
-                    }
-
-                    // 9. 自动绑定（只有开启了自动绑定才执行）
-                    if (C.autoBindWI) {
-                        console.log('🔗 [强制覆盖] 正在执行自动绑定...');
-                        await window.Gaigai.WI.autoBindWorldInfo(worldBookName, true);
-
-                        if (typeof toastr !== 'undefined') {
-                            toastr.success('已重新绑定当前世界书', '绑定更新');
-                        }
+                        toastr.success(`文件 ${worldBookName} 已生成。\n请在上方"世界/知识书"下拉框中手动选中它。`, '覆盖成功', { timeOut: 5000 });
                     } else {
-                        console.log('⏭️ [强制覆盖] 自动绑定已禁用，跳过绑定');
+                        await customAlert(`✅ 文件已生成！\n\n请手动在酒馆上方的"世界/知识书"下拉框中选择：\n${worldBookName}`, '覆盖成功');
+                    }
+
+                    // 8. 等待处理
+                    if (syncResult.mode === 'create') {
+                        await new Promise(r => setTimeout(r, 1500));
                     }
 
                 } catch (e) {
@@ -8695,8 +8688,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                     toastr.info(`自动总结已顺延 ${result.postpone} 楼`, '记忆表格');
                                                 }
                                             } else {
-                                                // 立即执行（传入目标结束点和完成后的静默参数）
-                                                window.Gaigai.SummaryManager.callAIForSummary(null, targetEndIndex, null, C.autoSummarySilent);
+                                                // 立即执行（传入目标结束点、模式、静默参数和表格范围）
+                                                window.Gaigai.SummaryManager.callAIForSummary(
+                                                    null,
+                                                    targetEndIndex,
+                                                    null,
+                                                    C.autoSummarySilent,
+                                                    false,
+                                                    false,
+                                                    C.autoSummaryTargetTables  // 🆕 传入配置的表格范围
+                                                );
                                             }
                                         } else {
                                             console.log(`🚫 [自动总结] 用户取消`);
@@ -8704,7 +8705,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                     });
                                 } else {
                                     // 静默模式（勾选时）：直接执行
-                                    window.Gaigai.SummaryManager.callAIForSummary(null, targetEndIndex, null, C.autoSummarySilent);
+                                    window.Gaigai.SummaryManager.callAIForSummary(
+                                        null,
+                                        targetEndIndex,
+                                        null,
+                                        C.autoSummarySilent,
+                                        false,
+                                        false,
+                                        C.autoSummaryTargetTables  // 🆕 传入配置的表格范围
+                                    );
                                 }
                             }
                         }
@@ -8744,11 +8753,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     // ✅✅✅ [修正版] 聊天切换/初始化函数
     // ============================================================
-    // 1. 聊天状态变更监听 (修复删楼后的快照链断裂)
+    // 1. 聊天状态变更监听 (修复删楼、分支切换、多重宇宙逻辑)
     // ============================================================
     async function ochat() {
         // 🔒 性能优化：加锁，防止切换期间误操作
         isChatSwitching = true;
+
         // 🧹 [清理] 切换会话时，清除所有挂起的写入任务
         Object.keys(pendingTimers).forEach(key => {
             clearTimeout(pendingTimers[key]);
@@ -8756,37 +8766,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         });
         console.log('🔒 [ochat] 会话切换锁已启用');
 
-        // ✨✨✨ [防串味补丁] 切换会话时，彻底重置世界书同步缓存 ✨✨✨
+        // ✨ [防串味] 重置世界书状态
         if (window.Gaigai && window.Gaigai.WI && typeof window.Gaigai.WI.resetState === 'function') {
             window.Gaigai.WI.resetState();
-            console.log('🧹 [ochat] 世界书同步状态已重置');
         }
 
-        // 🛑 FIX: Must await global config BEFORE loading chat specific config
-        // This prevents race condition where loadConfig() overwrites chat-specific toggles
-        try {
-            await loadConfig();
-            console.log('✅ [ochat] 全局配置已加载完成');
-        } catch (e) {
-            console.warn('⚠️ [Config] Pre-load failed:', e);
-        }
+        // 加载全局配置
+        try { await loadConfig(); } catch (e) { }
 
-        // 1. 🔐【关键修改】在切换前，将当前内存里的快照"归档"到旧会话的仓库中
-        // m.id 此时还是旧会话的 ID
+        // 1. 💾 [暂存旧会话] 切换前，把旧会话的快照存入仓库
         if (m.id) {
             window.GaigaiSnapshotStore[m.id] = snapshotHistory;
-            console.log(`💾 [ochat] 已暂存会话 [${m.id}] 的快照记录`);
         }
 
-        // 2. 加载新会话数据 (这会更新 m.id)
-        // NOW it is safe to load chat specific data (overriding globals)
-        m.load();
+        // 2. 🔄 [加载新会话]
+        m.load(); // 这会更新 m.id 和从硬盘读取最新的 m.s 数据
         thm();
 
-        // 重置楼层折叠状态
+        // 重置运行时状态
         window.Gaigai.foldOffset = 0;
-
-        // 重置临时状态
         window.Gaigai.lastRequestData = null;
         lastInternalSaveTime = 0;
         lastProcessedMsgIndex = -1;
@@ -8794,33 +8792,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         deletedMsgIndex = -1;
         processedMessages.clear();
 
-        // 3. 🔐【关键修改】从仓库中"取出"新会话的快照 (如果之前存过)
-        // 此时 m.id 已经是新会话的 ID 了
+        // 3. 📂 [恢复快照库] 从仓库取出新会话的快照
         if (m.id && window.GaigaiSnapshotStore[m.id]) {
             snapshotHistory = window.GaigaiSnapshotStore[m.id];
-            console.log(`📂 [ochat] 已恢复会话 [${m.id}] 的独立快照记录`);
+            console.log(`📂 [ochat] 已恢复会话 [${m.id}] 的内存快照`);
         } else {
-            // 如果是第一次进入这个会话，初始化为空对象
             snapshotHistory = {};
-            console.log(`🆕 [ochat] 会话 [${m.id}] 首次加载，初始化空快照`);
         }
 
-        // 🧹 性能优化：只保留最近 50 条快照，释放内存
+        // 4. 🧹 [内存清理]
         const allKeys = Object.keys(snapshotHistory).map(Number).filter(k => !isNaN(k)).sort((a, b) => a - b);
         if (allKeys.length > 50) {
             const cutoff = allKeys[allKeys.length - 50];
             allKeys.forEach(k => {
-                if (k < cutoff && k !== -1) {
-                    delete snapshotHistory[k.toString()]; // -1是创世快照，保留
-                }
+                if (k < cutoff && k !== -1) delete snapshotHistory[k.toString()];
             });
-            console.log(`🧹 [性能优化] 已清理旧快照，保留最近 50 条 + 创世快照(-1)`);
         }
 
-        // 4. 确保 -1 号创世快照存在 (兜底)
+        // 5. 🛡️ [创世快照兜底]
         if (!snapshotHistory['-1']) {
             snapshotHistory['-1'] = {
-                data: m.all().slice(0, -1).map(sh => { // 只保存数据表
+                data: m.all().slice(0, -1).map(sh => {
                     let copy = JSON.parse(JSON.stringify(sh.json()));
                     copy.r = [];
                     return copy;
@@ -8828,58 +8820,53 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 summarized: {},
                 timestamp: 0
             };
-            console.log(`🎬 [ochat] 已创建会话 [${m.id}] 的创世快照 [-1]`);
         }
 
+        // ============================================================
+        // ⚡⚡⚡ [核心修复：分支穿越/时光机逻辑] ⚡⚡⚡
+        // ============================================================
         const ctx = m.ctx();
         const currentLen = ctx && ctx.chat ? ctx.chat.length : 0;
+        console.log(`📂 [ochat] 检测到聊天/分支变更 (当前楼层: ${currentLen})`);
 
-        console.log(`📂 [ochat] 检测到聊天变更 (当前楼层: ${currentLen})`);
-
-        // 5. ⚡ [关键逻辑] 当楼层变化时(如删消息)，立即为当前的"最后一条消息"建立快照。
-        // 这代表了"在该楼层结束时，表格的最终状态" (包含了用户的手动修改/全清)。
-        // 这样下次重Roll后续楼层时，就能正确回滚到这个状态。
         if (currentLen > 0) {
-            const lastIdx = currentLen - 1;
-            const lastKey = lastIdx.toString();
+            // 目标：我们应该处于哪一楼的状态？
+            const targetIndex = currentLen - 1;
+            const targetKey = targetIndex.toString();
 
-            // 📸 立即保存当前表格状态为最新快照
-            saveSnapshot(lastKey);
-            console.log(`💾 [ochat] 已同步当前表格状态至快照 [${lastKey}]`);
+            // 策略 A：如果我们有这一楼的快照（说明是切回了已存在的分支）
+            if (snapshotHistory[targetKey]) {
+                console.log(`⚡ [ochat] 检测到已知分支，正在回档至 [${targetKey}]...`);
+                // 强制回档！让表格回到那一楼的样子
+                restoreSnapshot(targetKey, true);
+            }
+            // 策略 B：如果没有这一楼的快照（说明可能是刚加载，或者快照丢了）
+            // 我们尝试找找上一楼的，或者相信 m.load() 从硬盘读出来的数据
+            else {
+                console.log(`⚠️ [ochat] 未找到分支快照 [${targetKey}]，尝试使用硬盘存档数据并建立新快照`);
+                // 立即为当前状态建立一个快照，防止下次切回来又空了
+                saveSnapshot(targetKey);
+            }
+        } else {
+            // 如果是新开聊天（0楼），回滚到创世状态
+            restoreSnapshot('-1', true);
         }
 
+        // 刷新 UI
         setTimeout(hideMemoryTags, 500);
         setTimeout(applyUiFold, 600);
-
-        // ✨ 自动绑定记忆书到角色卡
-        setTimeout(async () => {
-            // 🛡️ 重新从 localStorage 加载配置，确保使用最新的用户偏好
-            // 防止"僵尸绑定"效应（配置还未加载时使用默认值）
-            try {
-                const saved = JSON.parse(localStorage.getItem('gg_config'));
-                if (saved && saved.autoBindWI === false) {
-                    console.log('🛑 [ochat] 自动绑定已跳过 (用户已禁用)');
-                    return;
-                }
-            } catch (e) {
-                console.warn('⚠️ [ochat] 无法读取配置，使用内存配置');
+        setTimeout(() => {
+             // 强制刷新表格视图
+            if ($('#g-pop').length > 0) {
+                const activeTab = $('.g-t.act').data('i');
+                if (activeTab !== undefined) refreshTable(activeTab);
             }
+        }, 650);
 
-            // 双重检查：内存配置也要验证
-            if (!C.autoBindWI) {
-                console.log('🛑 [ochat] 自动绑定已跳过 (内存配置已禁用)');
-                return;
-            }
-
-            console.log('🔗 [ochat] 执行自动绑定...');
-            await window.Gaigai.WI.autoBindWorldInfo();
-        }, 700);
-
-        // 🔓 性能优化：解锁，允许用户操作
+        // 解锁
         setTimeout(() => {
             isChatSwitching = false;
-            console.log('🔓 [ochat] 会话切换锁已解除');
-        }, 800); // 延迟解锁，确保所有初始化完成
+        }, 800);
     }
 
     // ✨✨✨ 核心逻辑：智能切分法 (防呆增强版) ✨✨✨
@@ -9494,7 +9481,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>🔧 优化清表按钮：</strong>新增清表按钮的功能分为清指针或保留指针</li>
+                        <li><strong>新增总结功能：</strong>新增总结功能可选表格进行总结</li>
+                        <li><strong>修复导出：</strong>修复导出表格功能bug</li>
+                        <li><strong>修复分支：</strong>修复分支功能表格清空的bug</li>
+                        <li><strong>删除世界书自动绑定：</strong>世界书自动绑定功能删除，暂未找到解决同步方法</li>
                     </ul>
                 </div>
 

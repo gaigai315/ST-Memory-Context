@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.4.7
+ * @version 1.4.8
  * @author Gaigai Team
  */
 
@@ -39,6 +39,23 @@
             const summarySource = API_CONFIG.summarySource || 'chat';
             const sourceText = summarySource === 'table' ? '📊 仅表格' : '💬 聊天历史';
 
+            // 🆕 构建表格选择区域
+            let tableCheckboxes = '';
+            const dataTables = m.s.slice(0, -1); // 排除最后一个总结表
+            dataTables.forEach((sheet, i) => {
+                const rowCount = sheet.r ? sheet.r.length : 0;
+                const tableName = sheet.n || `表${i}`;
+                tableCheckboxes += `
+                    <label style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: background 0.2s;"
+                           onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                           onmouseout="this.style.background='transparent'">
+                        <input type="checkbox" class="gg_table_checkbox" data-table-index="${i}" checked style="transform: scale(1.1);">
+                        <span style="font-size: 11px; color: ${UI.tc};">${tableName}</span>
+                        <span style="font-size: 10px; color: ${UI.tc}; opacity: 0.6;">(${rowCount}行)</span>
+                    </label>
+                `;
+            });
+
             // 构建UI界面（三个功能区）
             const h = `
         <div class="g-p" style="display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
@@ -67,6 +84,24 @@
                 <div style="font-size:11px; color:${UI.tc}; opacity:0.8; margin-bottom:10px;">
                     💡 对当前<strong>未总结</strong>的表格内容（白色行）进行AI总结
                 </div>
+
+                <!-- 🆕 表格选择区域 -->
+                <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label style="font-size: 11px; font-weight: 600; color: ${UI.tc};">🎯 选择要总结的表格：</label>
+                        <div style="display: flex; gap: 6px;">
+                            <button id="gg_select_all_tables" style="padding: 2px 8px; background: rgba(76, 175, 80, 0.2); color: ${UI.tc}; border: 1px solid rgba(76, 175, 80, 0.5); border-radius: 3px; cursor: pointer; font-size: 10px;">全选</button>
+                            <button id="gg_deselect_all_tables" style="padding: 2px 8px; background: rgba(255, 255, 255, 0.1); color: ${UI.tc}; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 3px; cursor: pointer; font-size: 10px;">全不选</button>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; max-height: 120px; overflow-y: auto;">
+                        ${tableCheckboxes}
+                    </div>
+                    <div style="font-size: 9px; color: ${UI.tc}; opacity: 0.6; margin-top: 6px;">
+                        💡 默认全选所有表格，可手动勾选需要参与总结的表格
+                    </div>
+                </div>
+
                 <button id="gg_sum_table-snap" style="width:100%; padding:10px; background:#4caf50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
                     🚀 开始表格总结
                 </button>
@@ -244,12 +279,40 @@
                     }
                 });
 
+                // 🆕 表格选择 - 全选按钮
+                $('#gg_select_all_tables').on('click', function() {
+                    $('.gg_table_checkbox').prop('checked', true);
+                });
+
+                // 🆕 表格选择 - 全不选按钮
+                $('#gg_deselect_all_tables').on('click', function() {
+                    $('.gg_table_checkbox').prop('checked', false);
+                });
+
                 // 表格快照总结
                 $('#gg_sum_table-snap').on('click', async function() {
                     const $btn = $(this);
                     const oldText = $btn.text();
+
+                    // 🆕 获取用户选中的表格索引
+                    const selectedTableIndices = [];
+                    $('.gg_table_checkbox:checked').each(function() {
+                        const index = parseInt($(this).data('table-index'));
+                        if (!isNaN(index)) {
+                            selectedTableIndices.push(index);
+                        }
+                    });
+
+                    // 验证是否至少选择了一个表格
+                    if (selectedTableIndices.length === 0) {
+                        await window.Gaigai.customAlert('⚠️ 请至少选择一个表格进行总结！', '提示');
+                        return;
+                    }
+
+                    console.log(`📊 [表格总结] 用户选择了 ${selectedTableIndices.length} 个表格: ${selectedTableIndices.join(', ')}`);
+
                     $btn.text('⏳ AI正在阅读...').prop('disabled', true).css('opacity', 0.7);
-                    await self.callAIForSummary(null, null, 'table', false);
+                    await self.callAIForSummary(null, null, 'table', false, false, false, selectedTableIndices);
                     $btn.text(oldText).prop('disabled', false).css('opacity', 1);
                 });
 
@@ -370,8 +433,15 @@
 
         /**
          * AI总结核心函数（已修复逻辑穿透，已补全）
+         * @param {number|null} forceStart - 强制起始楼层
+         * @param {number|null} forceEnd - 强制结束楼层
+         * @param {string|null} forcedMode - 强制模式 ('table' 或 'chat')
+         * @param {boolean} isSilent - 是否静默模式
+         * @param {boolean} isBatch - 是否批量模式
+         * @param {boolean} skipSave - 是否跳过保存
+         * @param {Array<number>} targetTableIndices - 🆕 指定要总结的表格索引数组（仅表格模式有效，为空则默认所有表）
          */
-        async callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false, skipSave = false) {
+        async callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false, skipSave = false, targetTableIndices = null) {
             // 使用 window.Gaigai.loadConfig 确保配置最新
             const loadConfig = window.Gaigai.loadConfig || (() => Promise.resolve());
             await loadConfig();
@@ -425,6 +495,18 @@
                 charName = ctx.name2;
             }
 
+            // 🆕 处理表格索引过滤
+            // 如果指定了 targetTableIndices，则只使用这些表格；否则使用所有非空表格
+            let filteredTables = tables;
+            if (isTableMode && targetTableIndices && Array.isArray(targetTableIndices) && targetTableIndices.length > 0) {
+                filteredTables = tables.filter((table, idx) => {
+                    // 找到该表格在 m.s 中的实际索引
+                    const actualIndex = m.s.indexOf(table);
+                    return targetTableIndices.includes(actualIndex);
+                });
+                console.log(`📊 [表格过滤] 用户选择了 ${targetTableIndices.length} 个表格，过滤后实际有数据的表格: ${filteredTables.length} 个`);
+            }
+
             // 准备 System Prompt
             let rawPrompt = isTableMode ? window.Gaigai.PromptManager.get('summaryPromptTable') : window.Gaigai.PromptManager.get('summaryPromptChat');
             if (!rawPrompt || !rawPrompt.trim()) rawPrompt = "请总结以下内容：";
@@ -432,7 +514,7 @@
 
             // UI 交互逻辑（表格模式下的确认）
             if (isTableMode && !isSilent) {
-                if (!await window.Gaigai.customConfirm(`即将总结 ${tables.length} 个表格`, '确认')) {
+                if (!await window.Gaigai.customConfirm(`即将总结 ${filteredTables.length} 个表格`, '确认')) {
                     return { success: false, error: '用户取消操作' };
                 }
             }
@@ -469,13 +551,12 @@
                 if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
                     const char = ctx.characters[ctx.characterId];
                     // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                    const filterContentByTags = window.Gaigai.tools.filterContentByTags;
                     if (char.description) {
-                        const cleanedDesc = filterContentByTags(char.description);
+                        const cleanedDesc = window.Gaigai.tools.filterContentByTags(char.description);
                         if (cleanedDesc) charInfo += `[人物简介]\n${cleanedDesc}\n`;
                     }
                     if (char.personality) {
-                        const cleanedPers = filterContentByTags(char.personality);
+                        const cleanedPers = window.Gaigai.tools.filterContentByTags(char.personality);
                         if (cleanedPers) charInfo += `[性格/设定]\n${cleanedPers}\n`;
                     }
                 }
@@ -525,13 +606,12 @@
                 // 6. 聊天记录
                 const targetSlice = ctx.chat.slice(startIndex, endIndex);
                 const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
-                const filterContentByTags = window.Gaigai.tools.filterContentByTags; // ✅ 修复：使用正确的引用路径
                 let validMsgCount = 0;
                 targetSlice.forEach((msg) => {
                     if (msg.isGaigaiPrompt || msg.isGaigaiData || msg.isPhoneMessage) return;
                     let content = msg.mes || msg.content || '';
                     content = cleanMemoryTags(content);
-                    content = filterContentByTags(content);
+                    content = window.Gaigai.tools.filterContentByTags(content);
 
                     if (content && content.trim()) {
                         const isUser = msg.is_user || msg.role === 'user';
@@ -575,14 +655,16 @@
                 // ✅ [优化] 彻底不发送前情提要，避免内容重复和 Token 浪费
                 console.log('📊 [优化] 表格总结不发送前情提要，避免重复内容');
 
-                // 3. 写入详情表格（动态遍历所有数据表）
+                // 3. 写入详情表格（🆕 使用过滤后的表格列表）
                 let hasTableData = false;
-                m.s.slice(0, -1).forEach((sheet, i) => {
+                filteredTables.forEach((sheet) => {
                     if (sheet.r.length > 0) {
                         hasTableData = true;
+                        // 找到该表格在 m.s 中的实际索引
+                        const actualIndex = m.s.indexOf(sheet);
                         messages.push({
                             role: 'system',
-                            content: `【待总结的表格 - ${sheet.n}】\n${sheet.txt(i)}`
+                            content: `【待总结的表格 - ${sheet.n}】\n${sheet.txt(actualIndex)}`
                         });
                     }
                 });
@@ -621,12 +703,10 @@
             window.isSummarizing = true;
 
             try {
-                const callIndependentAPI = window.Gaigai.tools.callIndependentAPI;
-                const callTavernAPI = window.Gaigai.tools.callTavernAPI;
                 if (API_CONFIG.useIndependentAPI) {
-                    result = await callIndependentAPI(messages);
+                    result = await window.Gaigai.tools.callIndependentAPI(messages);
                 } else {
-                    result = await callTavernAPI(messages);
+                    result = await window.Gaigai.tools.callTavernAPI(messages);
                 }
             } finally {
                 window.isSummarizing = false;
@@ -684,7 +764,8 @@
                             // 什么都不做，让代码继续执行到下面的 else 分支
                         } else {
                             // 用户勾选了静默保存，自动标记为绿色并结束
-                            tables.forEach(table => {
+                            // 🔧 修复：只标记参与总结的表格（filteredTables），而不是所有表格（tables）
+                            filteredTables.forEach(table => {
                                 const ti = m.all().indexOf(table);
                                 if (ti !== -1) {
                                     for (let ri = 0; ri < table.r.length; ri++) window.Gaigai.markAsSummarized(ti, ri);
@@ -698,7 +779,9 @@
                             }
 
                             m.save();
-                            window.Gaigai.updateCurrentSnapshot();
+                            if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                                window.Gaigai.updateCurrentSnapshot();
+                            }
 
                             if ($('#g-pop').length > 0) window.Gaigai.shw();
 
@@ -730,8 +813,8 @@
                 }
 
                 // ✨ 如果是表格模式且用户未勾选静默，会执行到这里，弹出预览窗口
-                const regenParams = { forceStart, forceEnd, forcedMode, isSilent };
-                const res = await this.showSummaryPreview(cleanSummary, tables, isTableMode, endIndex, regenParams, currentRangeStr, isBatch);
+                const regenParams = { forceStart, forceEnd, forcedMode, isSilent, targetTableIndices };
+                const res = await this.showSummaryPreview(cleanSummary, filteredTables, isTableMode, endIndex, regenParams, currentRangeStr, isBatch);
                 return res;
 
             } else {
@@ -741,7 +824,7 @@
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
 
                 if (shouldRetry) {
-                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent);
+                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
                 } else {
                     return { success: false, error: result.error || 'API 生成失败，用户取消重试' };
                 }
@@ -754,7 +837,6 @@
         showSummaryPreview(summaryText, sourceTables, isTableMode, newIndex = null, regenParams = null, rangeStr = "", isBatch = false) {
             const self = this;
             const m = window.Gaigai.m;
-            const esc = window.Gaigai.esc;
             const API_CONFIG = window.Gaigai.config;
             const UI = window.Gaigai.ui;
 
@@ -774,13 +856,13 @@
                     ✅ 已生成总结建议<br>
                     💡 您可以直接编辑润色内容，满意后点击保存
                 </p>
-                <textarea id="gg_summary_editor" style="flex: 1; width:100%; min-height: 0; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize: none; line-height:1.8; margin-bottom: 10px;">${esc(summaryText)}</textarea>
+                <textarea id="gg_summary_editor" style="flex: 1; width:100%; min-height: 0; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize: none; line-height:1.8; margin-bottom: 10px;">${window.Gaigai.esc(summaryText)}</textarea>
 
                 <div style="margin-bottom:12px; flex-shrink: 0;">
                     <label for="gg_summary_note" style="display:block; font-size:12px; opacity:0.8; margin-bottom:4px;">📌 备注/范围：</label>
                     <input type="text"
                            id="gg_summary_note"
-                           value="${esc(rangeStr)}"
+                           value="${window.Gaigai.esc(rangeStr)}"
                            placeholder="例如：0-50、第1章、主线任务等"
                            style="width:100%; padding:8px; border-radius:4px; font-size:12px;">
                     <div style="font-size:10px; opacity:0.6; margin-top:4px;">💡 提示：此备注会自动保存到总结表第3列（如果该列存在）</div>
@@ -837,7 +919,8 @@
                                     regenParams.forcedMode,
                                     true,  // isSilent
                                     false, // isBatch
-                                    true   // skipSave
+                                    true,  // skipSave
+                                    regenParams.targetTableIndices  // 🆕 传递表格索引
                                 );
 
                                 if (res && res.success && res.summary && res.summary.trim()) {
@@ -863,7 +946,10 @@
                                         regenParams.forceStart,
                                         regenParams.forceEnd,
                                         regenParams.forcedMode,
-                                        false
+                                        false,
+                                        false,
+                                        false,
+                                        regenParams.targetTableIndices  // 🆕 传递表格索引
                                     );
                                     return;
                                 }
@@ -931,7 +1017,9 @@
                         console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 保存总结数据`);
 
                         m.save();
-                        window.Gaigai.updateCurrentSnapshot();
+                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                            window.Gaigai.updateCurrentSnapshot();
+                        }
 
                         $o.remove();
 
@@ -994,19 +1082,16 @@
                                     transition: 'all 0.2s'
                                 }
                             }).on('click', () => {
-                                // ✅ 动态遍历清空所有数据表（排除最后一个总结表）
-                                const totalTables = m.s.length;
-                                const dataTableCount = totalTables - 1; // 排除总结表
+                                // 🔧 修复：只清空参与总结的表格（sourceTables），而不是所有数据表
+                                console.log(`🗑️ [批量清空] 正在清空 ${sourceTables.length} 个参与总结的数据表...`);
 
-                                console.log(`🗑️ [批量清空] 正在清空前 ${dataTableCount} 个数据表...`);
-
-                                for (let i = 0; i < dataTableCount; i++) {
-                                    if (m.s[i]) {
-                                        m.s[i].clear();
+                                sourceTables.forEach(table => {
+                                    if (table) {
+                                        table.clear();
                                     }
-                                }
+                                });
 
-                                finish('✅ 所有原始数据表已清空，总结已归档。');
+                                finish('✅ 已总结的数据表已清空，总结已归档。');
                             });
 
                             const $btnHide = $('<button>', {
@@ -1024,24 +1109,23 @@
                                     transition: 'all 0.2s'
                                 }
                             }).on('click', () => {
-                                // ✅ 动态遍历：获取当前内存中所有数据表（排除最后一个总结表）
-                                // 这样无论用户有 1 个还是 10 个数据表，都能正确覆盖
-                                const totalTables = m.s.length;
-                                const dataTableCount = totalTables - 1; // 排除总结表
+                                // 🔧 修复：只标记参与总结的表格（sourceTables），而不是所有数据表
+                                console.log(`🙈 [批量隐藏] 正在处理 ${sourceTables.length} 个参与总结的数据表...`);
 
-                                console.log(`🙈 [批量隐藏] 正在处理前 ${dataTableCount} 个数据表...`);
-
-                                for (let i = 0; i < dataTableCount; i++) {
-                                    const table = m.s[i];
+                                sourceTables.forEach(table => {
                                     if (table && table.r && table.r.length > 0) {
-                                        // 将该表所有行标记为已总结
-                                        for (let ri = 0; ri < table.r.length; ri++) {
-                                            window.Gaigai.markAsSummarized(i, ri);
+                                        // 获取该表在 m.s 中的真实索引
+                                        const tableIndex = m.s.indexOf(table);
+                                        if (tableIndex !== -1) {
+                                            // 将该表所有行标记为已总结
+                                            for (let ri = 0; ri < table.r.length; ri++) {
+                                                window.Gaigai.markAsSummarized(tableIndex, ri);
+                                            }
                                         }
                                     }
-                                }
+                                });
 
-                                finish('✅ 所有原始数据表已标记为已总结（绿色）。');
+                                finish('✅ 已总结的数据表已标记为已总结（绿色）。');
                             });
 
                             const $btnKeep = $('<button>', {
@@ -1432,7 +1516,6 @@
         _showOptimizeConfirm(optimizedContent, targetIndices, originalContent) {
             const self = this;
             const UI = window.Gaigai.ui;
-            const esc = window.Gaigai.esc;
             const m = window.Gaigai.m;
 
             // 🔒 关键修复：记录弹窗打开时的会话ID
@@ -1454,12 +1537,12 @@
 
                     <div style="margin-bottom: 10px;">
                         <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px;">📝 原始内容：</label>
-                        <textarea readonly style="width:100%; height:120px; padding:8px; border-radius:4px; font-size:11px; resize:vertical; opacity:0.7;">${esc(originalContent)}</textarea>
+                        <textarea readonly style="width:100%; height:120px; padding:8px; border-radius:4px; font-size:11px; resize:vertical; opacity:0.7;">${window.Gaigai.esc(originalContent)}</textarea>
                     </div>
 
                     <div style="margin-bottom: 10px;">
                         <label style="font-size:11px; font-weight:bold; display:block; margin-bottom:4px;">✨ 优化后内容：</label>
-                        <textarea id="gg_opt_result_editor" style="width:100%; height:250px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${esc(optimizedContent)}</textarea>
+                        <textarea id="gg_opt_result_editor" style="width:100%; height:250px; padding:10px; border-radius:4px; font-size:12px; font-family:inherit; resize:vertical; line-height:1.6;">${window.Gaigai.esc(optimizedContent)}</textarea>
                     </div>
 
                     <div style="margin-top:12px; display: flex; gap: 10px;">
@@ -1533,15 +1616,15 @@
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 追加新页到总结表`);
 
                         m.save();
-                        const updateCurrentSnapshot = window.Gaigai.updateCurrentSnapshot || (() => {});
-                        updateCurrentSnapshot();
+                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                            window.Gaigai.updateCurrentSnapshot();
+                        }
 
                         await window.Gaigai.customAlert('✅ 优化内容已作为新页追加！', '成功');
                         $o.remove();
 
                         // 刷新UI
-                        const shw = window.Gaigai.shw;
-                        if (shw) shw();
+                        if (window.Gaigai.shw) window.Gaigai.shw();
 
                         resolve({ success: true });
                     });
@@ -1640,15 +1723,15 @@
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 覆盖 ${targetIndices.length} 页内容`);
 
                         m.save();
-                        const updateCurrentSnapshot = window.Gaigai.updateCurrentSnapshot || (() => {});
-                        updateCurrentSnapshot();
+                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                            window.Gaigai.updateCurrentSnapshot();
+                        }
 
                         await window.Gaigai.customAlert(`✅ 已覆盖 ${targetIndices.length} 页内容！`, '成功');
                         $o.remove();
 
                         // 刷新UI
-                        const shw = window.Gaigai.shw;
-                        if (shw) shw();
+                        if (window.Gaigai.shw) window.Gaigai.shw();
 
                         resolve({ success: true });
                     });

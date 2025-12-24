@@ -1,6 +1,6 @@
 // ========================================================================
 // 提示词管理器 - Prompt Manager for Memory Table Extension
-// 版本: 1.4.7
+// 版本: 1.4.8
 // ========================================================================
 (function() {
     'use strict';
@@ -15,7 +15,7 @@
 
     // ===== 常量定义 =====
     const PROFILE_KEY = 'gg_profiles';  // 预设数据存储键
-    const PROMPT_VERSION = 1.9;         // 提示词版本号
+    const PROMPT_VERSION = 2.0;         // 提示词版本号
 
     // ========================================================================
     // 默认提示词定义区
@@ -162,14 +162,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 <Memory><!-- updateRow(6, 0, {2: "艾莉娅的背包", 3: "艾莉娅", 4: "已获得"})--></Memory>
 
 【表格索引(严格按照表示索引顺序填写内容)】
-0: 主线剧情 (日期, 开始时间, 完结时间, 事件概要, 状态)
-1: 支线追踪 (状态, 支线名, 开始时间, 完结时间, 事件追踪, 关键NPC)
-2: 角色状态 (角色名, 状态变化, 时间, 原因, 当前位置)
-3: 人物档案 (姓名, 年龄, 身份, 地点, 性格, 备注)
-4: 人物关系 (角色A, 角色B, 关系描述, 情感态度)
-5: 世界设定 (设定名, 类型, 详细说明, 影响范围)
-6: 物品追踪 (物品名称, 物品描述, 当前位置, 持有者, 状态, 重要程度, 备注)
-7: 约定 (约定时间, 约定内容, 核心角色)
+{{TABLE_DEFINITIONS}}
 
 【当前表格状态参考】
 请仔细阅读下方的"当前表格状态"，找到对应行的索引(Index)。
@@ -391,14 +384,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 <Memory><!-- updateRow(6, 0, {2: "艾莉娅的背包", 3: "艾莉娅", 4: "已获得"})--></Memory>
 
 【表格索引】
-0: 主线剧情 (日期, 开始时间, 完结时间, 事件概要, 状态)
-1: 支线追踪 (状态, 支线名, 开始时间, 完结时间, 事件追踪, 关键NPC)
-2: 角色状态 (角色名, 状态变化, 时间, 原因, 当前位置)
-3: 人物档案 (姓名, 年龄, 身份, 地点, 性格, 备注)
-4: 人物关系 (角色A, 角色B, 关系描述, 情感态度)
-5: 世界设定 (设定名, 类型, 详细说明, 影响范围)
-6: 物品追踪 (物品名称, 物品描述, 当前位置, 持有者, 状态, 重要程度, 备注)
-7: 约定 (约定时间, 约定内容, 核心角色)
+{{TABLE_DEFINITIONS}}
 
 【当前表格状态参考】
 请仔细阅读下方的"当前表格状态"，找到对应行的索引(Index)。
@@ -600,6 +586,31 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 console.log(`[PromptManager] 替换 {{user}} -> ${userName}`);
             } else {
                 console.warn('[PromptManager] 无法解析 {{user}}，保持原样');
+            }
+
+            // ===== 解析 {{TABLE_DEFINITIONS}} =====
+            if (result.includes('{{TABLE_DEFINITIONS}}')) {
+                try {
+                    // 从 window.Gaigai.m.s 获取表格结构
+                    const sheets = window.Gaigai?.m?.s;
+                    if (sheets && Array.isArray(sheets)) {
+                        let tableDefinitions = '';
+                        // 排除最后一个总结表
+                        const dataTables = sheets.slice(0, -1);
+                        dataTables.forEach((sheet, index) => {
+                            const tableName = sheet.n || `表${index}`;
+                            const columns = sheet.c || [];
+                            const columnNames = columns.map(col => col.n || `列${col.i || ''}`).join(', ');
+                            tableDefinitions += `${index}: ${tableName} (${columnNames})\n`;
+                        });
+                        result = result.replace(/\{\{TABLE_DEFINITIONS\}\}/g, tableDefinitions.trim());
+                        console.log(`[PromptManager] 替换 {{TABLE_DEFINITIONS}} -> 已生成${dataTables.length}个表格定义`);
+                    } else {
+                        console.warn('[PromptManager] 无法获取表格数据，保持 {{TABLE_DEFINITIONS}} 原样');
+                    }
+                } catch (e) {
+                    console.error('[PromptManager] 解析 {{TABLE_DEFINITIONS}} 时出错:', e);
+                }
             }
 
             return result;
@@ -1474,8 +1485,8 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         </div>
 
                         <div class="gg-inputs">
-                            <input type="text" class="tbl-name" data-index="${idx}" value="${esc(tb.n)}" placeholder="表名" ${nameDisabled}>
-                            <input type="text" class="tbl-cols" data-index="${idx}" value="${esc(tb.c.join(', '))}" placeholder="列名（逗号分隔）">
+                            <input type="text" class="tbl-name" data-index="${idx}" value="${window.Gaigai.esc(tb.n)}" placeholder="表名" ${nameDisabled}>
+                            <input type="text" class="tbl-cols" data-index="${idx}" value="${window.Gaigai.esc(tb.c.join(', '))}" placeholder="列名（逗号分隔）">
                         </div>
                     </div>
                 `;
@@ -1614,7 +1625,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             </div>
         `;
 
-        pop('✏️ 表格结构编辑器', h, true);
+        window.Gaigai.pop('✏️ 表格结构编辑器', h, true);
 
         setTimeout(() => {
             // 实时更新 input 数据到 currentTables
@@ -1658,8 +1669,8 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             $('#gg_save_table_structure_btn').on('click', async function() {
                 updateCurrentData();
                 for (let i = 0; i < currentTables.length; i++) {
-                    if (!currentTables[i].n) { await customAlert(`第${i+1}个表格无名！`, '错误'); return; }
-                    if (currentTables[i].c.length === 0) { await customAlert(`第${i+1}个表格无列！`, '错误'); return; }
+                    if (!currentTables[i].n) { await window.Gaigai.customAlert(`第${i+1}个表格无名！`, '错误'); return; }
+                    if (currentTables[i].c.length === 0) { await window.Gaigai.customAlert(`第${i+1}个表格无列！`, '错误'); return; }
                 }
                 const bindToCurrentChat = $('#gg_bind_to_current_chat').is(':checked');
                 m.structureBound = bindToCurrentChat;
@@ -1667,16 +1678,16 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 if (bindToCurrentChat) {
                     m.initTables(currentTables, true);
                     m.save(true);
-                    shw();
-                    await customAlert('✅ 已绑定到当前角色！', '成功');
+                    window.Gaigai.shw();
+                    await window.Gaigai.customAlert('✅ 已绑定到当前角色！', '成功');
                 } else {
                     C.customTables = currentTables;
                     localStorage.setItem('gg_config', JSON.stringify(C));
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') await window.Gaigai.saveAllSettingsToCloud();
                     m.initTables(currentTables);
                     m.save(true);
-                    shw();
-                    await customAlert('✅ 已保存为全局默认！', '成功');
+                    window.Gaigai.shw();
+                    await window.Gaigai.customAlert('✅ 已保存为全局默认！', '成功');
                 }
             });
 
@@ -1688,9 +1699,9 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') await window.Gaigai.saveAllSettingsToCloud();
                 m.initTables(DEFAULT_TABLES);
                 m.save(true);
-                shw();
+                window.Gaigai.shw();
                 showTableEditor();
-                await customAlert('✅ 已恢复默认结构', '成功');
+                await window.Gaigai.customAlert('✅ 已恢复默认结构', '成功');
             });
 
             // 复制定义按钮
@@ -1702,7 +1713,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     definition += `Idx ${i}: ${name} (${cols})\n`;
                 }
                 navigator.clipboard.writeText(definition).then(() => {
-                    customAlert('✅ 已复制到剪贴板', '成功');
+                    window.Gaigai.customAlert('✅ 已复制到剪贴板', '成功');
                 });
             });
         }, 100);
