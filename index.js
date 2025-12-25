@@ -9559,10 +9559,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增总结功能：</strong>新增总结功能可选表格进行总结</li>
-                        <li><strong>修复导出：</strong>修复导出表格功能bug</li>
-                        <li><strong>修复分支：</strong>修复分支功能表格清空的bug</li>
-                        <li><strong>删除世界书自动绑定：</strong>世界书自动绑定功能删除，暂未找到解决同步方法</li>
+                        <li><strong>新增缓存清除功能：</strong>配置页面新增缓存清除功能，避免旧版本与新版本配置冲突。</li>
+                        <li><strong>优化表格注入显示：</strong>更改表格和总结内容插入提示词上下文的名称，更容易查询发送内容</li>
+                        <li><strong>提示词索引动态：</strong>新增提示词索引动态变量，自行更改表格后，变量自动调取新的表格名称。</li>
+                        <li><strong>空回审查弹窗：</strong>新增空回弹窗，如有空回可弹窗查看真实错误问题！</li>
+                        <li><strong>插件冲突容错：</strong>兼容其他插件，更改可能出现的冲突问题！</li>
                     </ul>
                 </div>
 
