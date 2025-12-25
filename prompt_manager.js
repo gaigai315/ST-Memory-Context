@@ -1,6 +1,6 @@
 // ========================================================================
 // 提示词管理器 - Prompt Manager for Memory Table Extension
-// 版本: 1.4.8
+// 版本: 1.4.9
 // ========================================================================
 (function() {
     'use strict';
@@ -481,7 +481,8 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     }
                 },
                 charBindings: {},
-                currentProfileId: 'default'
+                currentProfileId: 'default',
+                system_prompt_version: PROMPT_VERSION  // ✅ 初始化版本号（云端同步）
             };
 
             saveProfilesData(profilesData);
@@ -600,8 +601,16 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         dataTables.forEach((sheet, index) => {
                             const tableName = sheet.n || `表${index}`;
                             const columns = sheet.c || [];
-                            const columnNames = columns.map(col => col.n || `列${col.i || ''}`).join(', ');
-                            tableDefinitions += `${index}: ${tableName} (${columnNames})\n`;
+                            
+                            // ✨✨✨ [修复] 这里的列名是字符串数组，直接 join 即可，不要去取 .n 属性
+                            const columnNames = columns.map(col => {
+                                return (typeof col === 'string') ? col : (col.n || col.name || 'Column');
+                            }).join(' | ');
+
+                            const nextRow = sheet.r ? sheet.r.length : 0; 
+                            
+                            // 优化显示格式
+                            tableDefinitions += `• Index ${index}: ${tableName}\n  (Next Row Index: ${nextRow})\n  (Columns: ${columnNames})\n\n`;
                         });
                         result = result.replace(/\{\{TABLE_DEFINITIONS\}\}/g, tableDefinitions.trim());
                         console.log(`[PromptManager] 替换 {{TABLE_DEFINITIONS}} -> 已生成${dataTables.length}个表格定义`);
@@ -1349,9 +1358,10 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             // 1. 获取当前代码中的版本号
             const currentVersion = PROMPT_VERSION;
 
-            // 2. 获取本地存储的版本号（默认为0）
-            // ✅ Gen2: 使用新存储键 + parseFloat 支持小数版本号
-            const localVersion = parseFloat(localStorage.getItem('gg_prompt_ver_gen2')) || 0;
+            // 2. 读取预设数据，获取存储的版本号（默认为0）
+            // ✅ 从 profilesData.system_prompt_version 读取（云端同步）
+            let profilesData = getProfilesData() || initProfiles();
+            const localVersion = parseFloat(profilesData.system_prompt_version) || 0;
 
             // 3. 判断是否需要更新
             if (currentVersion <= localVersion) {
@@ -1368,9 +1378,16 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             );
 
             // 5. ⚠️ 无论用户选择什么，都要立即更新版本号，防止重复弹窗
-            // ✅ Gen2: 使用新存储键
-            localStorage.setItem('gg_prompt_ver_gen2', currentVersion);
-            console.log(`[PromptManager] 已更新本地版本号为: v${currentVersion}`);
+            // ✅ 保存到 profilesData.system_prompt_version（云端同步）
+            profilesData.system_prompt_version = currentVersion;
+            saveProfilesData(profilesData);
+            console.log(`[PromptManager] 已更新版本号为: v${currentVersion}`);
+
+            // 5.1 立即同步到云端，确保版本号持久化
+            if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                await window.Gaigai.saveAllSettingsToCloud();
+                console.log('[PromptManager] 版本号已同步到云端');
+            }
 
             // 6. 如果用户点击取消，直接返回
             if (!userConfirmed) {
@@ -1381,8 +1398,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             // 7. 用户确认更新，开始执行
             console.log('[PromptManager] 开始更新默认预设...');
 
-            // 7.1 读取当前的预设数据
-            let profilesData = getProfilesData() || initProfiles();
+            // 7.1 读取当前的预设数据（已在上面读取）
 
             // 7.2 确保 default 预设存在
             if (!profilesData.profiles) {

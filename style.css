@@ -1,4 +1,4 @@
-/* Gaigai v1.4.8 */
+/* Gaigai v1.4.9 */
 
 :root {
     --g-c: #888888;
@@ -63,15 +63,15 @@
     max-height: 80vh !important;
 }
 
-#g-edit-pop {
+#gai-edit-pop {
     z-index: 10000000 !important;
 }
 
-#g-edit-pop .g-ov {
+#gai-edit-pop .g-ov {
     z-index: 10000000 !important;
 }
 
-#g-summary-pop {
+#gai-summary-pop {
     z-index: 10000001 !important;
 }
 
@@ -193,7 +193,7 @@
     flex-shrink: 0;
 }
 
-#g-src {
+#gai-src {
     flex: 1;
     min-width: 120px;
     padding: 6px 10px;
@@ -233,45 +233,45 @@
 /* ========== 按钮颜色（语义化） ========== */
 
 /* 积极操作 - 绿色 */
-#g-sm { 
+#gai-btn-sum { 
     background: linear-gradient(135deg, #28a745 0%, #20c997 100%);  /* ✅ 渐变效果 */
     color: #fff;
 }
 
 /* 危险操作 - 红色 */
-#g-dr { 
+#gai-btn-del { 
     background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
     color: #fff;
 }
 
 /* 极度危险 - 深红 */
-#g-ca { 
+#gai-btn-clear { 
     background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
     color: #fff;
     font-weight: 600;  /* ✅ 最危险的按钮，字体加粗 */
 }
 
 /* ⭐ 警告操作 - 橙色（原来的粉色改成橙色） */
-#g-clear-tables { 
+#gai-btn-clean { 
     background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
     color: #fff;
 }
 
 /* 视图设置 - 琥珀色 */
-#g-reset-width {
+#gai-btn-view {
     background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%);
     color: #fff; /* 黄色背景需要白色文字 */
     font-weight: 500;
 }
 
 /* 辅助功能 - 灰色 */
-#g-tm, #g-cf { 
+#gai-btn-theme, #gai-btn-config { 
     background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
     color: #fff;
 }
 
 /* 主操作 - 主题色 */
-#g-ad, #g-ex {
+#gai-btn-add, #gai-btn-export {
     background: var(--g-c); /* 使用纯主题色，不用渐变避免颜色冲突 */
     color: var(--g-tc); /* 跟随主题字体颜色 */
 }
@@ -279,7 +279,7 @@
 /* ========== 平板/窄屏优化 (601px - 900px) ========== */
 @media (max-width: 900px) and (min-width: 601px) {
     /* 1. 布局容器：强制垂直排列 */
-    #g-pop .g-tl {
+    #gai-main-pop .g-tl {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
@@ -289,15 +289,15 @@
     }
 
     /* 2. 搜索框：稍微宽一点的留白 */
-    #g-pop .g-search-group {
+    #gai-main-pop .g-search-group {
         width: 100% !important;
         flex: 0 0 auto !important;
         margin-bottom: 12px !important;
         padding: 0 20px !important; /* 平板两边留白多一点 */
         box-sizing: border-box !important;
     }
-    
-    #g-pop #g-src {
+
+    #gai-main-pop #gai-src {
         padding: 0 12px !important;
         height: 34px !important; /* 平板容易点，稍微高一点 */
         min-height: 34px !important;
@@ -307,7 +307,7 @@
     }
 
     /* 3. 按钮组：网格布局，一行 6 个 */
-    #g-pop .g-btn-group {
+    #gai-main-pop .g-btn-group {
         /* ✅ 核心：平板屏幕宽，我们一行放 6 个，比例更协调 */
         display: grid !important;
         grid-template-columns: repeat(6, 1fr) !important; 
@@ -321,7 +321,7 @@
     }
 
     /* 4. 单个按钮样式 */
-    #g-pop .g-tl button {
+    #gai-main-pop .g-tl button {
         width: 100% !important;
         min-width: 0 !important;
         padding: 0 !important;
@@ -340,8 +340,8 @@
         box-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
     }
 
-    /* 5. 让“配置”按钮在最后一行居中（平板上一行6个，配置按钮跨中间2格比较好看） */
-    #g-pop .g-btn-group button:last-child {
+    /* 5. 让"配置"按钮在最后一行居中（平板上一行6个，配置按钮跨中间2格比较好看） */
+    #gai-main-pop .g-btn-group button:last-child {
         grid-column: 3 / span 2 !important; 
     }
 }
@@ -421,7 +421,7 @@
     }
 
     /* 4. 工具栏布局：去掉搜索框，纯按钮 */
-    #g-pop .g-tl {
+    #gai-main-pop .g-tl {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
@@ -429,14 +429,14 @@
         margin-bottom: 10px !important;
         padding: 0 !important;
     }
-    
+
     /* 移除搜索框相关的任何占位 */
-    #g-pop .g-search-group {
+    #gai-main-pop .g-search-group {
         display: none !important; 
     }
 
     /* 按钮组容器：Grid 网格布局 (强制4列) */
-    #g-pop .g-btn-group {
+    #gai-main-pop .g-btn-group {
         display: grid !important;
         /* 核心：重复4次，平均分配宽度 = 一行4个 */
         grid-template-columns: repeat(4, 1fr) !important; 
@@ -451,7 +451,7 @@
     }
 
     /* 单个按钮样式 */
-    #g-pop .g-tl button {
+    #gai-main-pop .g-tl button {
         width: 100% !important;
         min-width: 0 !important;
         padding: 0 !important;
@@ -934,10 +934,10 @@
 .g-w input[type="text"],
 .g-w input[type="password"],
 .g-w select,
-#g-pop input[type="number"],
-#g-pop input[type="text"],
-#g-pop input[type="password"],
-#g-pop select {
+#gai-main-pop input[type="number"],
+#gai-main-pop input[type="text"],
+#gai-main-pop input[type="password"],
+#gai-main-pop select {
     background: #ffffff !important;
     color: #333333 !important;
     border: 1px solid #ddd !important;
@@ -1008,15 +1008,15 @@
 }
 
 /* ========== 扩展按钮 ========== */
-#g-btn {
+#gai-btn {
     transition: all 0.3s;
 }
 
-#g-btn:hover {
+#gai-btn:hover {
     background-color: rgba(136, 136, 136, 0.15);
 }
 
-#g-btn i {
+#gai-btn i {
     color: var(--g-c);
 }
 
@@ -1063,7 +1063,7 @@
    ========================================== */
 
 /* 1. 选中所有插件内的复选框 */
-#g-pop input[type="checkbox"],
+#gai-main-pop input[type="checkbox"],
 .g-w input[type="checkbox"],
 .g-p input[type="checkbox"] {
     /* 清除浏览器原生默认样式 */
@@ -1095,7 +1095,7 @@
 }
 
 /* 2. 选中状态 (Checked) */
-#g-pop input[type="checkbox"]:checked,
+#gai-main-pop input[type="checkbox"]:checked,
 .g-w input[type="checkbox"]:checked,
 .g-p input[type="checkbox"]:checked {
     /* 🔥 背景色：跟随表头/按钮主题色 */
@@ -1106,7 +1106,7 @@
 }
 
 /* 3. 绘制对勾 (Checkmark) - 使用伪元素 */
-#g-pop input[type="checkbox"]::after,
+#gai-main-pop input[type="checkbox"]::after,
 .g-w input[type="checkbox"]::after,
 .g-p input[type="checkbox"]::after {
     content: '' !important;
@@ -1131,7 +1131,7 @@
 }
 
 /* 4. 选中时显示对勾 */
-#g-pop input[type="checkbox"]:checked::after,
+#gai-main-pop input[type="checkbox"]:checked::after,
 .g-w input[type="checkbox"]:checked::after,
 .g-p input[type="checkbox"]:checked::after {
     /* 放大显示 */
@@ -1155,7 +1155,7 @@
    ========================================== */
 
 /* 1. 选中所有插件内的单选按钮 */
-#g-pop input[type="radio"],
+#gai-main-pop input[type="radio"],
 .g-w input[type="radio"],
 .g-p input[type="radio"] {
     /* 清除浏览器原生默认样式 */
@@ -1187,7 +1187,7 @@
 }
 
 /* 2. 选中状态 */
-#g-pop input[type="radio"]:checked,
+#gai-main-pop input[type="radio"]:checked,
 .g-w input[type="radio"]:checked,
 .g-p input[type="radio"]:checked {
     /* 边框加粗并变为主题色 */
@@ -1196,7 +1196,7 @@
 }
 
 /* 3. 绘制内圆 (选中时显示) */
-#g-pop input[type="radio"]::after,
+#gai-main-pop input[type="radio"]::after,
 .g-w input[type="radio"]::after,
 .g-p input[type="radio"]::after {
     content: '' !important;
@@ -1220,7 +1220,7 @@
 }
 
 /* 4. 选中时显示内圆 */
-#g-pop input[type="radio"]:checked::after,
+#gai-main-pop input[type="radio"]:checked::after,
 .g-w input[type="radio"]:checked::after,
 .g-p input[type="radio"]:checked::after {
     transform: translate(-50%, -50%) scale(1) !important;

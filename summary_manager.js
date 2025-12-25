@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.4.8
+ * @version 1.4.9
  * @author Gaigai Team
  */
 
@@ -34,6 +34,9 @@
                 lastSumIndex = totalCount;
                 console.log(`⚠️ [进度修正] 总结指针超出范围，已修正为 ${totalCount}（原值: ${API_CONFIG.lastSummaryIndex}）`);
             }
+
+            // ✅ 读取保存的批次步长
+            const savedStep = window.Gaigai.config_obj.batchSummaryStep || 40;
 
             // ✨ 读取自动总结配置
             const summarySource = API_CONFIG.summarySource || 'chat';
@@ -134,7 +137,7 @@
                     </label>
                     <div id="gg_sum_batch-options" style="display: block; margin-top: 8px; padding-left: 8px;">
                         <label style="font-size: 11px; display: block; margin-bottom: 4px; color:${UI.tc}; opacity: 0.9;">每批处理楼层数：</label>
-                        <input type="number" id="gg_sum_step" value="40" min="10" max="200" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;">
+                        <input type="number" id="gg_sum_step" value="${savedStep}" min="10" max="200" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;">
                         <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-top: 4px;">
                             💡 建议值：30-50层。批次间会自动冷却5秒，避免API限流。
                         </div>
@@ -220,8 +223,15 @@
                     }
                     const $status = $('#gg_sum_chat-status');
                     if ($status.length > 0) {
-                        $status.text('⚠️ 分批任务正在后台执行，点击按钮可停止')
-                               .css('color', '#ff9800');
+                        // ✅ 检查是否有进度信息，如果有则显示具体进度
+                        if (window.Gaigai.summaryBatchProgress) {
+                            const { current, total } = window.Gaigai.summaryBatchProgress;
+                            $status.text(`🔄 正在执行第 ${current}/${total} 批...`)
+                                   .css('color', '#17a2b8');
+                        } else {
+                            $status.text('⚠️ 分批任务正在后台执行，点击按钮可停止')
+                                   .css('color', '#ff9800');
+                        }
                     }
                     console.log('🔄 [界面恢复] 检测到分批总结正在执行，已恢复按钮状态');
                 }
@@ -346,6 +356,11 @@
                     const isBatchMode = $('#gg_sum_batch-mode').is(':checked');
                     const step = parseInt($('#gg_sum_step').val()) || 40;
                     const isSilent = $('#gg_sum_silent-mode').is(':checked');
+
+                    // ✅ 保存批次步长到配置，下次打开时记住
+                    const currentStep = step;
+                    window.Gaigai.config_obj.batchSummaryStep = currentStep;
+                    localStorage.setItem('gg_config', JSON.stringify(window.Gaigai.config_obj));
 
                     if (isNaN(start) || isNaN(end) || start >= end) {
                         await window.Gaigai.customAlert('请输入有效的楼层范围 (起始 < 结束)', '错误');
@@ -662,9 +677,13 @@
                         hasTableData = true;
                         // 找到该表格在 m.s 中的实际索引
                         const actualIndex = m.s.indexOf(sheet);
+                        
+                        // ✨✨✨ 修复：加上 name 和 isGaigaiData，让探针显示表名
                         messages.push({
                             role: 'system',
-                            content: `【待总结的表格 - ${sheet.n}】\n${sheet.txt(actualIndex)}`
+                            name: `SYSTEM (${sheet.n})`, // ✅ 显示具体表名
+                            content: `【待总结的表格 - ${sheet.n}】\n${sheet.txt(actualIndex)}`,
+                            isGaigaiData: true // ✅ 激活探针显示
                         });
                     }
                 });
@@ -783,7 +802,7 @@
                                 window.Gaigai.updateCurrentSnapshot();
                             }
 
-                            if ($('#g-pop').length > 0) window.Gaigai.shw();
+                            if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
 
                             if (typeof toastr !== 'undefined') {
                                 if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
@@ -801,7 +820,7 @@
                         m.save();
                         window.Gaigai.updateCurrentSnapshot();
 
-                        if ($('#g-pop').length > 0) window.Gaigai.shw();
+                        if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
 
                         if (typeof toastr !== 'undefined') {
                             if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
@@ -896,8 +915,8 @@
             </div>
         `;
 
-                $('#g-summary-pop').remove();
-                const $o = $('<div>', { id: 'g-summary-pop', class: 'g-ov', css: { 'z-index': '10000010' } });
+                $('#gai-summary-pop').remove();
+                const $o = $('<div>', { id: 'gai-summary-pop', class: 'g-ov', css: { 'z-index': '10000010' } });
                 const $p = $('<div>', { class: 'g-w', css: { width: '700px', maxWidth: '92vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' } });
                 const $hd = $('<div>', { class: 'g-hd', css: { flexShrink: '0' } });
                 $hd.append(`<h3 style="color:${UI.tc}; flex:1;">📝 记忆总结</h3>`);
@@ -1052,7 +1071,7 @@
                                 }
                             }
 
-                            if ($('#g-pop').length > 0) window.Gaigai.shw();
+                            if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
                             resolve({ success: true });
                         } else {
                             // 表格模式：弹出三选一操作框
@@ -1078,28 +1097,55 @@
                                     background: isDark ? '#1e1e1e' : '#fff',
                                     color: 'var(--g-tc)',
                                     border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                                    borderRadius: '12px', padding: '24px',
-                                    boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '360px',
-                                    display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'center'
+                                    borderRadius: '12px',
+                                    padding: '24px',
+                                    boxShadow: '0 10px 40px rgba(0,0,0,0.4)',
+                                    width: '90%',
+                                    maxWidth: '420px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '12px',
+                                    textAlign: 'center'
                                 }
                             });
 
                             $dBox.append(`<div style="font-size:18px; margin-bottom:8px; color:var(--g-tc);">🎉 总结已保存！</div>`);
                             $dBox.append(`<div style="font-size:13px; opacity:0.8; margin-bottom:12px; color:var(--g-tc);">请选择如何处理<strong>原始表格数据</strong>：</div>`);
 
+                            // 🎨 创建按钮容器（确保按钮在手机上也能正常排列）
+                            const $btnContainer = $('<div>', {
+                                css: {
+                                    display: 'flex',
+                                    gap: '10px',
+                                    width: '100%',
+                                    flexWrap: 'wrap'
+                                }
+                            });
+
+                            // 🎨 统一按钮样式（适配日夜模式 + 响应式）
+                            const btnBaseStyle = {
+                                flex: '1',
+                                minWidth: '0',
+                                padding: '12px 8px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s',
+                                textAlign: 'center',
+                                lineHeight: '1.4',
+                                border: 'none',
+                                outline: 'none'
+                            };
+
                             const $btnDel = $('<button>', {
                                 class: 'summary-action-btn summary-action-delete',
-                                html: '🗑️ 删除已总结内容<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(清空表格，防止重复)</span>',
+                                html: '🗑️ 删除表格<br><span style="font-size:10px; font-weight:normal; opacity:0.8; color:inherit;">(清空已总结数据)</span>',
                                 css: {
-                                    background: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: 'var(--g-tc)',
-                                    border: `1px solid ${themeColor}`,
-                                    borderRadius: '8px',
-                                    padding: '12px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '13px',
-                                    fontWeight: 'bold',
-                                    transition: 'all 0.2s'
+                                    ...btnBaseStyle,
+                                    background: isDark ? 'rgba(220, 53, 69, 0.2)' : 'rgba(220, 53, 69, 0.1)',
+                                    color: textColor,
+                                    border: `1px solid ${isDark ? '#ff6b6b' : '#dc3545'}`
                                 }
                             }).on('click', () => {
                                 // 🔧 修复：只清空参与总结的表格（sourceTables），而不是所有数据表
@@ -1116,17 +1162,12 @@
 
                             const $btnHide = $('<button>', {
                                 class: 'summary-action-btn summary-action-hide',
-                                html: '🙈 仅隐藏 (变绿)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(保留内容但标记为已处理)</span>',
+                                html: '🙈 仅隐藏<br><span style="font-size:10px; font-weight:normal; opacity:0.8; color:inherit;">(标记已处理)</span>',
                                 css: {
-                                    background: isDark ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                    color: 'var(--g-tc)',
-                                    border: `1px solid ${themeColor}`,
-                                    borderRadius: '8px',
-                                    padding: '12px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '13px',
-                                    fontWeight: 'bold',
-                                    transition: 'all 0.2s'
+                                    ...btnBaseStyle,
+                                    background: isDark ? 'rgba(40, 167, 69, 0.2)' : 'rgba(40, 167, 69, 0.1)',
+                                    color: textColor,
+                                    border: `1px solid ${isDark ? '#51cf66' : '#28a745'}`
                                 }
                             }).on('click', () => {
                                 // 🔧 修复：只标记参与总结的表格（sourceTables），而不是所有数据表
@@ -1150,17 +1191,12 @@
 
                             const $btnKeep = $('<button>', {
                                 class: 'summary-action-btn summary-action-keep',
-                                html: '👁️ 保留 (不变)<br><span style="font-size:10px; font-weight:normal; opacity:0.8;">(不做任何修改，保持白色)</span>',
+                                html: '👁️ 保留<br><span style="font-size:10px; font-weight:normal; opacity:0.8; color:inherit;">(不做修改)</span>',
                                 css: {
-                                    background: themeColor,
-                                    color: '#fff',
-                                    border: `1px solid ${themeColor}`,
-                                    borderRadius: '8px',
-                                    padding: '12px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '13px',
-                                    fontWeight: 'bold',
-                                    transition: 'all 0.2s'
+                                    ...btnBaseStyle,
+                                    background: isDark ? 'rgba(108, 117, 125, 0.2)' : 'rgba(108, 117, 125, 0.1)',
+                                    color: textColor,
+                                    border: `1px solid ${isDark ? 'rgba(108, 117, 125, 0.5)' : '#6c757d'}`
                                 }
                             }).on('click', () => {
                                 finish('✅ 原始数据已保留（未做标记）。');
@@ -1169,13 +1205,15 @@
                             function finish(msg) {
                                 m.save();
                                 $dOverlay.remove();
-                                if ($('#g-pop').length > 0) window.Gaigai.shw();
+                                if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
                                 $('.g-t[data-i="8"]').click();
                                 if (typeof toastr !== 'undefined') toastr.success(msg);
                                 resolve({ success: true });
                             }
 
-                            $dBox.append($btnDel, $btnHide, $btnKeep);
+                            // 将按钮添加到容器，再将容器添加到弹窗
+                            $btnContainer.append($btnDel, $btnHide, $btnKeep);
+                            $dBox.append($btnContainer);
                             $dOverlay.append($dBox);
                             $('body').append($dOverlay);
                         }
@@ -1213,6 +1251,9 @@
             // ✨ 1. 初始化全局状态
             window.Gaigai.stopBatch = false;
             window.Gaigai.isBatchRunning = true; // 标记正在运行
+
+            // ✅ 初始化全局进度状态（用于UI恢复）
+            window.Gaigai.summaryBatchProgress = { current: 0, total: batches.length };
 
             let successCount = 0;
             let failedBatches = [];
@@ -1255,6 +1296,9 @@
 
                 const batch = batches[i];
                 const batchNum = i + 1;
+
+                // ✅ 更新全局进度状态
+                window.Gaigai.summaryBatchProgress.current = batchNum;
 
                 updateBtn(`🛑 停止 (${batchNum}/${batches.length})`, true);
 
@@ -1320,6 +1364,9 @@
             window.Gaigai.isBatchRunning = false;
             window.Gaigai.stopBatch = false;
 
+            // ✅ 清除全局进度状态
+            delete window.Gaigai.summaryBatchProgress;
+
             // ❌ 已移除：不在内部恢复按钮，由外层调用者统一处理
             // updateBtn('🚀 开始聊天总结', false);
 
@@ -1353,7 +1400,7 @@
             }
 
             // 刷新主界面
-            if ($('#g-pop').length > 0) window.Gaigai.shw();
+            if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
         }
 
         /**
@@ -1432,9 +1479,12 @@
                 originalContentForDisplay.push(`【第 ${idx + 1} 页】\n${fullContent}`);
 
                 // ✨ 核心修改：每一页作为独立的 system message 发送
+                // ✨✨✨ 修复：加上 name 和 isGaigaiData
                 messages.push({
                     role: 'system',
-                    content: `【待优化内容 - 第 ${idx + 1} 页】\n${fullContent}`
+                    name: `SYSTEM (第${idx + 1}页)`, // ✅ 显示页码
+                    content: `【待优化内容 - 第 ${idx + 1} 页】\n${fullContent}`,
+                    isGaigaiData: true // ✅ 激活探针显示
                 });
             });
 
@@ -1573,8 +1623,8 @@
                 </div>
                 `;
 
-                $('#g-optimize-pop').remove();
-                const $o = $('<div>', { id: 'g-optimize-pop', class: 'g-ov', css: { 'z-index': '10000006' } });
+                $('#gai-optimize-pop').remove();
+                const $o = $('<div>', { id: 'gai-optimize-pop', class: 'g-ov', css: { 'z-index': '10000006' } });
                 const $p = $('<div>', { class: 'g-w', css: { width: '800px', maxWidth: '92vw', height: 'auto' } });
 
                 const $hd = $('<div>', { class: 'g-hd' });
