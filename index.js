@@ -2381,17 +2381,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 逻辑：如果开启了批量填表(autoBackfill)，强制屏蔽实时填表提示词，无论 C.enabled 是什么状态！
         if (C.enabled && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
             strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
-
-            // ✅ 追加索引状态信息到提示词末尾
-            strPrompt += '\n\n[当前索引状态]\n';
-            m.s.slice(0, -1).forEach((s, i) => {
-                const displayName = i === 1 ? '支线追踪' : s.n;
-                const nextIndex = s.r.length;
-                strPrompt += `表${i} ${displayName}: 下一行请用索引 ${nextIndex}\n`;
-            });
-
-            // ✨✨✨ 新增的规则 ✨✨✨
-            strPrompt += '[索引结束]\n\n🛑 严禁在回复中输出表格样式或[当前索引状态]！\n✅ 你只需在正文结束后，使用 <Memory> 标签包裹指令即可。';
         }
 
         // ============================================================
@@ -2423,6 +2412,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let foundAnchor = false;
         let anchorIndex = -1;
 
+        // ✨ 新增：记录各变量的位置索引
+        let idxTableVar = -1;      // {{MEMORY_TABLE}} 的位置
+        let idxSummaryVar = -1;    // {{MEMORY_SUMMARY}} 的位置
+        let idxSmartVar = -1;      // {{MEMORY}} 的位置
+
         // ✅ 1. 判定提示词管理 (Prompt Manager) 开关
         // 只有开启了提示词管理，变量作为锚点才有效；否则视为“开关已关”，忽略变量位置
         let isPromptManagerOn = true;
@@ -2443,30 +2437,67 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
             let modified = false;
 
-            // 处理 {{MEMORY}}
+            // 处理 {{MEMORY}} (智能变量)
             if (msgContent.includes(varSmart)) {
-                // 无论是否启用锚点，都要先把这个变量文本洗掉，防止留着碍眼
+                // 记录第一次出现的位置
+                if (idxSmartVar === -1) {
+                    idxSmartVar = i;
+                    console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
+                }
+                // 无论是否启用锚点，都要先把这个变量文本洗掉
                 msgContent = msgContent.replace(varSmart, '');
 
                 if (allowAnchorMode) {
-                    // 只有允许锚点模式时，才记录这个位置
+                    // 只有允许锚点模式时，才记录这个位置用于后续判断
                     if (anchorIndex === -1) anchorIndex = i;
                     foundAnchor = true;
-                    console.log(`🎯 [锚点扫描] 发现变量 ${varSmart} | 位置: #${i} | 将在此处插入`);
                 } else {
-                    console.log(`🧹 [锚点扫描] 清洗变量 ${varSmart} | 忽略位置 (开关关或批量模式)`);
+                    console.log(`🧹 [变量扫描] 清洗变量 ${varSmart} | 忽略位置 (开关关或批量模式)`);
                 }
                 modified = true;
             }
 
-            // 处理其他变量 (简单清洗)
-            [varSum, varTable, varPrompt].forEach(v => {
-                if (msgContent.includes(v)) {
-                    msgContent = msgContent.replace(v, '');
-                    if (v === varPrompt) replacedPrompt = true; // 标记提示词已处理
-                    modified = true;
+            // 处理 {{MEMORY_SUMMARY}} (总结专属变量)
+            if (msgContent.includes(varSum)) {
+                if (idxSummaryVar === -1) {
+                    idxSummaryVar = i;
+                    console.log(`🎯 [变量扫描] 发现 ${varSum} | 位置: #${i}`);
                 }
-            });
+                msgContent = msgContent.replace(varSum, '');
+                modified = true;
+            }
+
+            // 处理 {{MEMORY_TABLE}} (表格专属变量)
+            if (msgContent.includes(varTable)) {
+                if (idxTableVar === -1) {
+                    idxTableVar = i;
+                    console.log(`🎯 [变量扫描] 发现 ${varTable} | 位置: #${i}`);
+                }
+                msgContent = msgContent.replace(varTable, '');
+                modified = true;
+            }
+
+            // 处理 {{MEMORY_PROMPT}} (特殊逻辑：根据条件决定锚点替换或清洗)
+            if (msgContent.includes(varPrompt)) {
+                // 检查是否满足锚点替换条件：提示词存在 且 提示词管理开关已开启
+                if (strPrompt && isPromptManagerOn) {
+                    // ✅ 条件满足：直接在锚点位置替换为实际提示词内容
+                    msgContent = msgContent.replace(varPrompt, strPrompt);
+                    replacedPrompt = true; // 标记已处理，阻止后续默认注入
+
+                    // 🎨 UI 增强：标记为提示词消息，使其在 Last Request/Probe 中显示为橙色 PROMPT
+                    ev.chat[i].isGaigaiPrompt = true;
+
+                    console.log(`🎯 [锚点替换] 提示词已注入至 {{MEMORY_PROMPT}} 位置`);
+                } else {
+                    // ⚠️ 条件不满足：仅清空变量文本，不标记为已替换
+                    // 这样可以让默认注入逻辑（Step 5）在标准位置注入提示词
+                    msgContent = msgContent.replace(varPrompt, '');
+                    // 关键：不设置 replacedPrompt = true
+                    console.log(`🧹 [变量清洗] {{MEMORY_PROMPT}} 已清空 (将使用默认位置注入)`);
+                }
+                modified = true;
+            }
 
             // 更新消息内容 & 标记幽灵气泡
             if (modified) {
@@ -2482,9 +2513,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (ev.chat.some(msg => msg._toDelete)) {
             ev.chat = ev.chat.filter((msg, index) => {
                 const keep = !msg._toDelete;
-                // 如果删除了锚点之前的消息，锚点索引需要减 1，保证位置准确
-                if (!keep && anchorIndex !== -1 && index < anchorIndex) {
-                    deletedCountBeforeAnchor++;
+                // 如果删除了变量位置之前的消息，所有索引需要减 1，保证位置准确
+                if (!keep) {
+                    if (anchorIndex !== -1 && index < anchorIndex) deletedCountBeforeAnchor++;
+                    if (idxSmartVar !== -1 && index < idxSmartVar) idxSmartVar--;
+                    if (idxSummaryVar !== -1 && index < idxSummaryVar) idxSummaryVar--;
+                    if (idxTableVar !== -1 && index < idxTableVar) idxTableVar--;
                 }
                 return keep;
             });
@@ -2497,72 +2531,84 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ============================================================
-        // 4. 执行注入 (分条 System 消息)
+        // 4. 执行注入 (独立定位：Summary 和 Table 分别处理)
         // ============================================================
 
-        // 准备要插入的消息列表 (复用 Step 1 准备好的分条消息)
-        // 初始顺序：总结 -> 表格
-        const allMessages = [...summaryMessages, ...tableMessages];
-
-        // ✨✨✨ 修复开始：智能合并提示词 ✨✨✨
-        // 将提示词对象直接插入到 allMessages 的头部
-        // 解决实时填表模式下，提示词和表格分别计算索引导致的位置冲突问题
-        // 最终顺序严格保证为：提示词 -> 总结 -> 表格 -> [Start a new Chat]
-        if (strPrompt && !replacedPrompt) {
-            // 获取提示词的角色 (system/user)
-            const role = getRoleByPosition(window.Gaigai.PromptManager.get('tablePromptPos'));
-
-            // 插入到队列最前面
-            allMessages.unshift({
-                role: role,
-                content: strPrompt,
-                isGaigaiPrompt: true
-            });
-
-            // 标记已处理，防止后续 Step 5 再次注入造成双重提示词
-            replacedPrompt = true;
-            console.log(`🔗 [智能合并] 提示词已整合至数据队列头部，确保顺序：Prompt -> Summary -> Table`);
-        }
-        // ✨✨✨ 修复结束 ✨✨✨
-
-        if (allMessages.length > 0) {
-            let finalInsertIndex = 0;
-            let strategy = '';
-
-            // 🅰️ 策略 A：锚点置换 (优先级最高)
-            // 条件：允许锚点模式 且 找到了锚点
-            if (allowAnchorMode && foundAnchor && anchorIndex !== -1) {
-                finalInsertIndex = anchorIndex;
-                strategy = `⚓ 锚点置换 (位置 #${anchorIndex})`;
+        // 🔧 辅助函数：获取默认插入位置 (Start a new Chat 上方)
+        const getDefaultPosition = () => {
+            let startChatIndex = -1;
+            for (let i = 0; i < ev.chat.length; i++) {
+                if (ev.chat[i].role === 'system' && ev.chat[i].content && ev.chat[i].content.includes('[Start a new Chat]')) {
+                    startChatIndex = i;
+                    break;
+                }
             }
-            // 🅱️ 策略 B：默认位置 (Start a new Chat 上方)
-            // 条件：没找到锚点，或者开关关了，或者批量模式
+            return startChatIndex !== -1 ? startChatIndex : 0; // 兜底：插在最顶端
+        };
+
+        // 📋 收集所有插入操作 (格式: { index: number, messages: array, type: string })
+        const insertionOps = [];
+
+        // ✨ A. 处理总结消息 (summaryMessages)
+        if (summaryMessages.length > 0) {
+            let summaryPos = -1;
+            let summaryStrategy = '';
+
+            // Priority 1: {{MEMORY_SUMMARY}} 专属变量
+            if (idxSummaryVar !== -1) {
+                summaryPos = idxSummaryVar;
+                summaryStrategy = `⚓ 专属变量 {{MEMORY_SUMMARY}} (位置 #${idxSummaryVar})`;
+            }
+            // Priority 2: {{MEMORY}} 智能变量 (仅当 Prompt Manager 开启且允许锚点模式)
+            else if (allowAnchorMode && idxSmartVar !== -1) {
+                summaryPos = idxSmartVar;
+                summaryStrategy = `⚓ 智能变量 {{MEMORY}} (位置 #${idxSmartVar})`;
+            }
+            // Priority 3: 默认位置
             else {
-                // 寻找 [Start a new Chat]
-                let startChatIndex = -1;
-                for (let i = 0; i < ev.chat.length; i++) {
-                    if (ev.chat[i].role === 'system' && ev.chat[i].content && ev.chat[i].content.includes('[Start a new Chat]')) {
-                        startChatIndex = i;
-                        break;
-                    }
-                }
-
-                if (startChatIndex !== -1) {
-                    finalInsertIndex = startChatIndex;
-                    strategy = `📍 默认位置 (Start a new Chat 前)`;
-                } else {
-                    finalInsertIndex = 0; // 兜底：插在最顶端
-                    strategy = `⚠️ 默认位置 (兜底顶部)`;
-                }
+                summaryPos = getDefaultPosition();
+                summaryStrategy = `📍 默认位置 (Start a new Chat 前，#${summaryPos})`;
             }
 
-            // 🚀 执行插入 (一次性插入所有分条消息)
-            ev.chat.splice(finalInsertIndex, 0, ...allMessages);
-            console.log(`📥 [数据注入] ${strategy} | 消息数: ${allMessages.length}`);
+            insertionOps.push({
+                index: summaryPos,
+                messages: summaryMessages,
+                type: 'Summary',
+                strategy: summaryStrategy
+            });
         }
 
-        // 5. 注入提示词 (默认位置)
-        // ✨ 由于上面已经合并处理了，这里的 !replacedPrompt 会拦截执行，避免重复
+        // ✨ B. 处理表格消息 (tableMessages)
+        if (tableMessages.length > 0) {
+            let tablePos = -1;
+            let tableStrategy = '';
+
+            // Priority 1: {{MEMORY_TABLE}} 专属变量
+            if (idxTableVar !== -1) {
+                tablePos = idxTableVar;
+                tableStrategy = `⚓ 专属变量 {{MEMORY_TABLE}} (位置 #${idxTableVar})`;
+            }
+            // Priority 2: {{MEMORY}} 智能变量 (仅当 Prompt Manager 开启且允许锚点模式)
+            else if (allowAnchorMode && idxSmartVar !== -1) {
+                tablePos = idxSmartVar;
+                tableStrategy = `⚓ 智能变量 {{MEMORY}} (位置 #${idxSmartVar})`;
+            }
+            // Priority 3: 默认位置
+            else {
+                tablePos = getDefaultPosition();
+                tableStrategy = `📍 默认位置 (Start a new Chat 前，#${tablePos})`;
+            }
+
+            insertionOps.push({
+                index: tablePos,
+                messages: tableMessages,
+                type: 'Table',
+                strategy: tableStrategy
+            });
+        }
+
+        // ✨ C. 处理提示词 (strPrompt) - 整合进插入队列
+        // 注意：提示词如果已经通过 {{MEMORY_PROMPT}} 锚点替换，则 replacedPrompt=true，此处不再执行
         if (strPrompt && !replacedPrompt) {
             const pmtPos = getInjectionPosition(
                 window.Gaigai.PromptManager.get('tablePromptPos'),
@@ -2572,17 +2618,35 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             );
             const role = getRoleByPosition(window.Gaigai.PromptManager.get('tablePromptPos'));
 
-            ev.chat.splice(pmtPos, 0, {
-                role,
-                content: strPrompt,
-                isGaigaiPrompt: true
+            insertionOps.push({
+                index: pmtPos,
+                messages: [{
+                    role: role,
+                    content: strPrompt,
+                    isGaigaiPrompt: true
+                }],
+                type: 'Prompt',
+                strategy: `📝 默认位置 (#${pmtPos})`
             });
-            console.log(`📝 提示词已注入 (独立模式) | 策略: 默认位置 | 位置: #${pmtPos}`);
-        } else if (!C.enabled && !replacedPrompt) {
-            console.log(`🚫 记忆已关，跳过提示词注入`);
         }
 
-        // 6. 过滤历史 (适配手机插件)
+        // 🚀 D. 排序并执行插入 (关键：从高到低，防止索引错位)
+        // 排序规则：索引从大到小 (Descending)，这样先插后面的，再插前面的，不会影响索引
+        insertionOps.sort((a, b) => b.index - a.index);
+
+        insertionOps.forEach(op => {
+            ev.chat.splice(op.index, 0, ...op.messages);
+            console.log(`📥 [数据注入] ${op.type} | ${op.strategy} | 消息数: ${op.messages.length}`);
+        });
+
+        // ✅ E. 兜底日志：如果没有任何注入
+        if (insertionOps.length === 0) {
+            console.log(`⚠️ [数据注入] 无数据需要注入 (Summary/Table/Prompt 均为空或已处理)`);
+        }
+
+        // ============================================================
+        // 5. 过滤历史 (适配手机插件)
+        // ============================================================
         if (C.filterHistory) {
             // 获取 AI 正在生成的消息的索引。通常是 chat 数组的最后一项（如果 AI 正在说话）
             const lastMessageIndex = ev.chat.length - 1;
@@ -2610,7 +2674,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ============================================================
-        // 7. 最后一道防线：清洗残留的变量名（防止泄漏给 AI）
+        // 6. 最后一道防线：清洗残留的变量名（防止泄漏给 AI）
         // ============================================================
         const varsToClean = ['{{MEMORY}}', '{{MEMORY_SUMMARY}}', '{{MEMORY_TABLE}}', '{{MEMORY_PROMPT}}'];
         if (ev.chat && Array.isArray(ev.chat)) {
@@ -7652,36 +7716,39 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 </div>
 
                 <!-- 🆕 表格选择区域（仅在"仅表格"模式下显示） -->
-                <div id="gg_auto_sum_table_selector" style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 8px; ${API_CONFIG.summarySource === 'table' ? '' : 'display:none;'}">
-                    <div style="font-weight: 600; margin-bottom: 6px; color: #388e3c; font-size: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div id="gg_auto_sum_table_selector" style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 6px; padding: 10px; margin-bottom: 8px; ${API_CONFIG.summarySource === 'table' ? '' : 'display:none;'}">
+                    <div style="font-weight: 600; margin-bottom: 6px; color: #388e3c; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
                         <span>🎯 选择要总结的表格：</span>
-                        <div style="display: flex; gap: 4px;">
-                            <button type="button" id="gg_auto_sum_select_all" style="padding: 2px 6px; background: rgba(76, 175, 80, 0.2); color: #388e3c; border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 3px; cursor: pointer; font-size: 9px;">全选</button>
-                            <button type="button" id="gg_auto_sum_deselect_all" style="padding: 2px 6px; background: rgba(0, 0, 0, 0.05); color: #666; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 3px; cursor: pointer; font-size: 9px;">全不选</button>
+                        <div style="display: flex; gap: 6px;">
+                            <button type="button" id="gg_auto_sum_select_all" style="padding: 2px 8px; background: rgba(76, 175, 80, 0.2); color: #388e3c; border: 1px solid rgba(76, 175, 80, 0.4); border-radius: 3px; cursor: pointer; font-size: 10px;">全选</button>
+                            <button type="button" id="gg_auto_sum_deselect_all" style="padding: 2px 8px; background: rgba(0, 0, 0, 0.05); color: #666; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 3px; cursor: pointer; font-size: 10px;">全不选</button>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 120px; overflow-y: auto;">
+
+                    <!-- ✨ 使用新的 CSS 类名 gg-choice-grid -->
+                    <div class="gg-choice-grid">
                         ${(() => {
-                const dataTables = m.s.slice(0, -1);
-                const selectedTables = C.autoSummaryTargetTables || [];
-                return dataTables.map((sheet, i) => {
-                    const rowCount = sheet.r ? sheet.r.length : 0;
-                    const tableName = sheet.n || `表${i}`;
-                    const isChecked = selectedTables.length === 0 || selectedTables.includes(i);
-                    return `
-                                    <label style="display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 3px; cursor: pointer; font-size: 11px; transition: background 0.2s;"
-                                           onmouseover="this.style.background='rgba(76, 175, 80, 0.1)'"
-                                           onmouseout="this.style.background='transparent'">
-                                        <input type="checkbox" class="gg-auto-sum-table-select" value="${i}" ${isChecked ? 'checked' : ''} style="margin: 0;">
-                                        <span style="flex: 1;">${tableName}</span>
-                                        <span style="font-size: 9px; opacity: 0.6;">(${rowCount}行)</span>
+                            const dataTables = m.s.slice(0, -1);
+                            const selectedTables = C.autoSummaryTargetTables || [];
+                            return dataTables.map((sheet, i) => {
+                                const rowCount = sheet.r ? sheet.r.length : 0;
+                                const tableName = sheet.n || `表${i}`;
+                                const isChecked = selectedTables.length === 0 || selectedTables.includes(i);
+
+                                // ✨ 使用新的卡片结构
+                                return `
+                                    <label class="gg-choice-card" title="${tableName}">
+                                        <input type="checkbox" class="gg-auto-sum-table-select" value="${i}" ${isChecked ? 'checked' : ''}>
+                                        <span class="gg-choice-name">${tableName}</span>
+                                        <span class="gg-choice-badge">${rowCount}行</span>
                                     </label>
                                 `;
-                }).join('');
-            })()}
+                            }).join('');
+                        })()}
                     </div>
-                    <div style="font-size: 9px; color: #666; margin-top: 4px;">
-                        💡 默认全选所有表格，可手动勾选需要参与自动总结的表格
+
+                    <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.6; margin-top: 8px; padding-left: 2px;">
+                        💡 默认全选，可手动勾选参与自动总结的表格
                     </div>
                 </div>
 
@@ -9559,12 +9626,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增缓存清除功能：</strong>配置页面新增缓存清除功能，避免旧版本与新版本配置冲突。</li>
-                        <li><strong>优化表格注入显示：</strong>更改表格和总结内容插入提示词上下文的名称，更容易查询发送内容</li>
-                        <li><strong>提示词索引动态：</strong>新增提示词索引动态变量，自行更改表格后，变量自动调取新的表格名称。</li>
-                        <li><strong>空回审查弹窗：</strong>新增空回弹窗，如有空回可弹窗查看真实错误问题！</li>
-                        <li><strong>插件冲突容错：</strong>兼容其他插件，更改可能出现的冲突问题！</li>
-                    </ul>
+                        <li><strong>优化变量 ：</strong>修复变量替换的功能，优化在查看器中的显示更清晰。</li>
+                        <li><strong>优化提示词 ：</strong>去除多余提示词索引说明</li>
+                        <li><strong>优化样式 ：</strong>总结勾选框样式</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

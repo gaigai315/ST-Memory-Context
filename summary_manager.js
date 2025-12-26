@@ -42,19 +42,19 @@
             const summarySource = API_CONFIG.summarySource || 'chat';
             const sourceText = summarySource === 'table' ? '📊 仅表格' : '💬 聊天历史';
 
-            // 🆕 构建表格选择区域
+            // 🆕 构建表格选择区域 (卡片样式)
             let tableCheckboxes = '';
             const dataTables = m.s.slice(0, -1); // 排除最后一个总结表
             dataTables.forEach((sheet, i) => {
                 const rowCount = sheet.r ? sheet.r.length : 0;
                 const tableName = sheet.n || `表${i}`;
+
+                // ✨ 使用新的卡片结构
                 tableCheckboxes += `
-                    <label style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: background 0.2s;"
-                           onmouseover="this.style.background='rgba(255,255,255,0.1)'"
-                           onmouseout="this.style.background='transparent'">
-                        <input type="checkbox" class="gg_table_checkbox" data-table-index="${i}" checked style="transform: scale(1.1);">
-                        <span style="font-size: 11px; color: ${UI.tc};">${tableName}</span>
-                        <span style="font-size: 10px; color: ${UI.tc}; opacity: 0.6;">(${rowCount}行)</span>
+                    <label class="gg-choice-card" title="${tableName}">
+                        <input type="checkbox" class="gg_table_checkbox" data-table-index="${i}" checked>
+                        <span class="gg-choice-name">${tableName}</span>
+                        <span class="gg-choice-badge">${rowCount}行</span>
                     </label>
                 `;
             });
@@ -97,7 +97,7 @@
                             <button id="gg_deselect_all_tables" style="padding: 2px 8px; background: rgba(255, 255, 255, 0.1); color: ${UI.tc}; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 3px; cursor: pointer; font-size: 10px;">全不选</button>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; max-height: 120px; overflow-y: auto;">
+                    <div class="gg-choice-grid">
                         ${tableCheckboxes}
                     </div>
                     <div style="font-size: 9px; color: ${UI.tc}; opacity: 0.6; margin-top: 6px;">
