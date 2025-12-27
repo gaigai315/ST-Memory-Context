@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.4.9
+// 记忆表格 v1.5.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.4.9 启动');
+    console.log('🚀 记忆表格 v1.5.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.4.9';
+    const V = 'v1.5.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -876,6 +876,19 @@
             const toDelete = new Set(indices);
             // 重建数组：只保留不在删除名单里的行
             this.r = this.r.filter((_, index) => !toDelete.has(index));
+        }
+        move(rowIndex, direction) {
+            // direction: -1 for Up, 1 for Down
+            const newIndex = rowIndex + direction;
+
+            // 边界检查
+            if (newIndex < 0 || newIndex >= this.r.length) {
+                return false; // 无法移动
+            }
+
+            // 交换两行
+            [this.r[rowIndex], this.r[newIndex]] = [this.r[newIndex], this.r[rowIndex]];
+            return true; // 移动成功
         }
         clear() { this.r = []; }
         json() { return { n: this.n, c: this.c, r: this.r }; }
@@ -3988,11 +4001,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </th>`;
         });
 
+        // ✅ 新增：隐形操作列表头（无文字）
+        h += '<th class="g-col-ops"></th>';
+
         h += '</tr></thead><tbody>'
 
         // 表格内容
         if (s.r.length === 0) {
-            h += `<tr class="g-emp"><td colspan="${s.c.length + 1}">暂无数据</td></tr>`;
+            h += `<tr class="g-emp"><td colspan="${s.c.length + 2}">暂无数据</td></tr>`;
         } else {
             s.r.forEach((rw, ri) => {
                 const summarizedClass = isSummarized(ti, ri) ? ' g-summarized' : '';
@@ -4022,6 +4038,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     <div class="g-row-resizer" data-ti="${ti}" data-r="${ri}" title="拖拽调整行高"></div>
 </td>`;
                 });
+
+                // ✅ 新增：隐形操作列
+                h += `<td class="g-col-ops">
+                <div class="g-ops-wrap">
+                    <button class="g-btn-op up" data-ti="${ti}" data-r="${ri}">↑</button>
+                    <button class="g-btn-op down" data-ti="${ti}" data-r="${ri}">↓</button>
+                </div>
+            </td>`;
+
                 h += '</tr>';
             });
         }
@@ -4713,6 +4738,51 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
         });
 
+        // ========== 行移动按钮 (Move Row Up/Down) ==========
+        $('#gai-main-pop').off('click', '.g-btn-op').on('click', '.g-btn-op', function (e) {
+            e.stopPropagation(); // ✅ 关键：阻止触发行选择
+
+            const $btn = $(this);
+            const ti = parseInt($btn.data('ti'));
+            const ri = parseInt($btn.data('r'));
+            const direction = $btn.hasClass('up') ? -1 : 1;
+
+            const sh = m.get(ti);
+            if (!sh) return;
+
+            // 调用 move 方法
+            const success = sh.move(ri, direction);
+            if (!success) {
+                // 无法移动（已在边界）
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning('无法移动：已在表格边界', '提示', { timeOut: 1000 });
+                }
+                return;
+            }
+
+            // 更新时间戳
+            lastManualEditTime = Date.now();
+
+            // 保存数据
+            m.save(true);
+
+            // 刷新表格
+            refreshTable(ti);
+
+            // ✅ UX增强：刷新后保持选中状态（移动到新位置）
+            const newIndex = ri + direction;
+            setTimeout(() => {
+                const $newRow = $(`.g-tbc[data-i="${ti}"] .g-row[data-r="${newIndex}"]`);
+                $newRow.addClass('g-selected');
+
+                // 同步复选框状态
+                $newRow.find('.g-row-select').prop('checked', true);
+
+                // 更新 selectedRow 变量
+                selectedRow = newIndex;
+            }, 50);
+        });
+
         // 新增行
         $('#gai-btn-add').off('click').on('click', async function () {
             const ti = parseInt($('.g-t.act').data('i'));
@@ -4785,191 +4855,167 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             updateCurrentSnapshot();
         });
 
-        // ✨✨✨ 新增：导入功能 (支持 JSON/TXT + 智能识别 + 增强兼容性) ✨✨✨
-        $('#gai-btn-import').off('click').on('click', function () {
+        // ✨✨✨ 新增：导入功能 (使用 IOManager) ✨✨✨
+        $('#gai-btn-import').off('click').on('click', async function () {
+            if (!window.Gaigai.IOManager || typeof window.Gaigai.IOManager.handleImport !== 'function') {
+                console.error('❌ [导入] IOManager 未加载');
+                await customAlert('导入模块未加载，请刷新页面重试', '错误');
+                return;
+            }
+
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = '.json, .txt, application/json, text/plain'; // ✅ 增强兼容性
+            input.accept = '.json, .txt, application/json, text/plain';
             input.style.display = 'none';
-            document.body.appendChild(input); // ✅ 确保挂载到 DOM
+            document.body.appendChild(input);
 
-            input.onchange = e => {
+            input.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) {
-                    // 用户取消选择，移除 input 元素
                     if (input.parentNode) {
                         document.body.removeChild(input);
                     }
                     return;
                 }
 
-                const reader = new FileReader();
+                try {
+                    // 使用 IOManager 处理导入
+                    const data = await window.Gaigai.IOManager.handleImport(file);
 
-                // ✅ 必须保留 async，否则后面的 await 会报错
-                reader.onload = async event => {
-                    try {
-                        const jsonStr = event.target.result;
-                        const data = JSON.parse(jsonStr);
+                    // 兼容 's' (导出文件) 和 'd' (内部存档) 两种格式
+                    const sheetsData = data.s || data.d;
 
-                        // 兼容 's' (导出文件) 和 'd' (内部存档) 两种格式
-                        const sheetsData = data.s || data.d;
+                    if (!sheetsData || !Array.isArray(sheetsData)) {
+                        await customAlert('❌ 错误：这不是有效的记忆表格备份文件！\n(找不到数据数组)', '导入失败');
+                        return;
+                    }
 
-                        if (!sheetsData || !Array.isArray(sheetsData)) {
-                            // 🎨 美化：使用自定义弹窗报错
-                            await customAlert('❌ 错误：这不是有效的记忆表格备份文件！\n(找不到数据数组)', '导入失败');
-                            return;
-                        }
+                    // 🔍 智能识别数据结构
+                    const sheetCount = sheetsData.length;
+                    let importMode = 'full';
+                    let confirmMsg = '';
+                    const totalTableCount = m.s.length;
+                    const dataTableCount = m.s.length - 1;
 
-                        // 🔍 智能识别数据结构
-                        const sheetCount = sheetsData.length;
-                        let importMode = 'full'; // 默认全量恢复
-                        let confirmMsg = '';
-                        const totalTableCount = m.s.length; // 动态获取总表格数
-                        const dataTableCount = m.s.length - 1; // 动态获取数据表数量
+                    if (sheetCount === totalTableCount) {
+                        importMode = 'full';
+                        confirmMsg = `📦 检测到完整备份（${totalTableCount} 个表格）\n\n将恢复所有详情表和总结表`;
+                    } else if (sheetCount === dataTableCount) {
+                        importMode = 'details';
+                        confirmMsg = `📊 检测到详情表备份（${dataTableCount} 个表格）\n\n将仅恢复详情表，保留现有总结表`;
+                    } else if (sheetCount === 1) {
+                        importMode = 'summary';
+                        confirmMsg = '📝 检测到总结表备份（1 个表格）\n\n将仅恢复总结表，保留现有详情表';
+                    } else {
+                        await customAlert(`⚠️ 数据格式异常！\n\n表格数量: ${sheetCount}\n预期: 1、${dataTableCount} 或 ${totalTableCount} 个表格`, '格式错误');
+                        return;
+                    }
 
-                        if (sheetCount === totalTableCount) {
-                            // 包含所有表格（所有数据表 + 总结表）
-                            importMode = 'full';
-                            confirmMsg = `📦 检测到完整备份（${totalTableCount} 个表格）\n\n将恢复所有详情表和总结表`;
-                        } else if (sheetCount === dataTableCount) {
-                            // 仅包含数据表（不含总结表）
-                            importMode = 'details';
-                            confirmMsg = `📊 检测到详情表备份（${dataTableCount} 个表格）\n\n将仅恢复详情表，保留现有总结表`;
-                        } else if (sheetCount === 1) {
-                            // 仅包含总结表
-                            importMode = 'summary';
-                            confirmMsg = '📝 检测到总结表备份（1 个表格）\n\n将仅恢复总结表，保留现有详情表';
+                    const timeStr = data.ts ? new Date(data.ts).toLocaleString() : (data.t ? new Date(data.t).toLocaleString() : '未知时间');
+                    const fullConfirmMsg = `⚠️ 确定要导入吗？\n\n${confirmMsg}\n\n📅 备份时间: ${timeStr}\n\n这将覆盖对应的表格内容！`;
+
+                    if (!await customConfirm(fullConfirmMsg, '确认导入')) return;
+
+                    // 开始恢复（根据模式智能恢复）
+                    if (importMode === 'full') {
+                        // 检查备份文件是否包含表格结构信息
+                        const hasStructureInfo = sheetsData.every(sheet =>
+                            sheet && typeof sheet === 'object' && sheet.n && Array.isArray(sheet.c)
+                        );
+
+                        if (hasStructureInfo) {
+                            console.log('📋 [导入] 检测到表格结构信息，开始重塑表格结构...');
+
+                            const newCustomTables = [];
+                            for (let i = 0; i < sheetsData.length - 1; i++) {
+                                const sheet = sheetsData[i];
+                                if (sheet && sheet.n && Array.isArray(sheet.c)) {
+                                    newCustomTables.push({
+                                        n: sheet.n,
+                                        c: sheet.c
+                                    });
+                                }
+                            }
+
+                            if (newCustomTables.length > 0) {
+                                C.customTables = newCustomTables;
+                                console.log(`✅ [导入] 已更新表格结构配置（${newCustomTables.length} 个数据表）`);
+
+                                try {
+                                    localStorage.setItem('gg_config', JSON.stringify(C));
+                                    console.log('💾 [导入] 表格结构已保存到 localStorage');
+                                } catch (e) {
+                                    console.error('❌ [导入] localStorage 保存失败:', e);
+                                }
+
+                                try {
+                                    m.initTables(sheetsData, false);
+                                    console.log('🔧 [导入] 表格对象已根据备份结构重建');
+                                } catch (e) {
+                                    console.error('❌ [导入] initTables 失败:', e);
+                                    await customAlert('重建表格结构失败: ' + e.message, '错误');
+                                    return;
+                                }
+
+                                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                                    window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                                        console.warn('⚠️ [导入] 云端同步失败:', err);
+                                    });
+                                    console.log('☁️ [导入] 已触发云端同步');
+                                }
+                            }
                         } else {
-                            await customAlert(`⚠️ 数据格式异常！\n\n表格数量: ${sheetCount}\n预期: 1、${dataTableCount} 或 ${totalTableCount} 个表格`, '格式错误');
-                            return;
+                            console.log('⚠️ [导入] 未检测到表格结构信息，使用传统填充方式');
                         }
 
-                        const timeStr = data.ts ? new Date(data.ts).toLocaleString() : (data.t ? new Date(data.t).toLocaleString() : '未知时间');
-
-                        // 🎨 美化：使用自定义确认框
-                        const fullConfirmMsg = `⚠️ 确定要导入吗？\n\n${confirmMsg}\n\n📅 备份时间: ${timeStr}\n\n这将覆盖对应的表格内容！`;
-                        if (!await customConfirm(fullConfirmMsg, '确认导入')) return;
-
-                        // 开始恢复（根据模式智能恢复）
-                        if (importMode === 'full') {
-                            // ✨✨✨ 全量恢复：支持动态表格结构适配 ✨✨✨
-
-                            // 🔍 检查备份文件是否包含表格结构信息（n 和 c 字段）
-                            const hasStructureInfo = sheetsData.every(sheet =>
-                                sheet && typeof sheet === 'object' && sheet.n && Array.isArray(sheet.c)
-                            );
-
-                            if (hasStructureInfo) {
-                                console.log('📋 [导入] 检测到表格结构信息，开始重塑表格结构...');
-
-                                // 1️⃣ 提取数据表的结构信息（排除最后一个总结表）
-                                const newCustomTables = [];
-                                for (let i = 0; i < sheetsData.length - 1; i++) {
-                                    const sheet = sheetsData[i];
-                                    if (sheet && sheet.n && Array.isArray(sheet.c)) {
-                                        // ✅ 修复：必须使用 'n' 和 'c' 以匹配系统标准，否则刷新后结构丢失
-                                        newCustomTables.push({
-                                            n: sheet.n,
-                                            c: sheet.c
-                                        });
-                                    }
-                                }
-
-                                // 2️⃣ 更新全局配置
-                                if (newCustomTables.length > 0) {
-                                    C.customTables = newCustomTables;
-                                    console.log(`✅ [导入] 已更新表格结构配置（${newCustomTables.length} 个数据表）`);
-
-                                    // 3️⃣ 保存到 localStorage
-                                    try {
-                                        localStorage.setItem('gg_config', JSON.stringify(C));
-                                        console.log('💾 [导入] 表格结构已保存到 localStorage');
-                                    } catch (e) {
-                                        console.error('❌ [导入] localStorage 保存失败:', e);
-                                    }
-
-                                    // 4️⃣ 重建表格对象（使用新结构）
-                                    try {
-                                        // 注意：initTables 只建立结构，不填充数据
-                                        m.initTables(sheetsData, false);
-                                        console.log('🔧 [导入] 表格对象已根据备份结构重建');
-                                    } catch (e) {
-                                        console.error('❌ [导入] initTables 失败:', e);
-                                        await customAlert('重建表格结构失败: ' + e.message, '错误');
-                                        return;
-                                    }
-
-                                    // 5️⃣ 同步到云端
-                                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                                        window.Gaigai.saveAllSettingsToCloud().catch(err => {
-                                            console.warn('⚠️ [导入] 云端同步失败:', err);
-                                        });
-                                        console.log('☁️ [导入] 已触发云端同步');
-                                    }
-                                }
-                            } else {
-                                // ⚠️ 向后兼容：旧版备份文件缺少结构信息，使用传统填充方式
-                                console.log('⚠️ [导入] 未检测到表格结构信息，使用传统填充方式');
-                                // 旧逻辑不需要重建结构，直接填数据
+                        console.log('🔄 [导入] 正在填充表格数据...');
+                        m.s.forEach((sheet, i) => {
+                            if (sheetsData[i]) {
+                                sheet.from(sheetsData[i]);
                             }
+                        });
+                        console.log('✅ [导入] 数据填充完毕');
 
-                            // 6️⃣ ✅ 修复核心 BUG：显式填充数据！
-                            // 无论是否重建了结构，都需要把 sheetsData 里的行数据 (r) 填入表格
-                            console.log('🔄 [导入] 正在填充表格数据...');
-                            m.s.forEach((sheet, i) => {
-                                if (sheetsData[i]) {
-                                    sheet.from(sheetsData[i]); // 这一步才是真正恢复数据的关键
-                                }
-                            });
-                            console.log('✅ [导入] 数据填充完毕');
-
-                        } else if (importMode === 'details') {
-                            // 仅恢复数据表（不含最后一个总结表）
-                            for (let i = 0; i < m.s.length - 1 && i < sheetsData.length; i++) {
-                                if (sheetsData[i]) m.s[i].from(sheetsData[i]);
-                            }
-                        } else if (importMode === 'summary') {
-                            // 仅恢复总结表（最后一个表）
-                            const summaryIndex = m.s.length - 1;
-                            if (sheetsData[0] && m.s[summaryIndex]) {
-                                m.s[summaryIndex].from(sheetsData[0]);
-                            }
+                    } else if (importMode === 'details') {
+                        for (let i = 0; i < m.s.length - 1 && i < sheetsData.length; i++) {
+                            if (sheetsData[i]) m.s[i].from(sheetsData[i]);
                         }
-
-                        if (data.summarized) summarizedRows = data.summarized;
-
-                        // 强制保存并刷新
-                        lastManualEditTime = Date.now();
-                        m.save();
-                        shw();
-
-                        // 🎨 美化：成功提示（告知用户恢复了哪部分）
-                        let successMsg = '✅ 导入成功！\n\n';
-                        if (importMode === 'full') {
-                            successMsg += '已恢复：所有详情表 + 总结表';
-                        } else if (importMode === 'details') {
-                            successMsg += `已恢复：所有数据表 (0-${dataTableCount - 1})\n保留：现有总结表`;
-                        } else if (importMode === 'summary') {
-                            successMsg += '已恢复：总结表\n保留：现有详情表';
-                        }
-                        await customAlert(successMsg, '完成');
-
-                        updateCurrentSnapshot();
-
-                    } catch (err) {
-                        // 🎨 美化：异常提示
-                        await customAlert('❌ 读取文件失败: ' + err.message, '错误');
-                    } finally {
-                        // ✅ 无论成功失败，都要移除 input 元素
-                        if (input.parentNode) {
-                            document.body.removeChild(input);
+                    } else if (importMode === 'summary') {
+                        const summaryIndex = m.s.length - 1;
+                        if (sheetsData[0] && m.s[summaryIndex]) {
+                            m.s[summaryIndex].from(sheetsData[0]);
                         }
                     }
-                };
-                reader.readAsText(file);
+
+                    if (data.summarized) summarizedRows = data.summarized;
+
+                    // 强制保存并刷新
+                    lastManualEditTime = Date.now();
+                    m.save();
+                    shw();
+
+                    let successMsg = '✅ 导入成功！\n\n';
+                    if (importMode === 'full') {
+                        successMsg += '已恢复：所有详情表 + 总结表';
+                    } else if (importMode === 'details') {
+                        successMsg += `已恢复：所有数据表 (0-${dataTableCount - 1})\n保留：现有总结表`;
+                    } else if (importMode === 'summary') {
+                        successMsg += '已恢复：总结表\n保留：现有详情表';
+                    }
+                    await customAlert(successMsg, '完成');
+
+                    updateCurrentSnapshot();
+
+                } catch (err) {
+                    await customAlert('❌ 读取文件失败: ' + err.message, '错误');
+                } finally {
+                    if (input.parentNode) {
+                        document.body.removeChild(input);
+                    }
+                }
             };
 
-            input.value = ''; // ✅ 允许重复选择同一文件
+            input.value = '';
             input.click();
         });
 
@@ -4981,245 +5027,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 customAlert('总结控制台未加载，请刷新页面重试', '错误');
             }
         });
-        // ✨✨✨ 新增：导出选项窗口 ✨✨✨
-        // ✨✨✨ 导出选项窗口 (轻量级模态窗) ✨✨✨
-        function showExportOptions() {
-            // 🌙 获取主题配置
-            const isDark = UI.darkMode;
-            const themeColor = UI.c;
-            const textColor = UI.tc;
 
-            // 1. 创建遮罩层
-            const $overlay = $('<div>', {
-                id: 'gai-export-overlay',
-                css: {
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    width: '100vw',
-                    height: '100vh',
-                    background: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 10000005,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '20px',
-                    boxSizing: 'border-box'
-                }
-            });
-
-            // 2. 创建小窗口容器
-            const $box = $('<div>', {
-                css: {
-                    background: isDark ? '#1e1e1e' : '#fff',
-                    color: 'var(--g-tc)',
-                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                    width: '320px',
-                    maxWidth: '90vw',
-                    padding: '20px',
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                    position: 'relative',
-                    transform: 'scale(1)',
-                    transition: 'all 0.2s'
-                }
-            });
-
-            // 3. 标题
-            const $title = $('<h3>', {
-                text: '📥 导出备份',
-                css: {
-                    margin: '0 0 8px 0',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    textAlign: 'center',
-                    color: 'var(--g-tc)'
-                }
-            });
-
-            // 4. 提示文字
-            const $desc = $('<div>', {
-                text: '请选择要导出的内容',
-                css: {
-                    fontSize: '12px',
-                    color: 'var(--g-tc)',
-                    opacity: '0.8',
-                    marginBottom: '8px',
-                    textAlign: 'center'
-                }
-            });
-
-            // 4.5. 格式选择复选框 (TXT 方便手机传输)
-            const $formatContainer = $('<div>', {
-                css: {
-                    background: isDark ? 'rgba(255,255,255,0.05)' : '#f8f9fa',
-                    padding: '10px',
-                    borderRadius: '6px',
-                    marginBottom: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e0e0e0'
-                }
-            });
-
-            const $formatCheckbox = $('<input>', {
-                type: 'checkbox',
-                id: 'export-txt-format',
-                css: {
-                    cursor: 'pointer',
-                    width: '16px',
-                    height: '16px'
-                }
-            });
-
-            const $formatLabel = $('<label>', {
-                for: 'export-txt-format',
-                html: `📄 保存为 TXT 格式 <span style="font-size:11px;color:var(--g-tc);opacity:0.6;">(方便手机传输)</span>`,
-                css: {
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    color: 'var(--g-tc)',
-                    flex: 1,
-                    userSelect: 'none'
-                }
-            });
-
-            $formatContainer.append($formatCheckbox, $formatLabel);
-
-            // 5. 按钮样式模板
-            const btnStyle = {
-                width: '100%',
-                padding: '12px',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                color: UI.tc,  // ✅【修正点】这里改成 UI.tc，跟随主题字体颜色
-                fontWeight: '600',
-                fontSize: '13px',
-                transition: 'all 0.2s',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-            };
-
-            // 6. 导出函数封装 (保持不变)
-            function performExport(data, baseFilename, useTxtFormat = false) {
-                // ... (这部分逻辑不用动，省略以节省空间) ...
-                const exportData = { v: V, t: new Date().toISOString(), s: data.map(s => s.json()) };
-                const jsonStr = JSON.stringify(exportData, null, 2);
-                const extension = useTxtFormat ? '.txt' : '.json';
-                const mimeType = useTxtFormat ? 'text/plain' : 'application/json';
-                const filename = baseFilename.replace(/\.(json|txt)$/, '') + extension;
-                const blob = new Blob([jsonStr], { type: mimeType });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = filename; a.click();
-                URL.revokeObjectURL(url);
-                $overlay.remove();
+        $('#gai-btn-export').off('click').on('click', function () {
+            if (window.Gaigai.IOManager && typeof window.Gaigai.IOManager.showExportUI === 'function') {
+                window.Gaigai.IOManager.showExportUI();
+            } else {
+                console.error('❌ [导出] IOManager 未加载');
+                customAlert('导出模块未加载，请刷新页面重试', '错误');
             }
-
-            // 7. 全部导出按钮
-            const $btnAll = $('<button>', {
-                html: '📦 全部导出 (含总结)',
-                css: { ...btnStyle, background: UI.c }
-            }).on('click', function () {
-                const useTxt = $formatCheckbox.is(':checked');
-                performExport(m.all(), `memory_table_all_${m.gid()}_${Date.now()}`, useTxt);
-            }).hover(
-                function () { $(this).css('filter', 'brightness(0.9)'); },
-                function () { $(this).css('filter', 'brightness(1)'); }
-            );
-
-            // 8. 仅导出总结按钮
-            const $btnSummary = $('<button>', {
-                html: '📝 仅导出总结',
-                css: { ...btnStyle, background: UI.c, opacity: '0.9' }
-            }).on('click', function () {
-                const summarySheet = m.get(m.s.length - 1); // 动态获取最后一个表格（总结表）
-                if (!summarySheet || summarySheet.r.length === 0) {
-                    customAlert('当前没有总结数据可导出', '提示');
-                    return;
-                }
-                const useTxt = $formatCheckbox.is(':checked');
-                performExport([summarySheet], `memory_table_summary_${m.gid()}_${Date.now()}`, useTxt);
-            }).hover(
-                function () { $(this).css('filter', 'brightness(0.9)'); },
-                function () { $(this).css('filter', 'brightness(1)'); }
-            );
-
-            // 9. 仅导出详情按钮
-            const $btnDetails = $('<button>', {
-                html: '📊 仅导出详情 (不含总结)',
-                css: { ...btnStyle, background: UI.c, opacity: '0.8' }
-            }).on('click', function () {
-                const useTxt = $formatCheckbox.is(':checked');
-                performExport(m.all().slice(0, -1), `memory_table_details_${m.gid()}_${Date.now()}`, useTxt); // 动态获取所有数据表
-            }).hover(
-                function () { $(this).css('filter', 'brightness(0.9)'); },
-                function () { $(this).css('filter', 'brightness(1)'); }
-            );
-
-            // 10. 取消按钮 (背景跟随主题色，但透明度降低以示区分)
-            const $btnCancel = $('<button>', {
-                text: '取消',
-                css: {
-                    ...btnStyle,
-                    background: UI.c,      // ✅ 背景：跟随主题色
-                    color: UI.tc,          // ✅ 文字：跟随字体设置
-                    opacity: '0.6',        // ✅ 关键：降低透明度，表明它是"取消"操作，且不与上方按钮混淆
-                    marginTop: '8px'
-                }
-            }).on('click', function () {
-                $overlay.remove();
-            }).hover(
-                // 悬停时加深一点，增加交互感
-                function () { $(this).css({ 'filter': 'brightness(0.9)', 'opacity': '0.8' }); },
-                function () { $(this).css({ 'filter': 'brightness(1)', 'opacity': '0.6' }); }
-            );
-
-            // 11. 提示信息
-            const $tip = $('<div>', {
-                html: `💡 提示：<br>
-                • 全部导出：包含所有表格<br>
-                • 仅导出总结：仅最后一个总结表<br>
-                • 仅导出详情：所有数据表（不含总结表）`,
-                css: {
-                    padding: '10px',
-                    background: 'rgba(33, 150, 243, 0.1)',
-                    borderRadius: '6px',
-                    fontSize: '10px',
-                    color: '#1976d2',
-                    lineHeight: '1.5',
-                    marginTop: '4px'
-                }
-            });
-
-            // 12. 组装窗口
-            $box.append($title, $desc, $formatContainer, $btnAll, $btnSummary, $btnDetails, $btnCancel, $tip);
-            $overlay.append($box);
-            $('body').append($overlay);
-
-            // 13. 绑定点击遮罩层关闭
-            $overlay.on('click', function (e) {
-                if (e.target === $overlay[0]) {
-                    $overlay.remove();
-                }
-            });
-
-            // 14. ESC键关闭
-            $(document).on('keydown.exportOverlay', function (e) {
-                if (e.key === 'Escape') {
-                    $(document).off('keydown.exportOverlay');
-                    $overlay.remove();
-                }
-            });
-        }
-
-        $('#gai-btn-export').off('click').on('click', showExportOptions);
+        });
         $('#gai-btn-view').off('click').on('click', showViewSettings);
         // ✅✅✅ [升级版] 清空表格（带指针控制选项）
         $('#gai-btn-clean').off('click').on('click', function () {
@@ -9413,37 +9229,47 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             .done(function () {
                 console.log('✅ [Loader] prompt_manager.js 加载成功');
 
-                // 🆕 加载 backfill_manager.js
-                const backfillManagerUrl = `${EXTENSION_PATH}/backfill_manager.js`;
-                $.getScript(backfillManagerUrl)
+                // 🆕 加载 io_manager.js
+                const ioManagerUrl = `${EXTENSION_PATH}/io_manager.js`;
+                $.getScript(ioManagerUrl)
                     .done(function () {
-                        console.log('✅ [Loader] backfill_manager.js 加载成功');
+                        console.log('✅ [Loader] io_manager.js 加载成功');
 
-                        // 🆕 加载 world_info.js (必须在 summary_manager 之前加载)
-                        const worldInfoUrl = `${EXTENSION_PATH}/world_info.js`;
-                        $.getScript(worldInfoUrl)
+                        // 🆕 加载 backfill_manager.js
+                        const backfillManagerUrl = `${EXTENSION_PATH}/backfill_manager.js`;
+                        $.getScript(backfillManagerUrl)
                             .done(function () {
-                                console.log('✅ [Loader] world_info.js 加载成功');
+                                console.log('✅ [Loader] backfill_manager.js 加载成功');
 
-                                // 🆕 加载 summary_manager.js
-                                const summaryManagerUrl = `${EXTENSION_PATH}/summary_manager.js`;
-                                $.getScript(summaryManagerUrl)
+                                // 🆕 加载 world_info.js (必须在 summary_manager 之前加载)
+                                const worldInfoUrl = `${EXTENSION_PATH}/world_info.js`;
+                                $.getScript(worldInfoUrl)
                                     .done(function () {
-                                        console.log('✅ [Loader] summary_manager.js 加载成功');
+                                        console.log('✅ [Loader] world_info.js 加载成功');
 
-                                        // 🆕 加载 debug_manager.js
-                                        const debugManagerUrl = `${EXTENSION_PATH}/debug_manager.js`;
-                                        $.getScript(debugManagerUrl)
+                                        // 🆕 加载 summary_manager.js
+                                        const summaryManagerUrl = `${EXTENSION_PATH}/summary_manager.js`;
+                                        $.getScript(summaryManagerUrl)
                                             .done(function () {
-                                                console.log('✅ [Loader] debug_manager.js 加载成功');
+                                                console.log('✅ [Loader] summary_manager.js 加载成功');
 
-                                                // ✨ 验证模块是否成功挂载
-                                                if (!window.Gaigai.SummaryManager) {
-                                                    console.error('⚠️ [Loader] window.Gaigai.SummaryManager 未成功挂载！');
-                                                    console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
-                                                }
-                                                if (!window.Gaigai.BackfillManager) {
-                                                    console.error('⚠️ [Loader] window.Gaigai.BackfillManager 未成功挂载！');
+                                                // 🆕 加载 debug_manager.js
+                                                const debugManagerUrl = `${EXTENSION_PATH}/debug_manager.js`;
+                                                $.getScript(debugManagerUrl)
+                                                    .done(function () {
+                                                        console.log('✅ [Loader] debug_manager.js 加载成功');
+
+                                                        // ✨ 验证模块是否成功挂载
+                                                        if (!window.Gaigai.IOManager) {
+                                                            console.error('⚠️ [Loader] window.Gaigai.IOManager 未成功挂载！');
+                                                            console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
+                                                        }
+                                                        if (!window.Gaigai.SummaryManager) {
+                                                            console.error('⚠️ [Loader] window.Gaigai.SummaryManager 未成功挂载！');
+                                                            console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                                        }
+                                                        if (!window.Gaigai.BackfillManager) {
+                                                            console.error('⚠️ [Loader] window.Gaigai.BackfillManager 未成功挂载！');
                                                     console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
                                                 }
                                                 if (!window.Gaigai.WI) {
@@ -9499,7 +9325,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     });
             })
             .fail(function (jqxhr, settings, exception) {
-                console.error('❌ [Loader] prompt_manager.js 加载失败！请检查文件夹名称是否为 ST-Memory-Context');
+                console.error('❌ [Loader] io_manager.js 加载失败！');
+                console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
+                console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
+                console.error(`📍 错误详情:`, exception);
+                console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
+                // 即使加载失败，也继续初始化（降级模式）
+                setTimeout(tryInit, 500);
+            });
+        })
+        .fail(function (jqxhr, settings, exception) {
+            console.error('❌ [Loader] prompt_manager.js 加载失败！请检查文件夹名称是否为 ST-Memory-Context');
                 console.error(`📍 尝试加载的 URL: ${promptManagerUrl}`);
                 console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                 console.error(`📍 错误详情:`, exception);
@@ -9626,9 +9462,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化变量 ：</strong>修复变量替换的功能，优化在查看器中的显示更清晰。</li>
-                        <li><strong>优化提示词 ：</strong>去除多余提示词索引说明</li>
-                        <li><strong>优化样式 ：</strong>总结勾选框样式</li>
+                        <li><strong>优化导入导出 ：</strong>支持TXT文件导入导出</li>
+                        <li><strong>新增调整上下行 ：</strong>勾选行的复选框可显示上下移动按钮</li>
+                        <li><strong>修复追溯bug ：</strong>修复追溯填表在分批保存时因云同步导致内容消失的问题</li>
+                        <li><strong>重点通知 ：</strong>因版本迭代更新！如发现表头功能显示失败，请到【表格结构编辑器】进行恢复默认即可！</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

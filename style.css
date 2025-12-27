@@ -1,4 +1,4 @@
-/* Gaigai v1.4.9 */
+/* Gaigai v1.5.0 */
 
 :root {
     --g-c: #888888;
@@ -487,7 +487,7 @@
     .g-e {
         padding: 4px !important;
     }
-    
+
     .g-col-num {
         width: 35px !important;
         min-width: 35px !important;
@@ -587,12 +587,15 @@
     margin: 0 !important;
 }
 
+/* ========== 修复：移除表头容器背景 (Fix Header Container Background) ========== */
+
 .g-tbl-wrap thead.g-sticky {
     position: sticky;
     top: 0;
     z-index: 100;
-    background: var(--g-c);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    /* ✨ CRITICAL: Make the container transparent */
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
 .g-col-num .g-select-all {
@@ -607,14 +610,9 @@
     margin: 0 auto !important;
 }
 
+/* Hide the bottom border line for the sticky header */
 .g-tbl-wrap thead.g-sticky::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.1), transparent);
+    display: none !important;
 }
 
 .g-tbl-wrap th {
@@ -631,6 +629,12 @@
     vertical-align: middle;
     position: relative;
     box-sizing: border-box !important;
+}
+
+/* Apply shadow and background ONLY to normal headers */
+.g-tbl-wrap th:not(.g-col-ops) {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid rgba(0,0,0,0.1); /* Replacement for ::after */
 }
 
 /* ✅✅✅ 列宽拖拽手柄（修复版） */
@@ -1366,3 +1370,92 @@
 
 .gg-choice-name { font-size: 12px; color: var(--g-tc); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .gg-choice-badge { font-size: 10px; color: var(--g-tc); opacity: 0.5; margin-left: 4px; font-family: monospace; }
+
+/* ========== 纯悬浮操作列 (Pure Floating Actions) ========== */
+
+/* 1. The Cell: Invisible container */
+.g-tbl-wrap td.g-col-ops {
+    position: sticky !important;
+    right: 0 !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    z-index: 100 !important;
+    padding: 0 !important;
+    vertical-align: middle !important;
+
+    /* ✨ CRITICAL: Override all default table styles to be invisible */
+    border-right: none !important;
+    border-bottom: none !important;
+    border-top: none !important;
+    border-left: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* 2. The Header: Completely Invisible (High Specificity Fix) */
+#gai-main-pop .g-tbl-wrap th.g-col-ops,
+th.g-col-ops {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    padding: 0 !important;
+    pointer-events: none;
+}
+/* Ensure the sticky header shadow doesn't show under it */
+#gai-main-pop .g-tbl-wrap thead.g-sticky th.g-col-ops {
+    box-shadow: none !important;
+}
+
+/* 3. The Wrapper: Holds buttons, initially hidden */
+.g-ops-wrap {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+
+    /* Default: Hidden */
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+
+    /* ✨ CRITICAL: No background ever */
+    background: transparent !important;
+    backdrop-filter: none !important;
+}
+
+/* 4. Active State: Show Buttons ONLY when Selected */
+.g-row.g-selected .g-ops-wrap {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+/* 5. The Buttons: Pure Icons */
+.g-btn-op {
+    flex: 1;
+    width: 100% !important;
+    border: none !important;
+    background: transparent !important; /* No button background */
+    color: var(--g-tc) !important;      /* Matches text color */
+    cursor: pointer !important;
+    font-size: 12px !important;
+    font-weight: 900 !important;        /* Bolder arrows */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+    opacity: 0.6;
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.g-btn-op:hover {
+    opacity: 1;
+    transform: scale(1.2); /* Slight zoom on hover */
+    background: transparent !important; /* Still no background */
+}

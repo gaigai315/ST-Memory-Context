@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.4.9
+ * @version 1.5.0
  * @author Gaigai Team
  */
 
@@ -586,7 +586,8 @@
                         updateStatus(`正在追溯：${batch.start}-${batch.end}层`, '#17a2b8');
                         // ✅ 仅第一批使用 isOverwrite，后续批次强制为 false，避免清空上一批数据
                         const batchOverwrite = (i === 0) ? isOverwrite : false;
-                         result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat', batchOverwrite, forceSilent);
+                        // ✅ 批量模式下传递 skipLoad=true，避免重新加载导致数据丢失
+                         result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat', batchOverwrite, forceSilent, true);
                 }
 
                     // 🛑 检查点 3：API返回后立即检查
@@ -707,10 +708,13 @@
          * @param {string} customNote - 用户自定义建议
          * @param {string} mode - 功能模式：'chat'=基于聊天记录追溯, 'table'=基于现有表格优化
          * @param {boolean} isOverwrite - 重构模式（仅chat模式且单表有效）
+         * @param {boolean} skipLoad - 是否跳过加载配置和数据（批量模式下为true，避免数据丢失）
          */
-        async autoRunBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', mode = 'chat', isOverwrite = false, forceSilent = null) {
-            const loadConfig = window.Gaigai.loadConfig || (() => Promise.resolve());
-            await loadConfig();
+        async autoRunBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', mode = 'chat', isOverwrite = false, forceSilent = null, skipLoad = false) {
+            if (!skipLoad) {
+                const loadConfig = window.Gaigai.loadConfig || (() => Promise.resolve());
+                await loadConfig();
+            }
 
             const ctx = window.SillyTavern.getContext();
             if (!ctx || !ctx.chat) return { success: false, reason: 'no_context' };
@@ -721,7 +725,7 @@
                 return this.handleTableOptimization(start, end, isManual, targetIndex, customNote);
             } else {
                 // 💬 基于聊天记录追溯模式（原逻辑）
-                return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, 0, isOverwrite, forceSilent);
+                return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, 0, isOverwrite, forceSilent, skipLoad);
             }
         }
 
@@ -730,10 +734,11 @@
          * @private
          * @param {number} retryCount - 当前重试次数（防止递归爆炸）
          * @param {boolean} isOverwrite - 重构模式（清空原表数据）
+         * @param {boolean} skipLoad - 是否跳过加载数据（批量模式下为true，避免数据丢失）
          */
-         async handleChatBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', retryCount = 0, isOverwrite = false, forceSilent = null) {
+         async handleChatBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', retryCount = 0, isOverwrite = false, forceSilent = null, skipLoad = false) {
             const m = window.Gaigai.m;
-            
+
             // ✨✨✨ 修复：补全 ctx 定义 ✨✨✨
             const ctx = window.SillyTavern.getContext();
             if (!ctx || !ctx.chat) return { success: false, reason: 'no_context' };
@@ -741,11 +746,13 @@
             // 🛑 现在 ctx 已经定义了，可以放心检查长度了
             if (ctx.chat.length === 0) {
                 console.log('🛑 [自动填表] 检测到聊天记录为空（新卡），已跳过执行。');
-                return { success: true }; 
+                return { success: true };
             }
 
             console.log(`🔍 [追溯] 正在读取数据源，全量总楼层: ${ctx.chat.length}，目标表格：${targetIndex === -1 ? '全部' : '表' + targetIndex}`);
-            m.load();
+            if (!skipLoad) {
+                m.load();
+            }
 
             let userName = ctx.name1 || 'User';
             let charName = 'Character';
@@ -1042,7 +1049,7 @@
 
                 if (userChoice === 'retry') {
                     // 递归调用
-                    return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite);
+                    return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite, forceSilent, skipLoad);
                 } else {
                     return { success: false, reason: 'user_cancelled' };
                 }
@@ -1160,7 +1167,7 @@
                 const customRetryAlert = window.customRetryAlert || window.Gaigai.customAlert;
                 const errorMsg = `批量填表失败：${result.error || '未知错误'}\n\n是否重新尝试？(剩余 ${3 - retryCount} 次)`;
                 const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
-                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite);
+                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite, forceSilent, skipLoad);
                 return { success: false, reason: 'api_failed' };
             }
         }
