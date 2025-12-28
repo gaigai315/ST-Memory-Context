@@ -666,6 +666,16 @@
 
             if (isUserCancelled) {
                 if (!isManual) await window.Gaigai.customAlert('批量任务已手动停止或取消', '已中止');
+
+                // ✨ FIX: Explicitly reset button state immediately
+                const $btn = $('#gg_bf_gen');
+                if ($btn.length > 0) {
+                    $btn.text('🚀 开始分析并生成')
+                        .css('background', window.Gaigai.ui.c) // Restore theme color
+                        .css('opacity', '1')
+                        .prop('disabled', false);
+                }
+
                 setTimeout(() => updateStatus('', null), 3000);
                 return;
             }
@@ -1284,9 +1294,12 @@
             }
             optimizePrompt = window.Gaigai.PromptManager.resolveVariables(optimizePrompt, ctx);
 
-            // ✅ 表格索引说明已通过 {{TABLE_DEFINITIONS}} 变量在提示词中解析，不需要重复追加
+            // ⚠️ [修复] 强制注入目标表格的列结构定义，防止 AI 列错位
+            // 即使用户的提示词模板缺少 {{TABLE_DEFINITIONS}}，代码也会确保 AI 看到正确的列索引
+            const columnMapping = sheet.c.map((name, idx) => `Index ${idx}: "${name}"`).join(', ');
+            const strictSchema = `\n\n【CRITICAL: Target Table Schema】\nTable Name: ${sheet.n}\nColumns: ${columnMapping}\n\n⚠️ INSTRUCTION: When generating 'insertRow', you MUST place content into the correct Index based on the schema above. Do NOT merge columns!`;
 
-            messages.push({ role: 'user', content: optimizePrompt });
+            messages.push({ role: 'user', content: optimizePrompt + strictSchema });
 
             // 调用 API
             window.Gaigai.lastRequestData = {

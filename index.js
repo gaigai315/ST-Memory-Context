@@ -2271,6 +2271,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     function exe(cs) {
+        // ✅ Strict Sequential Execution: Respects AI's intended order
+        // If AI outputs "insertRow → updateRow", it means "insert THEN update the new row"
+        // If AI outputs "updateRow → insertRow", it means "update old row THEN insert new row"
         cs.forEach(cm => {
             const sh = m.get(cm.ti);
             if (!sh) return;
@@ -2278,7 +2281,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (cm.t === 'insert') sh.ins(cm.d);
             if (cm.t === 'delete' && cm.ri !== null) sh.del(cm.ri);
         });
-        // AI自动执行的指令，最后统一保存
+        // AI自动执行的指令,最后统一保存
         m.save();
     }
 
@@ -3983,6 +3986,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 其他表格使用原来的表格视图
         const v = ti === 0 ? '' : 'display:none;';
+        const hasData = s.r.length > 0; // ✅ Check if table has rows
 
         let h = `<div class="g-tbc" data-i="${ti}" style="${v}"><div class="g-tbl-wrap"><table>`;
 
@@ -4001,14 +4005,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </th>`;
         });
 
-        // ✅ 新增：隐形操作列表头（无文字）
-        h += '<th class="g-col-ops"></th>';
+        // ✅ Only show Ops Column Header if there is data
+        if (hasData) {
+            h += '<th class="g-col-ops"></th>';
+        }
 
         h += '</tr></thead><tbody>'
 
         // 表格内容
-        if (s.r.length === 0) {
-            h += `<tr class="g-emp"><td colspan="${s.c.length + 2}">暂无数据</td></tr>`;
+        if (!hasData) {
+            // ✅ Fix colspan: RowNum(1) + DataColumns(s.c.length)
+            h += `<tr class="g-emp"><td colspan="${s.c.length + 1}">暂无数据</td></tr>`;
         } else {
             s.r.forEach((rw, ri) => {
                 const summarizedClass = isSummarized(ti, ri) ? ' g-summarized' : '';
@@ -9462,10 +9469,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化导入导出 ：</strong>支持TXT文件导入导出</li>
-                        <li><strong>新增调整上下行 ：</strong>勾选行的复选框可显示上下移动按钮</li>
-                        <li><strong>修复追溯bug ：</strong>修复追溯填表在分批保存时因云同步导致内容消失的问题</li>
-                        <li><strong>重点通知 ：</strong>因版本迭代更新！如发现表头功能显示失败，请到【表格结构编辑器】进行恢复默认即可！</li>
+                        <li><strong>修复表格优化 ：</strong>修复表格优化时，填表错误的bug</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
