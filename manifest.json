@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "st_memory_table",
   "display_name": "Memory-Context",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "全自动记忆表格记录 + 智能隐藏旧楼层",
   "author": "gaigai315",
   "homepage": "https://github.com/gaigai315/ST-Memory-Context",

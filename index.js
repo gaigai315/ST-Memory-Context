@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.0
+// 记忆表格 v1.5.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.0 启动');
+    console.log('🚀 记忆表格 v1.5.1 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.0';
+    const V = 'v1.5.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -628,13 +628,31 @@
                 text: title
             });
 
+            // ✅ 使用 textarea 显示错误信息，支持滚动和代码格式
+            const textAreaBg = isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(220, 53, 69, 0.05)';
+
             const $body = $('<div>', {
-                css: {
-                    padding: '24px 20px', fontSize: '14px', lineHeight: '1.6',
-                    color: bodyColor, whiteSpace: 'pre-wrap'
-                },
-                text: message
+                css: { padding: '20px' }
             });
+
+            const $errorBox = $('<textarea>', {
+                readonly: true,
+                css: {
+                    width: '100%', minHeight: '200px', maxHeight: '400px',
+                    padding: '12px', borderRadius: '6px',
+                    border: `1px solid ${isDark ? '#dc3545' : '#dc3545'}`,
+                    background: textAreaBg,
+                    color: bodyColor,
+                    fontSize: '12px', fontFamily: 'monospace',
+                    lineHeight: '1.5',
+                    resize: 'vertical',
+                    outline: 'none',
+                    overflow: 'auto',
+                    boxSizing: 'border-box'
+                }
+            }).val(message);
+
+            $body.append($errorBox);
 
             const $footer = $('<div>', {
                 css: {
@@ -6222,25 +6240,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     };
                 }
 
-                // 3. 💀 真·空回 (抛出详细错误供弹窗显示)
+                // 3. 💀 真·空回 (抛出原始错误供弹窗显示)
                 console.error('❌ [流式失败] 接收到的完整包体:', fullText);
-                throw new Error(`流式响应内容完全为空！\n(Content长度: ${fullText.length})\n\n可能原因：\n1. Gemini 安全拦截 (Safety Filter)\n2. DeepSeek 思考被截断\n3. 代理商转发异常`);
+                throw new Error(`Error: Stream response content is empty.\n\nContent Length: ${fullText.length}\nReasoning Length: ${typeof fullReasoning !== 'undefined' ? fullReasoning.length : 0}`);
+
 
             } catch (e) {
                 console.error('❌ [浏览器直连] 失败:', e);
 
-                let errorMsg = `${e.message}`;
-
-                // 增加详细提示
-                if (e.message.includes('Failed to fetch') ||
-                    e.message.includes('NetworkError') ||
-                    e.message.includes('CORS')) {
-                    errorMsg += '\n\n💡 可能是 CORS 跨域问题。\n建议尝试切换【API提供商】选项（如 "OpenAI 兼容"、"兼容中转" 或 "反代"），利用酒馆后端代理绕过限制。';
-                }
-
+                // 返回原始错误信息
                 return {
                     success: false,
-                    error: errorMsg // 把详细错误传出去给弹窗显示
+                    error: e.message // 原始错误信息
                 };
             }
         }
@@ -9469,7 +9480,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复表格优化 ：</strong>修复表格优化时，填表错误的bug</li>
+                        <li><strong>调整提示词权重 ：</strong>优化提示词细节，并将填表提示词改为system权重</li>
+                        <li><strong>优化弹窗 ：</strong>优化空回后弹窗返回的报错显示。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

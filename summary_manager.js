@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.5.0
+ * @version 1.5.1
  * @author Gaigai Team
  */
 
@@ -857,8 +857,8 @@
                     return { success: false, error: errorText };
                 }
 
-                const errorMsg = `生成失败：${errorText}\n\n是否重新尝试？`;
-                const shouldRetry = await customRetryAlert(errorMsg, '⚠️ AI 生成失败');
+                // ✅ 使用 customRetryAlert 提供"重试"和"放弃"选项（传递原始错误）
+                const shouldRetry = await customRetryAlert(errorText, '⚠️ AI 生成失败');
 
                 if (shouldRetry) {
                     // 用户点击"重试"，递归调用
@@ -974,8 +974,8 @@
                             } catch (error) {
                                 console.error('❌ [重新生成失败]', error);
 
-                                const errorMsg = `重新生成失败：${error.message}\n\n是否重新尝试？`;
-                                const shouldRetry = await window.Gaigai.customRetryAlert(errorMsg, '⚠️ 生成失败');
+                                // ✅ 使用 customRetryAlert（传递原始错误）
+                                const shouldRetry = await window.Gaigai.customRetryAlert(error.message, '⚠️ 生成失败');
 
                                 if (shouldRetry) {
                                     console.log('🔄 [用户重试] 关闭弹窗并重新调用总结...');
