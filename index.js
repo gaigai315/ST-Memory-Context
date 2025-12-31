@@ -4952,7 +4952,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             console.log('📋 [导入] 检测到表格结构信息，开始重塑表格结构...');
 
                             const newCustomTables = [];
-                            for (let i = 0; i < sheetsData.length - 1; i++) {
+                            for (let i = 0; i < sheetsData.length; i++) {
                                 const sheet = sheetsData[i];
                                 if (sheet && sheet.n && Array.isArray(sheet.c)) {
                                     newCustomTables.push({
