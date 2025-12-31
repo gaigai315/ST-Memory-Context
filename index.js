@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.1
+// 记忆表格 v1.5.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.1 启动');
+    console.log('🚀 记忆表格 v1.5.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.1';
+    const V = 'v1.5.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1107,6 +1107,7 @@
             this.s = [];
             this.id = null;
             this.structureBound = false;
+            this.wiConfig = { bookName: '' };
             this.initTables(DEFAULT_TABLES);
         }
 
@@ -1211,6 +1212,7 @@
                 d: this.s.map(sh => sh.json()),
                 structure: this.s.map(sh => ({ n: sh.n, c: sh.c })), // ✅ 新增：保存当前表结构（表名和列名）
                 structureBound: this.structureBound, // ✅ 保存结构绑定状态
+                wiConfig: this.wiConfig, // ✅ 保存世界书自定义配置
                 summarized: summarizedRows,
                 colWidths: userColWidths,
                 rowHeights: userRowHeights,
@@ -1380,6 +1382,12 @@
                     this.initTables(finalData.structure, false);
                 }
                 this.structureBound = finalData.structureBound || false;
+
+                // 恢复世界书自定义配置
+                if (finalData.wiConfig) {
+                    this.wiConfig = finalData.wiConfig;
+                    console.log('✅ [世界书配置] 已恢复');
+                }
 
                 // 恢复数据
                 finalData.d.forEach((sd, i) => { if (this.s[i]) this.s[i].from(sd); });
@@ -7643,6 +7651,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 将总结内容自动写入名为 <strong>[Memory_Context_Auto]</strong> 的世界书（常驻条目，触发词：总结/summary/前情提要/memory）
             </div>
 
+            ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
+
             <!-- ✨✨✨ 新增：手动覆盖按钮区域 ✨✨✨ -->
             <div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 8px; display: flex; align-items: center; justify-content: flex-end;">
                 <button id="gg_btn_force_sync_wi" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
@@ -8118,6 +8128,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
                 C.autoBindWI = $('#gg_c_auto_bind_wi').is(':checked');
+
+                // ✅ 保存世界书自定义配置
+                m.wiConfig.bookName = $('#gg_wi_book_name').val().trim();
+
                 API_CONFIG.summarySource = $('input[name="cfg-sum-src"]:checked').val();
 
                 // 🆕 收集表格选择
@@ -8299,57 +8313,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...').prop('disabled', true);
 
                 try {
-                    // 3. 准备基础信息
-                    const uniqueId = m.gid() || "Unknown_Chat";
-                    const safeName = uniqueId.replace(/[\\/:*?"<>|]/g, "_");
-                    const worldBookName = "Memory_Context_" + safeName; // 简化书名逻辑，保持一致
+                    // ✅ 保存最新的书名配置到内存
+                    m.wiConfig.bookName = $('#gg_wi_book_name').val().trim();
+                    m.save();
 
-                    // 4. 构建标准 World Info JSON
-                    const importEntries = {};
+                    console.log('⚡ [强制覆盖] 调用统一同步接口...');
+                    // 调用世界书管理器的统一同步接口（强制覆盖模式）
+                    await window.Gaigai.WI.syncToWorldInfo(null, true);
 
-                    summarySheet.r.forEach((row, index) => {
-                        const uid = index;
-                        const title = row[0] || '无标题';
-                        const content = row[1] || '';
-                        const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
-
-                        importEntries[uid] = {
-                            uid: uid,
-                            key: ["总结", "summary", "前情提要", "memory", "记忆"],
-                            keysecondary: [],
-                            comment: `[绑定对话: ${safeName}] 强制覆盖于 ${new Date().toLocaleString()}`,
-                            content: `【${title}${note}】\n${content}`,
-                            constant: true,
-                            vectorized: false,
-                            enabled: true,
-                            position: 1,
-                            order: 100,
-                            extensions: { position: 1, exclude_recursion: false, display_index: 0, probability: 100, useProbability: true }
-                        };
-                    });
-
-                    // 5. 获取CSRF令牌
-                    let csrfToken = '';
-                    try { csrfToken = await getCsrfToken(); } catch (e) { }
-
-                    // 6. 智能同步 (只负责文件生成)
-                    console.log('⚡ [强制覆盖] 准备生成文件...');
-                    const syncResult = await window.Gaigai.WI.smartSyncWorldInfo(worldBookName, importEntries, csrfToken);
-
-                    if (!syncResult.success) {
-                        throw new Error(syncResult.error || '同步失败');
-                    }
-
-                    // 7. 成功提示 (引导用户手动绑定)
+                    // 成功提示
+                    const bookName = window.Gaigai.WI._getStableBookName(m.gid());
                     if (typeof toastr !== 'undefined') {
-                        toastr.success(`文件 ${worldBookName} 已生成。\n请在上方"世界/知识书"下拉框中手动选中它。`, '覆盖成功', { timeOut: 5000 });
+                        toastr.success(`文件 ${bookName} 已生成。\n请在上方"世界/知识书"下拉框中手动选中它。`, '覆盖成功', { timeOut: 5000 });
                     } else {
-                        await customAlert(`✅ 文件已生成！\n\n请手动在酒馆上方的"世界/知识书"下拉框中选择：\n${worldBookName}`, '覆盖成功');
-                    }
-
-                    // 8. 等待处理
-                    if (syncResult.mode === 'create') {
-                        await new Promise(r => setTimeout(r, 1500));
+                        await customAlert(`✅ 文件已生成！\n\n请手动在酒馆上方的"世界/知识书"下拉框中选择：\n${bookName}`, '覆盖成功');
                     }
 
                 } catch (e) {
@@ -9480,8 +9457,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>调整提示词权重 ：</strong>优化提示词细节，并将填表提示词改为system权重</li>
-                        <li><strong>优化弹窗 ：</strong>优化空回后弹窗返回的报错显示。</li>
+                        <li><strong>新增自定义世界书名称 ：</strong>用户可自定义世界书名称，条目自动由总结标题+备注生成</li>
+                        <li><strong>修复表格结构bug ：</strong>请通过插件的【清楚本地缓存】功能，清除可能旧版本缓存导致表格结构丢失的问题。并通过排【表格结构编辑器】下方的【默认】按钮恢复表格结构</li>
+                        <li><strong>优化总结提示词 ：</strong>优化默认提示词，若有特殊需求请用户自行修改默认提示词</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

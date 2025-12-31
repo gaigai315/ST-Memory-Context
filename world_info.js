@@ -4,7 +4,7 @@
  * 功能：处理记忆总结与 SillyTavern 世界书的同步和绑定
  * 包含：防抖同步、智能创建/更新、自动绑定角色卡
  *
- * @version 1.5.1
+ * @version 1.5.2
  * @author Gaigai Team
  */
 
@@ -27,6 +27,16 @@
          * 目的：让主线和所有分支共用同一个世界书文件，防止文件爆炸
          */
         _getStableBookName(gid) {
+            // ✅ 检查是否有自定义书名
+            if (window.Gaigai && window.Gaigai.m && window.Gaigai.m.wiConfig && window.Gaigai.m.wiConfig.bookName) {
+                const customName = window.Gaigai.m.wiConfig.bookName.trim();
+                if (customName) {
+                    console.log(`📚 [世界书] 使用自定义名称: ${customName}`);
+                    return customName;
+                }
+            }
+
+            // ⚙️ 使用默认自动生成的名称
             if (!gid) return "Memory_Context_Unknown";
             // 移除 _Branch 及其后面的所有内容
             const stableId = gid.split('_Branch')[0];
@@ -207,14 +217,20 @@
                     maxUid = uid;
                     const title = row[0] || '无标题';
                     const rowContent = row[1] || '';
-                    const note = (row[2] && row[2].trim()) ? ` [${row[2]}]` : '';
+                    const note = (row[2] && row[2].trim()) ? row[2].trim() : '';
+
+                    // ✅ 智能引用表格备注作为前缀
+                    let displayTitle = title;
+                    if (note) {
+                        displayTitle = `【${note}】 ${title}`;
+                    }
 
                     importEntries[uid] = {
                         uid: uid,
                         key: ["总结", "summary", "前情提要", "memory", "记忆"],
                         keysecondary: [],
-                        comment: `[绑定对话: ${safeName}] 自动同步于 ${new Date().toLocaleString()}`,
-                        content: `【${title}${note}】\n${rowContent}`,
+                        comment: displayTitle,
+                        content: `【${title}${note ? ' [' + note + ']' : ''}】\n${rowContent}`,
                         constant: true,
                         vectorized: false,
                         enabled: true,
@@ -395,11 +411,29 @@
 
                 // --- 2. 构建新条目 ---
                 const newUid = maxExistingUid + 1;
+
+                // ✅ 从总结表获取最新的标题和备注
+                let displayTitle = `[追加于 ${new Date().toLocaleString()}]`; // Default fallback
+                const summarySheet = m.get(m.s.length - 1);
+
+                if (summarySheet && summarySheet.r.length > 0) {
+                    // 我们同步的内容对应刚刚保存的最后一行
+                    const lastRow = summarySheet.r[summarySheet.r.length - 1];
+                    const rowTitle = lastRow[0] || '剧情总结';
+                    const rowNote = (lastRow[2] && lastRow[2].trim()) ? lastRow[2].trim() : '';
+
+                    if (rowNote) {
+                        displayTitle = `【${rowNote}】 ${rowTitle}`;
+                    } else {
+                        displayTitle = rowTitle;
+                    }
+                }
+
                 const newEntry = {
                     uid: newUid,
                     key: ["总结", "summary", "前情提要", "memory", "记忆"],
                     keysecondary: [],
-                    comment: `[绑定对话: ${safeName}] 追加于 ${new Date().toLocaleString()}`,
+                    comment: displayTitle, // ✅ Use the correct title from table
                     content: content,
                     constant: true,
                     vectorized: false,
@@ -466,6 +500,55 @@
             }
 
             console.log('🔄 [WorldInfoManager] 状态已重置');
+        }
+
+        /**
+         * 生成世界书自定义配置 UI
+         * @param {Object} config - 配置对象 (即 m.wiConfig)
+         * @returns {string} - HTML 字符串
+         */
+        getSettingsUI(config) {
+            const bookName = config?.bookName || '';
+
+            return `
+                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.2);">
+                    <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: var(--g-tc);">
+                        📚 世界书自定义设置
+                    </div>
+
+                    <div style="margin-bottom: 8px;">
+                        <label style="display: block; font-size: 10px; opacity: 0.7; margin-bottom: 4px;">
+                            世界书名称
+                        </label>
+                        <input
+                            type="text"
+                            id="gg_wi_book_name"
+                            value="${this._escapeHtml(bookName)}"
+                            placeholder="例: 我的冒险传记 (留空则自动生成)"
+                            style="width: 100%; padding: 6px 8px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(0,0,0,0.2); color: inherit; font-size: 11px; box-sizing: border-box;"
+                        />
+                    </div>
+
+                    <div style="font-size: 9px; opacity: 0.5; margin-top: 6px; line-height: 1.3;">
+                        💡 提示：世界书条目的标题将自动引用总结表中的【备注】内容作为前缀，方便查找。
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * HTML 转义辅助函数
+         * @param {string} str - 需要转义的字符串
+         * @returns {string} - 转义后的字符串
+         */
+        _escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
     }
 
