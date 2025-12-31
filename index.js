@@ -272,8 +272,14 @@
      * @returns {Promise<{action: 'confirm'|'cancel', postpone: number}>}
      */
     function showAutoTaskConfirm(taskType, currentFloor, triggerFloor, threshold) {
+        // 🛡️ [Fix] Prevent duplicate popups
+        const fixedId = 'gg-auto-task-confirm-modal';
+        if ($('#' + fixedId).length > 0) {
+            console.log('🛡️ [弹窗拦截] 检测到已有自动任务弹窗，跳过重复触发');
+            return Promise.resolve({ action: 'cancel' });
+        }
+
         return new Promise((resolve) => {
-            const id = 'auto-task-confirm-' + Date.now();
             const taskName = taskType === 'backfill' ? '批量填表' : '楼层总结';
             const icon = taskType === 'backfill' ? '⚡' : '🤖';
 
@@ -297,7 +303,7 @@
             const postponeLabelColor = isDark ? '#ffb74d' : '#856404';
 
             const $overlay = $('<div>', {
-                id: id,
+                id: fixedId, // ✅ Use fixed ID
                 css: {
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     width: '100vw', height: '100vh',
@@ -430,14 +436,14 @@
 
             // ✅ 移除点击遮罩关闭的逻辑，因为遮罩层现在是穿透的，点击空白处应该操作底层页面
 
-            $(document).on('keydown.' + id, (e) => {
+            $(document).on('keydown.' + fixedId, (e) => {
                 if (e.key === 'Escape') {
-                    $(document).off('keydown.' + id);
+                    $(document).off('keydown.' + fixedId);
                     $overlay.remove();
                     resolve({ action: 'cancel' });
                 }
                 else if (e.key === 'Enter') {
-                    $(document).off('keydown.' + id);
+                    $(document).off('keydown.' + fixedId);
                     const postpone = parseInt($('#gg_postpone_floors').val()) || 0;
                     $overlay.remove();
                     resolve({ action: 'confirm', postpone: postpone });
