@@ -1375,7 +1375,7 @@
 
             if (finalData && finalData.v && finalData.d) {
                 // 恢复结构
-                if (finalData.structure && Array.isArray(finalData.structure) && finalData.structure.length > 0) {
+                if (finalData.structureBound && finalData.structure && Array.isArray(finalData.structure) && finalData.structure.length > 0) {
                     console.log(`🏗️ [结构恢复] 检测到专属表结构...`);
                     this.initTables(finalData.structure, false);
                 }
