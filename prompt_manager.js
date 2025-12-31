@@ -1707,10 +1707,10 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <button id="gg_save_table_structure_btn" style="flex: 1; padding: 8px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
-                            💾 保存
+                            💾 保存结构
                         </button>
                         <button id="gg_reset_table_structure_btn" style="flex: 1; padding: 8px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
-                            🔄 默认
+                            🔄 恢复默认
                         </button>
                     </div>
                     <button id="gg_copy_table_definition_btn" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">

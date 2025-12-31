@@ -3785,7 +3785,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         const tbs = ss.map((s, i) => {
             const count = s.r.length;
-            const displayName = i === 1 ? '支线剧情' : s.n;
+            // ✅ 修复：始终从数据源读取表格名称，确保结构变化后正确刷新
+            const displayName = s.n;
             // ✨ 2. 根据记录的索引设置激活状态
             const isActive = i === activeTabIndex ? ' act' : '';
             return `<button class="g-t${isActive}" data-i="${i}">${displayName} (${count})</button>`;
@@ -9463,9 +9464,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增自定义世界书名称 ：</strong>用户可自定义世界书名称，条目自动由总结标题+备注生成</li>
-                        <li><strong>修复表格结构bug ：</strong>请通过插件的【清楚本地缓存】功能，清除可能旧版本缓存导致表格结构丢失的问题。并通过排【表格结构编辑器】下方的【默认】按钮恢复表格结构</li>
-                        <li><strong>优化总结提示词 ：</strong>优化默认提示词，若有特殊需求请用户自行修改默认提示词</li>
+                        <li><strong>修复表格编辑bug ：</strong>修复表格编辑时删除表格时，没有正确更新表头名称的bug.</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
