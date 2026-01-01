@@ -1,7 +1,35 @@
+# System Files (系统文件)
 .DS_Store
 Thumbs.db
+
+# Logs & Temp (日志与临时文件)
+*.log
+*.tmp
+*.bak
+*.swp
+
+# IDE & Editor Config (编辑器配置)
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Dependencies (依赖包 - 如果未来引入构建流程)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Local Config & Data (本地配置与数据 - 关键防止冲突)
 config.json
 settings.json
 user_data/
-*.log
-*.tmp
+
+# Archives (压缩包备份)
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# Test Files (测试文件)
+test/
+test_data/

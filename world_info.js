@@ -4,7 +4,7 @@
  * 功能：处理记忆总结与 SillyTavern 世界书的同步和绑定
  * 包含：防抖同步、智能创建/更新、自动绑定角色卡
  *
- * @version 1.5.2
+ * @version 1.5.3
  * @author Gaigai Team
  */
 
@@ -231,8 +231,8 @@
                         keysecondary: [],
                         comment: displayTitle,
                         content: `【${title}${note ? ' [' + note + ']' : ''}】\n${rowContent}`,
-                        constant: true,
-                        vectorized: false,
+                        constant: false,
+                        vectorized: window.Gaigai.config_obj.worldInfoVectorized ?? true,
                         enabled: true,
                         position: 1,
                         order: 100,
@@ -435,8 +435,8 @@
                     keysecondary: [],
                     comment: displayTitle, // ✅ Use the correct title from table
                     content: content,
-                    constant: true,
-                    vectorized: false,
+                    constant: false,
+                    vectorized: window.Gaigai.config_obj.worldInfoVectorized ?? true,
                     enabled: true,
                     position: 1,
                     order: 100,

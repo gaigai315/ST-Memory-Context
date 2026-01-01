@@ -1,0 +1,2214 @@
+/**
+ * ⚡ Gaigai记忆插件 - 独立向量检索模块 (图书馆架构)
+ *
+ * 功能：使用外部 Embedding API 实现语义检索，不依赖酒馆后端
+ * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
+ * 新架构：多书架 + 会话绑定系统
+ *
+ * @version 1.6.0
+ * @author Gaigai Team
+ */
+
+(function () {
+    'use strict';
+
+    class VectorManager {
+        constructor() {
+            // 向量索引缓存（内部表格数据）
+            this.vectorIndex = [];
+
+            // 📚 图书馆结构（替代旧版 customKnowledge）
+            // 格式: { "book_uuid": { name, chunks, vectors, createTime } }
+            this.library = {};
+
+            // 文本向量缓存（避免重复计算）
+            this.vectorCache = new Map();
+
+            // 正在进行的 API 请求（避免并发重复）
+            this.pendingRequests = new Map();
+
+            // UI 状态：当前选中的书籍 ID
+            this.selectedBookId = null;
+
+            // 🔒 安全锁：防止数据未加载时误保存
+            this.isDataLoaded = false;
+
+            console.log('✅ [VectorManager] 初始化完成 (图书馆架构)');
+
+            // 执行数据迁移
+            this._migrateOldData();
+
+            // 加载图书馆数据
+            this.loadLibrary();
+        }
+
+        /**
+         * 🔄 数据迁移：将旧版 customKnowledge 迁移为"默认知识库"
+         * @private
+         */
+        _migrateOldData() {
+            try {
+                // 检查 extension_settings 中是否存在旧版数据
+                const settings = window.extension_settings || {};
+                const gaigaiSettings = settings.st_memory_table || {};
+
+                if (gaigaiSettings.customKnowledge && Array.isArray(gaigaiSettings.customKnowledge) && gaigaiSettings.customKnowledge.length > 0) {
+                    console.log('🔄 [数据迁移] 检测到旧版 customKnowledge，开始迁移...');
+
+                    const oldData = gaigaiSettings.customKnowledge;
+                    const defaultBookId = this._generateUUID();
+
+                    // 创建默认知识库
+                    this.library[defaultBookId] = {
+                        name: '默认知识库 (迁移)',
+                        chunks: oldData.map(item => item.content || ''),
+                        vectors: oldData.map(item => item.vector || null),
+                        createTime: Date.now(),
+                        vectorized: oldData.map(item => item.vectorized || false)
+                    };
+
+                    console.log(`✅ [数据迁移] 已将 ${oldData.length} 条旧数据迁移到"默认知识库"`);
+
+                    // 删除旧数据
+                    delete gaigaiSettings.customKnowledge;
+
+                    // 保存迁移后的数据
+                    this.saveLibrary();
+                }
+            } catch (error) {
+                console.error('❌ [数据迁移] 迁移失败:', error);
+            }
+        }
+
+        /**
+         * 🆔 生成 UUID
+         * @private
+         * @returns {string} - UUID 字符串
+         */
+        _generateUUID() {
+            return 'book_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+        }
+
+        /**
+         * 💾 保存图书馆数据到全局配置
+         */
+        saveLibrary() {
+            // 🛑 安全拦截：数据未加载时禁止保存
+            if (!this.isDataLoaded) {
+                console.warn('🛑 [安全拦截] 向量数据尚未加载，禁止保存！防止覆盖存档。');
+                return;
+            }
+
+            try {
+                if (!window.extension_settings) {
+                    window.extension_settings = {};
+                }
+                if (!window.extension_settings.st_memory_table) {
+                    window.extension_settings.st_memory_table = {};
+                }
+
+                // 保存 library 到全局
+                window.extension_settings.st_memory_table.vectorLibrary = this.library;
+
+                // 调用云同步
+                if (typeof window.Gaigai?.saveAllSettingsToCloud === 'function') {
+                    window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                        console.warn('⚠️ [VectorManager] 云同步失败:', err);
+                    });
+                }
+
+                console.log('💾 [VectorManager] 图书馆数据已保存到全局配置');
+            } catch (error) {
+                console.error('❌ [VectorManager] 保存图书馆失败:', error);
+            }
+        }
+
+        /**
+         * 📂 从全局配置加载图书馆数据
+         * @param {Object|null} explicitData - 显式传入的数据（优先使用）
+         */
+        loadLibrary(explicitData = null) {
+            try {
+                // 1. 优先使用传入的显式数据 (来自 index.js 的最新拉取)
+                if (explicitData && typeof explicitData === 'object') {
+                    this.library = explicitData;
+                    console.log(`📂 [VectorManager] 已加载传入的数据: ${Object.keys(this.library).length} 本书`);
+                    this.isDataLoaded = true; // ✅ 解锁
+                    return;
+                }
+
+                // 2. 其次尝试从全局配置加载 (兜底)
+                const settings = window.extension_settings?.st_memory_table || {};
+                if (settings.vectorLibrary && typeof settings.vectorLibrary === 'object') {
+                    this.library = settings.vectorLibrary;
+                    console.log(`📂 [VectorManager] 已加载全局配置: ${Object.keys(this.library).length} 本书`);
+                } else {
+                    this.library = {};
+                    console.log('📂 [VectorManager] 图书馆为空 (无数据)');
+                }
+
+                // 无论有没有数据，只要尝试加载过，就视为加载完成
+                this.isDataLoaded = true;
+                console.log('📂 [VectorManager] 数据加载完毕，允许保存');
+            } catch (error) {
+                console.error('❌ [VectorManager] 加载图书馆失败:', error);
+                this.library = {};
+                this.isDataLoaded = true; // 出错也解锁，避免死锁
+            }
+        }
+
+        /**
+         * 📖 获取当前会话绑定的书籍 ID 列表
+         * @returns {string[]} - 书籍 ID 数组
+         */
+        getActiveBooks() {
+            try {
+                const m = window.Gaigai?.m;
+                if (!m) return [];
+
+                const ctx = m.ctx();
+                if (!ctx || !ctx.chat) return [];
+
+                // 从 chatMetadata 读取 activeBooks
+                const activeBooks = ctx.chatMetadata?.gaigai_activeBooks || [];
+
+                return Array.isArray(activeBooks) ? activeBooks : [];
+            } catch (error) {
+                console.error('❌ [VectorManager] 获取 activeBooks 失败:', error);
+                return [];
+            }
+        }
+
+        /**
+         * 🔗 设置当前会话绑定的书籍 ID 列表
+         * @param {string[]} bookIds - 书籍 ID 数组
+         */
+        setActiveBooks(bookIds) {
+            try {
+                const m = window.Gaigai?.m;
+                if (!m) {
+                    console.error('❌ [VectorManager] Memory Manager 不可用');
+                    return;
+                }
+
+                const ctx = m.ctx();
+                if (!ctx || !ctx.chat) {
+                    console.error('❌ [VectorManager] 当前聊天不可用');
+                    return;
+                }
+
+                // 初始化 chatMetadata
+                if (!ctx.chatMetadata) {
+                    ctx.chatMetadata = {};
+                }
+
+                // 保存到 chatMetadata
+                ctx.chatMetadata.gaigai_activeBooks = bookIds;
+
+                // 保存聊天数据
+                m.save();
+
+                console.log(`🔗 [VectorManager] 已绑定 ${bookIds.length} 本书到当前会话`);
+            } catch (error) {
+                console.error('❌ [VectorManager] 设置 activeBooks 失败:', error);
+            }
+        }
+
+        /**
+         * 🔑 获取配置
+         * @private
+         */
+        _getConfig() {
+            const C = window.Gaigai?.config_obj || {};
+            return {
+                provider: C.vectorProvider || 'openai',
+                url: C.vectorUrl || '',
+                key: C.vectorKey || '',
+                model: C.vectorModel || 'BAAI/bge-m3',
+                threshold: (C.vectorThreshold !== undefined && C.vectorThreshold !== null && C.vectorThreshold !== '') ? parseFloat(C.vectorThreshold) : 0.6,
+                maxCount: parseInt(C.vectorMaxCount) || 3,
+                separator: C.vectorSeparator || '==='
+            };
+        }
+
+        /**
+         * 🧮 计算文本的简单 hash（用于缓存）
+         * @private
+         */
+        _hashText(text) {
+            let hash = 0;
+            for (let i = 0; i < text.length; i++) {
+                const char = text.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return hash.toString(36);
+        }
+
+        /**
+         * 🌐 调用 Embedding API 获取向量
+         * @param {string} text - 要编码的文本
+         * @returns {Promise<number[]>} - 向量数组
+         */
+        async getEmbedding(text) {
+            if (!text || !text.trim()) {
+                throw new Error('文本不能为空');
+            }
+
+            const config = this._getConfig();
+
+            // 验证配置
+            if (!config.url || !config.key) {
+                throw new Error('未配置向量 API URL 或 Key');
+            }
+
+            // 检查缓存
+            const hash = this._hashText(text);
+            if (this.vectorCache.has(hash)) {
+                console.log('✅ [VectorManager] 使用缓存向量');
+                return this.vectorCache.get(hash);
+            }
+
+            // 检查是否有相同文本的请求正在进行
+            if (this.pendingRequests.has(hash)) {
+                console.log('⏳ [VectorManager] 等待进行中的请求...');
+                return await this.pendingRequests.get(hash);
+            }
+
+            // 创建新的请求
+            const requestPromise = this._fetchEmbedding(text, config);
+            this.pendingRequests.set(hash, requestPromise);
+
+            try {
+                const vector = await requestPromise;
+
+                // 缓存结果
+                this.vectorCache.set(hash, vector);
+
+                return vector;
+            } finally {
+                this.pendingRequests.delete(hash);
+            }
+        }
+
+        /**
+         * 🌐 实际的 API 请求
+         * @private
+         */
+        async _fetchEmbedding(text, config) {
+            // ✅ 优化 URL 拼接逻辑，避免重复 /v1
+            let baseUrl = config.url.replace(/\/$/, ''); // 去除末尾斜杠
+            if (baseUrl.endsWith('/v1')) {
+                baseUrl = baseUrl.slice(0, -3); // 去除已存在的 /v1
+            }
+            const url = baseUrl + '/v1/embeddings';
+
+            const payload = {
+                model: config.model,
+                input: text
+            };
+
+            console.log(`🔄 [VectorManager] 调用 Embedding API: ${url}`);
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${config.key}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API 请求失败 (${response.status}): ${errorText}`);
+                }
+
+                const data = await response.json();
+
+                // 标准 OpenAI 格式: { data: [{ embedding: [...] }] }
+                if (data.data && data.data[0] && data.data[0].embedding) {
+                    console.log('✅ [VectorManager] 获取向量成功，维度:', data.data[0].embedding.length);
+                    return data.data[0].embedding;
+                } else {
+                    throw new Error('API 返回格式不正确');
+                }
+            } catch (error) {
+                console.error('❌ [VectorManager] Embedding API 错误:', error);
+                throw error;
+            }
+        }
+
+        /**
+         * 📐 计算余弦相似度
+         * @param {number[]} vecA - 向量 A
+         * @param {number[]} vecB - 向量 B
+         * @returns {number} - 相似度 (0-1)
+         */
+        cosineSimilarity(vecA, vecB) {
+            if (!vecA || !vecB || vecA.length !== vecB.length) {
+                console.warn('⚠️ [VectorManager] 向量维度不匹配或为空');
+                return 0;
+            }
+
+            let dotProduct = 0;
+            let normA = 0;
+            let normB = 0;
+
+            for (let i = 0; i < vecA.length; i++) {
+                dotProduct += vecA[i] * vecB[i];
+                normA += vecA[i] * vecA[i];
+                normB += vecB[i] * vecB[i];
+            }
+
+            normA = Math.sqrt(normA);
+            normB = Math.sqrt(normB);
+
+            if (normA === 0 || normB === 0) {
+                return 0;
+            }
+
+            return dotProduct / (normA * normB);
+        }
+
+        /**
+         * 📚 更新向量索引（遍历表格数据）
+         * @param {Object} memoryManager - Memory 对象 (window.Gaigai.m)
+         * @returns {Promise<Object>} - { success: boolean, count: number, errors: number }
+         */
+        async updateIndex(memoryManager) {
+            console.log('🔄 [VectorManager] 开始重建表格向量索引...');
+
+            if (!memoryManager || !memoryManager.s) {
+                throw new Error('Memory Manager 不可用');
+            }
+
+            const newIndex = [];
+            let successCount = 0;
+            let errorCount = 0;
+
+            try {
+                // 遍历所有表格
+                for (let tableIdx = 0; tableIdx < memoryManager.s.length; tableIdx++) {
+                    const sheet = memoryManager.get(tableIdx);
+
+                    if (!sheet || !sheet.r || sheet.r.length === 0) {
+                        continue;
+                    }
+
+                    const tableName = sheet.t || `表${tableIdx}`;
+                    console.log(`📊 [VectorManager] 处理表格: ${tableName}, 行数: ${sheet.r.length}`);
+
+                    // 遍历表格的每一行
+                    for (let rowIdx = 0; rowIdx < sheet.r.length; rowIdx++) {
+                        const row = sheet.r[rowIdx];
+
+                        // ✅ 兼容 Object 格式的行数据
+                        const rowData = Array.isArray(row) ? row : Object.values(row);
+                        const cellTexts = rowData.filter(cell => cell && typeof cell === 'string' && cell.trim()).join('\n');
+
+                        if (!cellTexts.trim()) {
+                            continue;
+                        }
+
+                        try {
+                            const hash = this._hashText(cellTexts);
+
+                            // 检查是否已有相同文本的向量（避免重复计算）
+                            const existingEntry = this.vectorIndex.find(e => e.hash === hash);
+                            if (existingEntry) {
+                                console.log(`✅ [VectorManager] 复用已有向量: ${tableName} 行${rowIdx}`);
+                                newIndex.push({
+                                    text: cellTexts,
+                                    vector: existingEntry.vector,
+                                    source: `${tableName} 行${rowIdx}`,
+                                    hash: hash
+                                });
+                                successCount++;
+                                continue;
+                            }
+
+                            // 获取向量
+                            const vector = await this.getEmbedding(cellTexts);
+
+                            newIndex.push({
+                                text: cellTexts,
+                                vector: vector,
+                                source: `${tableName} 行${rowIdx}`,
+                                hash: hash
+                            });
+
+                            successCount++;
+                            console.log(`✅ [VectorManager] 已索引: ${tableName} 行${rowIdx}`);
+
+                            // 避免过于频繁的请求，稍微延迟
+                            await new Promise(r => setTimeout(r, 100));
+
+                        } catch (error) {
+                            console.error(`❌ [VectorManager] 索引失败: ${tableName} 行${rowIdx}`, error);
+                            errorCount++;
+                        }
+                    }
+                }
+
+                // 更新索引
+                this.vectorIndex = newIndex;
+
+                console.log(`✅ [VectorManager] 表格索引重建完成: ${successCount} 成功, ${errorCount} 失败`);
+
+                return { success: true, count: successCount, errors: errorCount };
+
+            } catch (error) {
+                console.error('❌ [VectorManager] 更新索引失败:', error);
+                return { success: false, count: successCount, errors: errorCount, error: error.message };
+            }
+        }
+
+        /**
+         * 🗑️ 清空表格向量索引
+         * @returns {Object} - { success: boolean }
+         */
+        clearTableIndex() {
+            console.log('🗑️ [VectorManager] 清空表格向量索引...');
+
+            // 重置表格向量索引为空数组
+            this.vectorIndex = [];
+
+            // 保存到全局配置
+            this.saveLibrary();
+
+            console.log('✅ [VectorManager] 表格索引已清空');
+            return { success: true };
+        }
+
+        /**
+         * 📖 导入新书（替代旧版 handleImportCustomFile）
+         * @param {File} file - 用户选择的 TXT 文件
+         * @param {string} customName - 自定义书名（可选）
+         * @returns {Promise<Object>} - { success: boolean, bookId: string, count: number }
+         */
+        async importBook(file, customName = null) {
+            try {
+                // 读取文件内容
+                const content = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = reject;
+                    reader.readAsText(file, 'UTF-8');
+                });
+
+                const config = this._getConfig();
+                const separator = config.separator || '===';
+
+                // 切分文本
+                let chunks = [];
+                if (separator === '\\n' || separator === '\n') {
+                    chunks = content.split('\n').filter(line => line.trim());
+                } else {
+                    chunks = content.split(separator).filter(chunk => chunk.trim());
+                }
+
+                console.log(`📂 [VectorManager] 文件已切分为 ${chunks.length} 个片段`);
+
+                // 生成书籍 ID
+                const bookId = this._generateUUID();
+
+                // 创建书籍对象
+                this.library[bookId] = {
+                    name: customName || file.name,
+                    chunks: chunks.map(chunk => chunk.trim()),
+                    vectors: new Array(chunks.length).fill(null),
+                    vectorized: new Array(chunks.length).fill(false),
+                    createTime: Date.now()
+                };
+
+                // 保存到全局
+                this.saveLibrary();
+
+                return { success: true, bookId: bookId, count: chunks.length };
+
+            } catch (error) {
+                console.error('❌ [VectorManager] 导入书籍失败:', error);
+                return { success: false, bookId: null, count: 0, error: error.message };
+            }
+        }
+
+        /**
+         * ⚡ 向量化指定书籍（替代旧版 vectorizeCustomKnowledge）
+         * @param {string} bookId - 书籍 ID
+         * @param {Function} progressCallback - 进度回调 (current, total)
+         * @returns {Promise<Object>} - { success: boolean, count: number, errors: number }
+         */
+        async vectorizeBook(bookId, progressCallback) {
+            console.log(`⚡ [VectorManager] 开始向量化书籍: ${bookId}...`);
+
+            const book = this.library[bookId];
+            if (!book) {
+                throw new Error('书籍不存在');
+            }
+
+            // 找出未向量化的片段
+            const unvectorizedIndices = [];
+            for (let i = 0; i < book.chunks.length; i++) {
+                if (!book.vectorized[i]) {
+                    unvectorizedIndices.push(i);
+                }
+            }
+
+            if (unvectorizedIndices.length === 0) {
+                console.log('✅ [VectorManager] 所有片段已向量化');
+                return { success: true, count: 0, errors: 0 };
+            }
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < unvectorizedIndices.length; i++) {
+                const idx = unvectorizedIndices[i];
+
+                try {
+                    // 调用进度回调
+                    if (progressCallback) {
+                        progressCallback(i + 1, unvectorizedIndices.length);
+                    }
+
+                    // 获取向量
+                    const vector = await this.getEmbedding(book.chunks[idx]);
+
+                    // 更新书籍数据
+                    book.vectors[idx] = vector;
+                    book.vectorized[idx] = true;
+
+                    successCount++;
+                    console.log(`✅ [VectorManager] 已向量化片段 ${idx} (${i + 1}/${unvectorizedIndices.length})`);
+
+                    // 避免过于频繁的请求
+                    await new Promise(r => setTimeout(r, 100));
+
+                } catch (error) {
+                    console.error(`❌ [VectorManager] 向量化失败: 片段 ${idx}`, error);
+                    errorCount++;
+                }
+            }
+
+            // 保存到全局
+            this.saveLibrary();
+
+            console.log(`✅ [VectorManager] 书籍向量化完成: ${successCount} 成功, ${errorCount} 失败`);
+
+            return { success: true, count: successCount, errors: errorCount };
+        }
+
+        /**
+         * 🔍 混合检索（表格 + 当前会话绑定的书籍）
+         * @param {string} query - 查询文本
+         * @param {string[]} allowedBookIds - 允许检索的书籍 ID 列表（可选，默认使用当前会话绑定）
+         * @returns {Promise<Array>} - 相关记忆数组 [{ text, score, source, type }]
+         */
+        async search(query, allowedBookIds = null) {
+            if (!query || !query.trim()) {
+                return [];
+            }
+
+            const config = this._getConfig();
+
+            // 如果未提供 allowedBookIds，从当前会话获取
+            if (!allowedBookIds) {
+                allowedBookIds = this.getActiveBooks();
+            }
+
+            // 检查是否有可用的索引
+            let knowledgeCount = 0;
+            for (const bookId of allowedBookIds) {
+                const book = this.library[bookId];
+                if (book) {
+                    knowledgeCount += book.vectorized.filter(v => v).length;
+                }
+            }
+
+            const totalCount = this.vectorIndex.length + knowledgeCount;
+            if (totalCount === 0) {
+                console.warn('⚠️ [VectorManager] 向量索引为空，请先重建索引或导入知识库');
+                return [];
+            }
+
+            try {
+                // 获取查询向量
+                const queryVector = await this.getEmbedding(query);
+
+                const results = [];
+
+                // 1. 检索表格数据
+                this.vectorIndex.forEach(entry => {
+                    results.push({
+                        text: entry.text,
+                        source: entry.source,
+                        score: this.cosineSimilarity(queryVector, entry.vector),
+                        type: '表格'
+                    });
+                });
+
+                // 2. 检索绑定的知识库
+                for (const bookId of allowedBookIds) {
+                    const book = this.library[bookId];
+                    if (!book) continue;
+
+                    for (let i = 0; i < book.chunks.length; i++) {
+                        if (book.vectorized[i] && book.vectors[i]) {
+                            results.push({
+                                text: book.chunks[i],
+                                source: `${book.name} 片段${i}`,
+                                score: this.cosineSimilarity(queryVector, book.vectors[i]),
+                                type: '知识库'
+                            });
+                        }
+                    }
+                }
+
+                // 筛选并排序
+                const filtered = results
+                    .filter(r => r.score >= config.threshold)
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, config.maxCount);
+
+                console.log(`🔍 [VectorManager] 混合检索到 ${filtered.length} 条相关记忆 (表格:${this.vectorIndex.length}, 知识库:${knowledgeCount})`);
+
+                return filtered;
+
+            } catch (error) {
+                console.error('❌ [VectorManager] 检索失败:', error);
+                return [];
+            }
+        }
+
+        /**
+         * 🗑️ 删除书籍
+         * @param {string} bookId - 书籍 ID
+         */
+        deleteBook(bookId) {
+            if (this.library[bookId]) {
+                delete this.library[bookId];
+
+                // 从所有会话的绑定中移除
+                // (注意：这里只处理当前会话，其他会话需要在打开时自动清理不存在的书籍)
+                const activeBooks = this.getActiveBooks();
+                const newActiveBooks = activeBooks.filter(id => id !== bookId);
+                if (newActiveBooks.length !== activeBooks.length) {
+                    this.setActiveBooks(newActiveBooks);
+                }
+
+                this.saveLibrary();
+                console.log(`🗑️ [VectorManager] 已删除书籍: ${bookId}`);
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * 🧹 清空所有书籍
+         */
+        clearAllBooks() {
+            this.library = {};
+            this.saveLibrary();
+
+            // 清空当前会话的绑定
+            this.setActiveBooks([]);
+
+            console.log('🧹 [VectorManager] 已清空所有书籍');
+        }
+
+        /**
+         * 🧹 清空所有数据（包括表格和书籍）
+         */
+        clearAll() {
+            this.vectorIndex = [];
+            this.library = {};
+            this.vectorCache.clear();
+            this.pendingRequests.clear();
+            this.saveLibrary();
+            this.setActiveBooks([]);
+            console.log('🧹 [VectorManager] 已清空所有向量数据');
+        }
+
+        /**
+         * 📤 导出向量缓存（表格 + 图书馆）
+         * @param {string[]|null} specificBookIds - 指定要导出的书籍ID数组，null或空数组则导出全部
+         * @returns {string} - 文件内容
+         */
+        exportVectors(specificBookIds = null) {
+            const lines = [];
+
+            // 确定要导出的书籍
+            let booksToExport = Object.entries(this.library);
+            if (specificBookIds && Array.isArray(specificBookIds) && specificBookIds.length > 0) {
+                booksToExport = booksToExport.filter(([bookId]) => specificBookIds.includes(bookId));
+            }
+
+            lines.push('=== Gaigai 向量缓存文件 (图书馆版) ===');
+            lines.push(`导出时间: ${new Date().toLocaleString()}`);
+            lines.push(`表格条目: ${this.vectorIndex.length}`);
+            lines.push(`书籍数量: ${booksToExport.length}`);
+            lines.push('');
+
+            // 导出表格索引
+            lines.push('>>> 表格向量索引 <<<');
+            for (const entry of this.vectorIndex) {
+                lines.push('=== 向量信息 ===');
+                lines.push(`来源: ${entry.source}`);
+                lines.push(`类型: 表格`);
+                lines.push(`哈希: ${entry.hash}`);
+                lines.push('--- 文本内容 ---');
+                lines.push(entry.text);
+                lines.push('--- 向量数据 (Base64) ---');
+                const vectorJson = JSON.stringify(entry.vector);
+                const vectorBase64 = btoa(unescape(encodeURIComponent(vectorJson)));
+                lines.push(vectorBase64);
+                lines.push('');
+            }
+
+            // 导出图书馆（仅导出指定的书籍）
+            lines.push('>>> 图书馆 <<<');
+            for (const [bookId, book] of booksToExport) {
+                lines.push('=== 书籍信息 ===');
+                lines.push(`ID: ${bookId}`);
+                lines.push(`书名: ${book.name}`);
+                lines.push(`创建时间: ${book.createTime}`);
+                lines.push(`片段数量: ${book.chunks.length}`);
+                lines.push('');
+
+                // 导出每个片段
+                for (let i = 0; i < book.chunks.length; i++) {
+                    lines.push(`--- 片段 ${i} ---`);
+                    lines.push(book.chunks[i]);
+                    if (book.vectorized[i] && book.vectors[i]) {
+                        lines.push('--- 向量 (Base64) ---');
+                        const vectorJson = JSON.stringify(book.vectors[i]);
+                        const vectorBase64 = btoa(unescape(encodeURIComponent(vectorJson)));
+                        lines.push(vectorBase64);
+                    } else {
+                        lines.push('--- 向量: 未向量化 ---');
+                    }
+                    lines.push('');
+                }
+            }
+
+            const content = lines.join('\n');
+            console.log(`📤 [VectorManager] 导出完成: ${this.vectorIndex.length} 表格 + ${booksToExport.length} 书籍`);
+
+            return content;
+        }
+
+        /**
+         * 📥 从 TXT 文件导入向量缓存（表格 + 图书馆）
+         * @param {File|string} fileOrContent - 文件对象或文本内容
+         * @returns {Promise<Object>} - { success: boolean, tableCount: number, bookCount: number }
+         */
+        async importVectors(fileOrContent) {
+            try {
+                let content;
+
+                if (typeof fileOrContent === 'string') {
+                    content = fileOrContent;
+                } else {
+                    content = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => resolve(e.target.result);
+                        reader.onerror = reject;
+                        reader.readAsText(fileOrContent);
+                    });
+                }
+
+                const lines = content.split('\n');
+                const newTableIndex = [];
+                const newLibrary = {};
+
+                let currentSection = null;
+                let currentEntry = null;
+                let currentBookId = null;
+                let currentChunkIndex = -1;
+                let mode = 'header';
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+
+                    // 检测区段
+                    if (line === '>>> 表格向量索引 <<<') {
+                        currentSection = 'table';
+                        continue;
+                    } else if (line === '>>> 图书馆 <<<') {
+                        currentSection = 'library';
+                        continue;
+                    }
+
+                    // 解析表格条目
+                    if (currentSection === 'table') {
+                        if (line === '=== 向量信息 ===') {
+                            if (currentEntry) {
+                                newTableIndex.push(currentEntry);
+                            }
+                            currentEntry = { text: '', vector: null, source: '', hash: '' };
+                            mode = 'meta';
+                            continue;
+                        }
+
+                        if (line === '--- 文本内容 ---') {
+                            mode = 'text';
+                            continue;
+                        }
+
+                        if (line === '--- 向量数据 (Base64) ---') {
+                            mode = 'vector';
+                            continue;
+                        }
+
+                        if (!currentEntry) continue;
+
+                        if (mode === 'meta') {
+                            if (line.startsWith('来源: ')) {
+                                currentEntry.source = line.substring(4);
+                            } else if (line.startsWith('哈希: ')) {
+                                currentEntry.hash = line.substring(4);
+                            }
+                        } else if (mode === 'text') {
+                            if (line && !line.startsWith('---')) {
+                                currentEntry.text += (currentEntry.text ? '\n' : '') + line;
+                            }
+                        } else if (mode === 'vector') {
+                            if (line && !line.startsWith('===')) {
+                                try {
+                                    const vectorJson = decodeURIComponent(escape(atob(line)));
+                                    currentEntry.vector = JSON.parse(vectorJson);
+                                    if (currentEntry.hash) {
+                                        this.vectorCache.set(currentEntry.hash, currentEntry.vector);
+                                    }
+                                } catch (e) {
+                                    console.error('❌ [VectorManager] 向量解码失败:', e);
+                                }
+                                mode = 'done';
+                            }
+                        }
+                    }
+
+                    // 解析图书馆
+                    if (currentSection === 'library') {
+                        if (line === '=== 书籍信息 ===') {
+                            mode = 'book_meta';
+                            currentEntry = { chunks: [], vectors: [], vectorized: [] };
+                            currentChunkIndex = -1;
+                            continue;
+                        }
+
+                        if (line.startsWith('--- 片段 ')) {
+                            currentChunkIndex = parseInt(line.match(/\d+/)[0]);
+                            mode = 'chunk_text';
+                            currentEntry.chunks[currentChunkIndex] = '';
+                            continue;
+                        }
+
+                        if (line === '--- 向量 (Base64) ---') {
+                            mode = 'chunk_vector';
+                            continue;
+                        }
+
+                        if (line === '--- 向量: 未向量化 ---') {
+                            currentEntry.vectors[currentChunkIndex] = null;
+                            currentEntry.vectorized[currentChunkIndex] = false;
+                            continue;
+                        }
+
+                        if (mode === 'book_meta') {
+                            if (line.startsWith('ID: ')) {
+                                currentBookId = line.substring(4);
+                            } else if (line.startsWith('书名: ')) {
+                                currentEntry.name = line.substring(4);
+                            } else if (line.startsWith('创建时间: ')) {
+                                currentEntry.createTime = parseInt(line.substring(7));
+                            } else if (line.startsWith('片段数量: ')) {
+                                // 忽略，从实际数据获取
+                            }
+                        } else if (mode === 'chunk_text') {
+                            if (line && !line.startsWith('---')) {
+                                currentEntry.chunks[currentChunkIndex] += (currentEntry.chunks[currentChunkIndex] ? '\n' : '') + line;
+                            }
+                        } else if (mode === 'chunk_vector') {
+                            if (line && !line.startsWith('---') && !line.startsWith('===')) {
+                                try {
+                                    const vectorJson = decodeURIComponent(escape(atob(line)));
+                                    currentEntry.vectors[currentChunkIndex] = JSON.parse(vectorJson);
+                                    currentEntry.vectorized[currentChunkIndex] = true;
+                                } catch (e) {
+                                    console.error('❌ [VectorManager] 向量解码失败:', e);
+                                    currentEntry.vectors[currentChunkIndex] = null;
+                                    currentEntry.vectorized[currentChunkIndex] = false;
+                                }
+                            }
+                        }
+
+                        // 当遇到下一本书或文件结束时，保存当前书
+                        if ((line === '=== 书籍信息 ===' && currentBookId) || i === lines.length - 1) {
+                            if (currentBookId && currentEntry.name) {
+                                newLibrary[currentBookId] = currentEntry;
+                            }
+                        }
+                    }
+                }
+
+                // 添加最后一个表格条目
+                if (currentEntry && currentSection === 'table') {
+                    newTableIndex.push(currentEntry);
+                }
+
+                // 更新数据
+                this.vectorIndex = newTableIndex;
+                this.library = newLibrary;
+                this.saveLibrary();
+
+                console.log(`📥 [VectorManager] 导入完成: ${newTableIndex.length} 表格 + ${Object.keys(newLibrary).length} 书籍`);
+
+                return {
+                    success: true,
+                    tableCount: newTableIndex.length,
+                    bookCount: Object.keys(newLibrary).length
+                };
+
+            } catch (error) {
+                console.error('❌ [VectorManager] 导入失败:', error);
+                return { success: false, tableCount: 0, bookCount: 0, error: error.message };
+            }
+        }
+
+        /**
+         * 🎨 显示向量化配置 UI（左侧书架 + 右侧详情）
+         */
+        showUI() {
+            const config = this._getConfig();
+            const UI = window.Gaigai?.ui || { c: '#dfdcdcff', bc: '#ffffff', tc: '#000000ff', darkMode: false };
+            const pop = window.Gaigai?.pop;
+
+            if (!pop) {
+                alert('UI 库未加载');
+                return;
+            }
+
+            // 获取当前会话绑定的书籍
+            const activeBooks = this.getActiveBooks();
+
+            const html = `
+                <style>
+                    /* 强制指定主窗口大小，防止被全局样式或小弹窗样式影响 */
+                    #gai-main-pop .g-w {
+                        width: 900px !important;        /* 宽度改小 */
+                        height: 700px !important;       /* 高度改小 */
+                        max-width: 95vw !important;     /* 防止溢出屏幕 */
+                        max-height: 90vh !important;
+                    }
+
+                    /* 内部容器自适应 */
+                    .gg-vm-container {
+                        padding: 20px;
+                        display: flex;
+                        gap: 20px;
+                        height: 100%; /* 填满父容器 */
+                        box-sizing: border-box;
+                        overflow: hidden; /* 防止双重滚动条 */
+                    }
+
+                    .gg-vm-left {
+                        flex: 1;
+                        min-width: 300px;
+                        max-width: 400px;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 12px;
+                        min-height: 0;
+                        overflow-y: auto;
+                        overflow-x: hidden;
+                    }
+
+                    .gg-vm-right {
+                        flex: 1;
+                        display: flex;
+                        flex-direction: column;
+                        border-left: 1px solid rgba(255,255,255,0.1);
+                        padding-left: 20px;
+                        min-width: 0;
+                    }
+
+                    .gg-vm-config-section,
+                    .gg-vm-global-section {
+                        flex-shrink: 0;
+                    }
+
+                    .gg-vm-book-list-wrapper {
+                        flex-shrink: 0;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 8px;
+                    }
+
+                    .gg-vm-book-list {
+                        max-height: 300px;
+                        overflow-y: auto;
+                        border: 1px solid rgba(255,255,255,0.1);
+                        border-radius: 4px;
+                        padding: 10px;
+                        background: rgba(0,0,0,0.1);
+                        min-height: 100px;
+                    }
+
+                    /* 响应式：手机端 */
+                    @media (max-width: 768px) {
+                        /* 强制主弹窗在手机上全屏且允许滚动 */
+                        #gai-main-pop .g-w {
+                            width: 100vw !important;
+                            height: 90vh !important;
+                            max-height: 90vh !important;
+                            display: flex !important;
+                            flex-direction: column !important;
+                        }
+
+                        /* 内部容器允许滚动 */
+                        .gg-vm-container {
+                            flex-direction: column;
+                            height: 100%;
+                            padding: 10px;
+                            overflow-y: auto; /* 关键：允许垂直滚动 */
+                            gap: 15px;
+                            display: flex;
+                        }
+
+                        /* 左侧栏（API配置等） */
+                        .gg-vm-left {
+                            flex: none; /* 取消伸缩 */
+                            width: 100%;
+                            min-width: 0;
+                            max-width: none;
+                            overflow: visible; /* 让内容撑开高度 */
+                        }
+
+                        /* 右侧栏（详情区） */
+                        .gg-vm-right {
+                            flex: none;
+                            width: 100%;
+                            height: 500px; /* 给详情区一个固定高度 */
+                            border-left: none;
+                            border-top: 1px solid rgba(255,255,255,0.1);
+                            padding-left: 0;
+                            padding-top: 15px;
+                            margin-top: 10px;
+                        }
+
+                        /* 优化书架列表高度，不要太长 */
+                        .gg-vm-book-list {
+                            max-height: 180px;
+                        }
+                    }
+                </style>
+
+                <div class="g-p gg-vm-container">
+                    <!-- 左侧栏：API配置 + 书架列表 -->
+                    <div class="gg-vm-left">
+                        <!-- ✅ 总开关区域 -->
+                        <div style="background: rgba(76, 175, 80, 0.1); border-radius: 8px; padding: 12px; border: 2px solid rgba(76, 175, 80, 0.3); margin-bottom: 12px;">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="gg_vm_global_enabled" ${window.Gaigai?.config_obj?.vectorEnabled ? 'checked' : ''} style="transform: scale(1.3); cursor: pointer;" />
+                                <span style="font-size: 13px; font-weight: bold; color: ${UI.tc};">
+                                    💠 启用插件独立向量检索
+                                </span>
+                            </label>
+                            <div style="font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-top: 6px; margin-left: 30px;">
+                                ℹ️ 此开关与主配置页同步，关闭后将不会在对话中插入向量记忆
+                            </div>
+                        </div>
+
+                        <!-- API 配置 -->
+                        <div class="gg-vm-config-section" style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.1);">
+                            <div style="font-size: 13px; font-weight: bold; color: ${UI.tc}; margin-bottom: 10px;">
+                                <i class="fa-solid fa-cog"></i> API 配置
+                            </div>
+
+                            <div style="margin-bottom: 6px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">API 地址</label>
+                                <input type="text" id="gg_vm_url" value="${config.url || ''}" placeholder="https://api.siliconflow.cn" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                            </div>
+
+                            <div style="margin-bottom: 6px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">API 密钥</label>
+                                <input type="password" id="gg_vm_key" value="${config.key || ''}" placeholder="sk-xxx" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                            </div>
+
+                            <div style="margin-bottom: 6px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">模型名称</label>
+                                <input type="text" id="gg_vm_model" value="${config.model || 'BAAI/bge-m3'}" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                            </div>
+
+                            <!-- 分隔线 -->
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.15); margin: 10px 0;"></div>
+
+                            <!-- 相似度阈值 (滑块 + 数字) -->
+                            <div style="margin-bottom: 6px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 4px;">
+                                    相似度阈值: <span id="gg_vm_threshold_val" style="font-weight: 600; color: #4CAF50;">${config.threshold}</span>
+                                </label>
+                                <input type="range" id="gg_vm_threshold" min="0" max="1" step="0.05" value="${config.threshold}" style="width: 100%;" />
+                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">低于此分数的结果将被过滤</div>
+                            </div>
+
+                            <!-- 最大召回条数 -->
+                            <div style="margin-bottom: 6px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">最大召回条数</label>
+                                <input type="number" id="gg_vm_max_count" value="${config.maxCount || 3}" min="1" max="20" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">每次检索返回的最大结果数</div>
+                            </div>
+
+                            <!-- 文本切分符 -->
+                            <div style="margin-bottom: 8px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">文本切分符</label>
+                                <input type="text" id="gg_vm_separator" value="${config.separator || '==='}" placeholder="===" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">导入 TXT 时按此分隔符切分文本</div>
+                            </div>
+
+                            <!-- 插入变量提示 -->
+                            <div style="font-size: 10px; opacity: 0.9; color: ${UI.tc}; margin-top: 4px; margin-bottom: 8px; margin-left: 30px;">
+                                📌 插入变量: <code style="background:rgba(0,0,0,0.1); padding:2px 4px; border-radius:3px; font-weight:bold; font-family:monospace; user-select:all; cursor:text;" title="点击复制">{{VECTOR_MEMORY}}</code> (若不填则默认插入chat history上方)
+                            </div>
+
+                            <button id="gg_vm_save" style="width: 100%; padding: 6px; background: #9C27B0; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                💾 保存配置
+                            </button>
+                        </div>
+
+                        <!-- 全局操作 -->
+                        <div class="gg-vm-global-section" style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                            <div style="font-size: 11px; font-weight: bold; color: ${UI.tc}; margin-bottom: 8px;">
+                                🛠️ 全局操作
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <button id="gg_vm_create_book" style="width: 100%; padding: 7px; background: #9C27B0; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                    📝 新建空白书
+                                </button>
+                                <button id="gg_vm_import_book" style="width: 100%; padding: 7px; background: #4CAF50; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                    📂 导入新书 (TXT)
+                                </button>
+                                <button id="gg_vm_rebuild_table" style="width: 100%; padding: 7px; background: #2196F3; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                    🔄 表格向量化 (手动更新)
+                                </button>
+                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">
+                                    💡 表格内容修改后，需点击此按钮更新向量。若想防止重复发送，请在主配置中关闭 [注入记忆表格]。
+                                </div>
+                                <button id="gg_vm_clear_table" style="width: 100%; padding: 7px; background: #FF5722; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500; margin-top: 5px;">
+                                    🗑️ 清空表格索引
+                                </button>
+                                <button id="gg_vm_import_all" style="width: 100%; padding: 7px; background: #009688; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                    📥 导入图书馆备份
+                                </button>
+                                <button id="gg_vm_export_all" style="width: 100%; padding: 7px; background: #607D8B; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                    📤 导出图书馆备份
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 书架区域（自适应高度） -->
+                        <div class="gg-vm-book-list-wrapper">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <div style="font-size: 14px; font-weight: bold; color: ${UI.tc};">
+                                    <i class="fa-solid fa-book"></i> 我的书架
+                                </div>
+                                <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7;">
+                                    ${Object.keys(this.library).length} 本书
+                                </div>
+                            </div>
+
+                            <div id="gg_vm_book_list" class="gg-vm-book-list">
+                                ${this._renderBookList(UI, activeBooks)}
+                            </div>
+                        </div>
+
+                        <!-- 隐藏的文件输入 -->
+                        <input type="file" id="gg_vm_book_file" accept=".txt" style="display: none;" />
+                        <input type="file" id="gg_vm_backup_file" accept=".txt" style="display: none;" />
+                    </div>
+
+                    <!-- 右侧栏：详情区 -->
+                    <div class="gg-vm-right">
+                        <div id="gg_vm_detail_area" style="height: 100%; overflow-y: auto;">
+                            ${this._renderDetailArea(UI)}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const $mainWindow = pop('💠 向量化设置', html, true);
+            // 注释掉强制宽度设置，让 CSS 的 @media 适配自动生效，避免手机端左右有空隙
+            // if ($mainWindow) {
+            //     $mainWindow.attr('style', 'width: 90vw !important; height: 80vh !important; max-width: 1200px !important; max-height: 90vh !important; display: flex !important; flex-direction: column !important; pointer-events: auto !important;');
+            // }
+
+            // 绑定事件
+            setTimeout(() => {
+                this._bindUIEvents();
+            }, 100);
+        }
+
+        /**
+         * 📝 渲染书籍列表
+         * @private
+         */
+        _renderBookList(UI, activeBooks) {
+            if (Object.keys(this.library).length === 0) {
+                return `
+                    <div style="text-align: center; padding: 40px; color: ${UI.tc}; opacity: 0.5;">
+                        <i class="fa-solid fa-inbox" style="font-size: 48px; margin-bottom: 10px;"></i>
+                        <div>书架为空</div>
+                        <div style="font-size: 11px; margin-top: 5px;">点击"📂 导入新书"开始</div>
+                    </div>
+                `;
+            }
+
+            return Object.entries(this.library).map(([bookId, book]) => {
+                const isActive = activeBooks.includes(bookId);
+                const isSelected = (bookId === this.selectedBookId); // ✅ 检查是否选中
+                const vectorizedCount = book.vectorized.filter(v => v).length;
+                const totalChunks = book.chunks.length;
+                const progress = totalChunks > 0 ? Math.round((vectorizedCount / totalChunks) * 100) : 0;
+                const borderColor = isSelected ? '#4CAF50' : 'rgba(255,255,255,0.1)'; // ✅ 选中时高亮
+
+                return `
+                    <div class="gg-book-item" data-id="${bookId}" style="border: 2px solid ${borderColor}; border-radius: 4px; padding: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.02); cursor: pointer; position: relative;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" class="gg-book-checkbox" data-id="${bookId}" ${isActive ? 'checked' : ''} style="transform: scale(1.2); cursor: pointer;" />
+                            <div style="flex: 1; min-width: 0;">
+                                <div class="gg-book-name" style="font-size: 12px; font-weight: 600; color: ${UI.tc}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${this._escapeHtml(book.name)}">
+                                    ${this._escapeHtml(book.name)}
+                                </div>
+                                <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.6; margin-top: 2px;">
+                                    ${totalChunks} 片段 • ${progress}% 向量化
+                                </div>
+                            </div>
+                            <button class="gg-book-delete" data-id="${bookId}" style="padding: 3px 8px; background: #f44336; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer;">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * 📝 渲染详情区域
+         * @private
+         */
+        _renderDetailArea(UI) {
+            if (!this.selectedBookId || !this.library[this.selectedBookId]) {
+                return `
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: ${UI.tc}; opacity: 0.5; flex-direction: column; gap: 10px;">
+                        <i class="fa-solid fa-arrow-left" style="font-size: 48px;"></i>
+                        <div style="font-size: 14px;">请从左侧选择一本书查看详情</div>
+                    </div>
+                `;
+            }
+
+            const book = this.library[this.selectedBookId];
+            const vectorizedCount = book.vectorized.filter(v => v).length;
+            const totalChunks = book.chunks.length;
+            const progress = totalChunks > 0 ? Math.round((vectorizedCount / totalChunks) * 100) : 0;
+
+            return `
+                <div style="display: flex; flex-direction: column; height: 100%;">
+                    <!-- 书籍标题 -->
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 18px; font-weight: bold; color: ${UI.tc}; margin-bottom: 5px;">
+                            ${this._escapeHtml(book.name)}
+                        </div>
+                        <div style="font-size: 11px; color: ${UI.tc}; opacity: 0.7;">
+                            创建于: ${new Date(book.createTime).toLocaleString()} • ${totalChunks} 个片段
+                        </div>
+
+                        <!-- 进度条 -->
+                        <div style="margin-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="font-size: 10px; color: ${UI.tc}; opacity: 0.7;">向量化进度</span>
+                                <span style="font-size: 10px; color: ${UI.tc}; opacity: 0.7;">${vectorizedCount}/${totalChunks} (${progress}%)</span>
+                            </div>
+                            <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;">
+                                <div style="width: ${progress}%; height: 100%; background: linear-gradient(90deg, #4CAF50, #8BC34A); transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div style="margin-bottom: 15px; display: flex; gap: 8px;">
+                        <button id="gg_vm_edit_source" style="flex: 1; padding: 8px; background: #2196F3; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
+                            ✏️ 编辑/追加源文本
+                        </button>
+                        <button id="gg_vm_vectorize_book" style="flex: 1; padding: 8px; background: #FF9800; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
+                            ⚡ 向量化此书
+                        </button>
+                    </div>
+
+                    <!-- 片段列表 -->
+                    <div style="flex: 1; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 10px; background: rgba(0,0,0,0.1);">
+                        ${this._renderChunkList(book, UI)}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * 📝 渲染片段列表
+         * @private
+         */
+        _renderChunkList(book, UI) {
+            return book.chunks.map((chunk, index) => {
+                const isVectorized = book.vectorized[index];
+                const statusIcon = isVectorized ? '✅' : '⏳';
+                const statusText = isVectorized ? '已向量化' : '待处理';
+                const statusColor = isVectorized ? '#4CAF50' : '#FF9800';
+                const preview = chunk.substring(0, 100) + (chunk.length > 100 ? '...' : '');
+
+                return `
+                    <div class="gg-chunk-item" data-index="${index}" style="border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.02); cursor: pointer;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                            <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; font-weight: 600;">
+                                片段 ${index}
+                            </div>
+                            <span style="font-size: 10px; color: ${statusColor};">
+                                ${statusIcon} ${statusText}
+                            </span>
+                        </div>
+                        <div style="font-size: 11px; color: ${UI.tc}; line-height: 1.4; opacity: 0.9;">
+                            ${this._escapeHtml(preview)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * HTML 转义
+         * @private
+         */
+        _escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        /**
+         * 🎨 自定义输入弹窗（适配主题色）
+         * @param {string} message - 提示信息
+         * @param {string} title - 弹窗标题
+         * @param {string} defaultValue - 默认输入值
+         * @returns {Promise<string|null>} - 用户输入的内容，取消时返回 null
+         * @private
+         */
+        _customPrompt(message, title = '输入', defaultValue = '') {
+            const UI = window.Gaigai?.ui || { c: '#dfdcdcff', bc: '#ffffff', tc: '#000000ff', darkMode: false };
+
+            return new Promise((resolve) => {
+                const html = `
+                    <div class="g-p" style="padding: 8px;">
+                        <p style="font-size: 10px; color: var(--g-tc) !important; margin-bottom: 6px; line-height: 1.3;">
+                        ${this._escapeHtml(message)}
+                        </p>
+                        <input
+                            type="text"
+                            id="gg_vm_prompt_input"
+                            value="${this._escapeHtml(defaultValue)}"
+                            placeholder="请输入..."
+                            style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box; margin-bottom: 6px;"
+                        />
+                        <div style="display: flex; gap: 5px;">
+                            <button id="gg_vm_prompt_cancel" style="flex: 1; padding: 5px; background: #6c757d; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">
+                                取消
+                            </button>
+                            <button id="gg_vm_prompt_confirm" style="flex: 1; padding: 5px; background: ${UI.c}; color: ${UI.tc}; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; font-weight: 600;">
+                                确认
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // 移除旧弹窗
+                $('#gg-vm-prompt-pop').remove();
+
+                // 创建弹窗 - ✅ 去掉遮罩，改用透明背景
+                const $o = $('<div>', {
+                    id: 'gg-vm-prompt-pop',
+                    class: 'g-ov',
+                    css: {
+                        'z-index': '10000006',
+                        'background': 'transparent',  // ✅ 关键：透明背景，不挡住后面内容
+                        'pointer-events': 'none'      // ✅ 关键：鼠标事件穿透，可以点击背景
+                    }
+                });
+                // ✅ 修复：使用 attr('style') 并加上 !important 来覆盖 style.css 的全局强制样式
+                const $p = $('<div>', {
+                    class: 'g-w'
+                }).attr('style', 'width: 300px !important; height: auto !important; max-width: 90vw !important; min-height: 150px !important; pointer-events: auto; display: flex; flex-direction: column;');
+
+                // 标题栏
+                const $hd = $('<div>', { class: 'g-hd' });
+                $hd.append(`<h3 style="color:${UI.tc}; flex:1;">${this._escapeHtml(title)}</h3>`);
+
+                // 关闭按钮
+                const $x = $('<button>', {
+                    class: 'g-x',
+                    text: '×',
+                    css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' }
+                }).on('click', () => {
+                    $o.remove();
+                    resolve(null);
+                });
+                $hd.append($x);
+
+                // 内容区
+                const $bd = $('<div>', { class: 'g-bd', html: html });
+                $p.append($hd, $bd);
+                $o.append($p);
+                $('body').append($o);
+
+                // 绑定事件
+                setTimeout(() => {
+                    const $input = $('#gg_vm_prompt_input');
+
+                    // 聚焦并选中文本
+                    $input.focus().select();
+
+                    // 回车确认
+                    $input.on('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            $('#gg_vm_prompt_confirm').click();
+                        } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            $('#gg_vm_prompt_cancel').click();
+                        }
+                    });
+
+                    // 取消按钮
+                    $('#gg_vm_prompt_cancel').on('click', () => {
+                        $o.remove();
+                        resolve(null);
+                    });
+
+                    // 确认按钮
+                    $('#gg_vm_prompt_confirm').on('click', () => {
+                        const value = $input.val().trim();
+                        $o.remove();
+                        resolve(value || defaultValue);
+                    });
+                }, 100);
+            });
+        }
+
+        /**
+         * ⚠️ 自定义确认对话框
+         * @param {string} message - 确认消息
+         * @param {string} title - 弹窗标题
+         * @returns {Promise<boolean>} - 用户确认返回 true，取消返回 false
+         * @private
+         */
+        _customConfirm(message, title = '⚠️ 确认操作') {
+            const UI = window.Gaigai?.ui || { c: '#dfdcdcff', bc: '#ffffff', tc: '#000000ff', darkMode: false };
+
+            return new Promise((resolve) => {
+                const html = `
+                    <div class="g-p" style="padding: 15px;">
+                        <div style="font-size: 13px; color: ${UI.tc}; line-height: 1.6; margin-bottom: 15px; white-space: pre-wrap;">${this._escapeHtml(message)}</div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button id="gg_vm_confirm_cancel" style="padding: 8px 16px; background: #6c757d; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                取消
+                            </button>
+                            <button id="gg_vm_confirm_ok" style="padding: 8px 16px; background: #f44336; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                确认删除
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // 移除旧弹窗
+                $('#gg-vm-confirm-pop').remove();
+
+                // 创建弹窗 - ✅ 去掉遮罩，改用透明背景
+                const $o = $('<div>', {
+                    id: 'gg-vm-confirm-pop',
+                    class: 'g-ov',
+                    css: {
+                        'z-index': '10000006',
+                        'background': 'transparent',  // ✅ 关键：透明背景，不挡住后面内容
+                        'pointer-events': 'none'      // ✅ 关键：鼠标事件穿透，可以点击背景
+                    }
+                });
+
+                const $p = $('<div>', {
+                    class: 'g-w'
+                }).attr('style', 'width: 350px !important; height: auto !important; max-width: 90vw !important; min-height: 150px !important; pointer-events: auto; display: flex; flex-direction: column;');
+
+                // 标题栏
+                const $hd = $('<div>', { class: 'g-hd' });
+                $hd.append(`<h3 style="color:${UI.tc}; flex:1;">${this._escapeHtml(title)}</h3>`);
+
+                // 关闭按钮
+                const $x = $('<button>', {
+                    class: 'g-x',
+                    text: '×',
+                    css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' }
+                }).on('click', () => {
+                    $o.remove();
+                    resolve(false);
+                });
+                $hd.append($x);
+
+                // 内容区
+                const $bd = $('<div>', { class: 'g-bd', html: html });
+                $p.append($hd, $bd);
+                $o.append($p);
+                $('body').append($o);
+
+                // 绑定事件
+                setTimeout(() => {
+                    // 取消按钮
+                    $('#gg_vm_confirm_cancel').on('click', () => {
+                        $o.remove();
+                        resolve(false);
+                    });
+
+                    // 确认按钮
+                    $('#gg_vm_confirm_ok').on('click', () => {
+                        $o.remove();
+                        resolve(true);
+                    });
+
+                    // ESC 键取消
+                    $(document).on('keydown.gg_vm_confirm', (e) => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            $o.remove();
+                            resolve(false);
+                            $(document).off('keydown.gg_vm_confirm');
+                        }
+                    });
+
+                    // 聚焦确认按钮
+                    $('#gg_vm_confirm_ok').focus();
+                }, 100);
+            });
+        }
+
+        /**
+         * 🎨 大型文本编辑器弹窗
+         * @param {string} title - 弹窗标题
+         * @param {string} content - 初始文本内容
+         * @returns {Promise<string|null>} - 用户编辑后的内容，取消时返回 null
+         * @private
+         */
+        _customBigEditor(title, content) {
+            const UI = window.Gaigai?.ui || { c: '#dfdcdcff', bc: '#ffffff', tc: '#000000ff', darkMode: false };
+
+            return new Promise((resolve) => {
+                const html = `
+                    <div class="g-p" style="padding: 12px; display: flex; flex-direction: column; height: 100%;">
+                        <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-bottom: 8px;">
+                            💡 提示：修改后会自动重置向量状态，需重新向量化
+                        </div>
+                        <textarea
+                            id="gg_vm_big_editor"
+                            style="flex: 1; width: 100%; padding: 10px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(0,0,0,0.3); color: ${UI.tc}; font-size: 12px; font-family: monospace; resize: none; box-sizing: border-box;"
+                        >${this._escapeHtml(content)}</textarea>
+                        <div style="display: flex; gap: 8px; margin-top: 10px;">
+                            <button id="gg_vm_editor_cancel" style="flex: 1; padding: 8px; background: #6c757d; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                                取消
+                            </button>
+                            <button id="gg_vm_editor_save" style="flex: 1; padding: 8px; background: ${UI.c}; color: ${UI.tc}; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
+                                💾 保存
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // 移除旧弹窗
+                $('#gg-vm-editor-pop').remove();
+
+                // 创建弹窗
+                const $o = $('<div>', {
+                    id: 'gg-vm-editor-pop',
+                    class: 'g-ov',
+                    css: {
+                        'z-index': '10000007',
+                        'background': 'rgba(0,0,0,0.5)'
+                    }
+                });
+
+                const $p = $('<div>', {
+                    class: 'g-w'
+                }).attr('style', 'width: 800px !important; height: 600px !important; max-width: 95vw !important; max-height: 90vh !important; display: flex !important; flex-direction: column !important;');
+
+                // 标题栏
+                const $hd = $('<div>', { class: 'g-hd' });
+                $hd.append(`<h3 style="color:${UI.tc}; flex:1;">${this._escapeHtml(title)}</h3>`);
+
+                // 关闭按钮
+                const $x = $('<button>', {
+                    class: 'g-x',
+                    text: '×',
+                    css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' }
+                }).on('click', () => {
+                    $o.remove();
+                    resolve(null);
+                });
+                $hd.append($x);
+
+                // 内容区
+                const $bd = $('<div>', { class: 'g-bd', html: html, css: { flex: '1', display: 'flex', flexDirection: 'column' } });
+                $p.append($hd, $bd);
+                $o.append($p);
+                $('body').append($o);
+
+                // 绑定事件
+                setTimeout(() => {
+                    const $textarea = $('#gg_vm_big_editor');
+
+                    // 聚焦
+                    $textarea.focus();
+
+                    // 取消按钮
+                    $('#gg_vm_editor_cancel').on('click', () => {
+                        $o.remove();
+                        resolve(null);
+                    });
+
+                    // 保存按钮
+                    $('#gg_vm_editor_save').on('click', () => {
+                        const value = $textarea.val();
+                        $o.remove();
+                        resolve(value);
+                    });
+                }, 100);
+            });
+        }
+
+        /**
+         * 🔗 绑定 UI 事件
+         * @private
+         */
+        _bindUIEvents() {
+            const self = this;
+            const customAlert = window.Gaigai?.customAlert || alert;
+            const m = window.Gaigai?.m;
+
+            // ✅ 总开关：点击立即同步并保存
+            $('#gg_vm_global_enabled').off('change').on('change', async function () {
+                const C = window.Gaigai.config_obj;
+                const isEnabled = $(this).is(':checked');
+
+                // 1. 同步到内存配置
+                C.vectorEnabled = isEnabled;
+
+                // 2. 存入 localStorage
+                try {
+                    localStorage.setItem('gg_config', JSON.stringify(C));
+                } catch (e) {
+                    console.warn('⚠️ [VectorManager] localStorage 保存失败:', e);
+                }
+
+                // 3. 实时反馈
+                console.log(`💠 [设置] 独立向量检索已${isEnabled ? '开启' : '关闭'}`);
+
+                // 4. 同步到云端
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud().catch(() => { });
+                }
+
+                // 5. 用户提示
+                if (typeof toastr !== 'undefined') {
+                    toastr.success(`向量检索已${isEnabled ? '开启' : '关闭'}`, '设置更新', { timeOut: 1500 });
+                }
+            });
+
+            // 阈值滑块实时更新
+            $('#gg_vm_threshold').off('input').on('input', function () {
+                const val = parseFloat($(this).val());
+                $('#gg_vm_threshold_val').text(val.toFixed(2));
+            });
+
+            // 保存配置
+            $('#gg_vm_save').off('click').on('click', async () => {
+                try {
+                    const C = window.Gaigai.config_obj;
+
+                    // API 配置
+                    C.vectorUrl = $('#gg_vm_url').val().trim();
+                    C.vectorKey = $('#gg_vm_key').val().trim();
+                    C.vectorModel = $('#gg_vm_model').val().trim();
+
+                    // 检索参数
+                    const rawThreshold = parseFloat($('#gg_vm_threshold').val());
+                    C.vectorThreshold = isNaN(rawThreshold) ? 0.6 : rawThreshold;
+                    C.vectorMaxCount = parseInt($('#gg_vm_max_count').val()) || 3;
+                    C.vectorSeparator = $('#gg_vm_separator').val().trim() || '===';
+
+                    // 保存到 localStorage
+                    try {
+                        localStorage.setItem('gg_config', JSON.stringify(C));
+                    } catch (e) {
+                        console.warn('⚠️ [VectorManager] localStorage 保存失败:', e);
+                    }
+
+                    if (m) m.save();
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                        await window.Gaigai.saveAllSettingsToCloud();
+                    }
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success('配置已保存', '保存成功');
+                    } else {
+                        await customAlert('✅ 配置已保存', '保存成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 保存失败:', e);
+                    await customAlert(`❌ 保存失败\n\n${e.message}`, '错误');
+                }
+            });
+
+            // 重建表格索引
+            $('#gg_vm_rebuild_table').off('click').on('click', async () => {
+                const btn = $('#gg_vm_rebuild_table');
+                const oldText = btn.html();
+
+                try {
+                    const url = $('#gg_vm_url').val().trim();
+                    const key = $('#gg_vm_key').val().trim();
+
+                    if (!url || !key) {
+                        await customAlert('⚠️ 未配置 API\n\n请先填写 API 地址和密钥。', '配置不完整');
+                        return;
+                    }
+
+                    if (!m) {
+                        await customAlert('⚠️ Memory Manager 不可用', '错误');
+                        return;
+                    }
+
+                    btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 重建中...').prop('disabled', true);
+
+                    const result = await self.updateIndex(m);
+
+                    if (result.success) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`成功索引 ${result.count} 条记录`, '重建完成');
+                        } else {
+                            await customAlert(`✅ 重建完成\n\n成功: ${result.count} 条`, '成功');
+                        }
+                    } else {
+                        throw new Error(result.error || '重建失败');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 重建失败:', e);
+                    await customAlert(`❌ 重建失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(oldText).prop('disabled', false);
+                }
+            });
+
+            // 清空表格索引
+            $('#gg_vm_clear_table').off('click').on('click', async () => {
+                try {
+                    // 使用自定义确认框
+                    const confirmed = await self._customConfirm(
+                        '确定要清空所有表格的向量索引吗？\n（这不会删除表格里的文字，只是让 AI 不再检索表格内容）',
+                        '⚠️ 确认清空'
+                    );
+
+                    if (!confirmed) return;
+
+                    // 执行清空
+                    const result = self.clearTableIndex();
+
+                    if (result.success) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success('表格索引已清空', '操作成功');
+                        } else {
+                            await customAlert('✅ 表格索引已清空', '成功');
+                        }
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 清空表格索引失败:', e);
+                    await customAlert(`❌ 清空失败\n\n${e.message}`, '错误');
+                }
+            });
+
+            // 新建空白书
+            $('#gg_vm_create_book').off('click').on('click', async () => {
+                try {
+                    // 使用自定义弹窗询问书名
+                    const bookName = await self._customPrompt(
+                        '请输入新书名称：',
+                        '📝 新建空白书',
+                        '未命名知识库'
+                    );
+                    if (bookName === null || !bookName.trim()) return; // 用户取消或空白
+
+                    // 生成书籍 ID
+                    const bookId = self._generateUUID();
+
+                    // 创建空白书籍对象
+                    self.library[bookId] = {
+                        name: bookName.trim(),
+                        chunks: [],
+                        vectors: [],
+                        vectorized: [],
+                        createTime: Date.now()
+                    };
+
+                    // 保存到全局
+                    self.saveLibrary();
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已创建空白书《${bookName.trim()}》`, '创建成功');
+                    } else {
+                        await customAlert(`✅ 创建成功\\n\\n书名: ${bookName.trim()}`, '成功');
+                    }
+
+                    // 自动选中新创建的书籍
+                    self.selectedBookId = bookId;
+                    self.showUI();
+                } catch (e) {
+                    console.error('❌ [VectorManager] 创建空白书失败:', e);
+                    await customAlert(`❌ 创建失败\\n\\n${e.message}`, '错误');
+                }
+            });
+
+            // 导入新书
+            $('#gg_vm_import_book').off('click').on('click', () => {
+                $('#gg_vm_book_file').click();
+            });
+
+            $('#gg_vm_book_file').off('change').on('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    // ✅ 使用自定义弹窗询问书名
+                    const bookName = await self._customPrompt(
+                        '请输入书名（留空则使用文件名）：',
+                        '📚 导入新书',
+                        file.name
+                    );
+                    if (bookName === null) return; // 用户取消
+
+                    const result = await self.importBook(file, bookName || null);
+
+                    if (result.success) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`已导入《${self.library[result.bookId].name}》，共 ${result.count} 个片段`, '导入成功');
+                        } else {
+                            await customAlert(`✅ 导入成功\n\n已切分为 ${result.count} 个片段`, '成功');
+                        }
+                        // ✅ 自动选中新导入的书籍
+                        self.selectedBookId = result.bookId;
+                        self.showUI();
+                    } else {
+                        throw new Error(result.error || '导入失败');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 导入失败:', e);
+                    await customAlert(`❌ 导入失败\n\n${e.message}`, '错误');
+                } finally {
+                    $('#gg_vm_book_file').val('');
+                }
+            });
+
+            // 导入图书馆备份
+            $('#gg_vm_import_all').off('click').on('click', () => {
+                $('#gg_vm_backup_file').click();
+            });
+
+            $('#gg_vm_backup_file').off('change').on('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const result = await self.importVectors(file);
+
+                    if (result.success) {
+                        const message = `成功恢复 ${result.bookCount} 本书 + ${result.tableCount} 条表格索引`;
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(message, '导入成功');
+                        } else {
+                            await customAlert(`✅ ${message}`, '导入成功');
+                        }
+
+                        // 刷新界面以显示恢复的书籍
+                        self.showUI();
+                    } else {
+                        throw new Error(result.error || '导入失败');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 导入备份失败:', e);
+                    await customAlert(`❌ 导入备份失败\n\n${e.message}`, '错误');
+                } finally {
+                    $('#gg_vm_backup_file').val('');
+                }
+            });
+
+            // 导出图书馆（支持仅导出勾选书籍）
+            $('#gg_vm_export_all').off('click').on('click', async () => {
+                try {
+                    if (self.vectorIndex.length === 0 && Object.keys(self.library).length === 0) {
+                        await customAlert('⚠️ 没有可导出的数据', '提示');
+                        return;
+                    }
+
+                    // 获取所有勾选的书籍ID
+                    const checkedBookIds = [];
+                    $('.gg-book-checkbox:checked').each(function() {
+                        const bookId = $(this).data('id');
+                        if (bookId) {
+                            checkedBookIds.push(bookId);
+                        }
+                    });
+
+                    // 根据是否有勾选书籍决定导出内容
+                    let content;
+                    let successMessage;
+                    if (checkedBookIds.length > 0) {
+                        content = self.exportVectors(checkedBookIds);
+                        successMessage = `已导出选中的 ${checkedBookIds.length} 本书`;
+                    } else {
+                        content = self.exportVectors(null);
+                        successMessage = '图书馆已导出';
+                    }
+
+                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `gaigai_vectors_library_${new Date().getTime()}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(successMessage, '成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 导出失败:', e);
+                    await customAlert(`❌ 导出失败\n\n${e.message}`, '错误');
+                }
+            });
+
+            // 书籍复选框
+            $(document).off('change', '.gg-book-checkbox').on('change', '.gg-book-checkbox', function (e) {
+                e.stopPropagation();
+                const bookId = $(this).data('id');
+                const isChecked = $(this).is(':checked');
+
+                let activeBooks = self.getActiveBooks();
+
+                if (isChecked) {
+                    if (!activeBooks.includes(bookId)) {
+                        activeBooks.push(bookId);
+                    }
+                } else {
+                    activeBooks = activeBooks.filter(id => id !== bookId);
+                }
+
+                self.setActiveBooks(activeBooks);
+
+                if (typeof toastr !== 'undefined') {
+                    toastr.info(isChecked ? '已绑定到当前会话' : '已取消绑定', '书籍绑定', { timeOut: 1000 });
+                }
+            });
+
+            // 点击书籍项（选择书籍查看详情）
+            $(document).off('click', '.gg-book-item').on('click', '.gg-book-item', function (e) {
+                const bookId = $(this).data('id');
+                self.selectedBookId = bookId;
+
+                // 更新 UI
+                $('.gg-book-item').css('border-color', 'rgba(255,255,255,0.1)');
+                $(this).css('border-color', '#4CAF50');
+
+                // 刷新详情区
+                $('#gg_vm_detail_area').html(self._renderDetailArea(window.Gaigai.ui));
+
+                // 重新绑定详情区的事件
+                self._bindDetailEvents();
+            });
+
+            // 删除书籍
+            $(document).off('click', '.gg-book-delete').on('click', '.gg-book-delete', async function (e) {
+                e.stopPropagation();
+                const bookId = $(this).data('id');
+                const book = self.library[bookId];
+
+                // 使用自定义确认对话框
+                const confirmed = await self._customConfirm(
+                    `确定要删除《${book.name}》吗？\n这将删除所有片段和向量数据（不可恢复）`,
+                    '⚠️ 删除书籍'
+                );
+
+                if (confirmed) {
+                    self.deleteBook(bookId);
+
+                    // 如果删除的是当前选中的书，清空选中状态
+                    if (self.selectedBookId === bookId) {
+                        self.selectedBookId = null;
+                    }
+
+                    self.showUI();
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success('书籍已删除', '完成');
+                    }
+                }
+            });
+
+            // 绑定详情区事件
+            this._bindDetailEvents();
+        }
+
+        /**
+         * 🔗 绑定详情区事件
+         * @private
+         */
+        _bindDetailEvents() {
+            const self = this;
+            const customAlert = window.Gaigai?.customAlert || alert;
+
+            // 编辑/追加源文本
+            $('#gg_vm_edit_source').off('click').on('click', async () => {
+                try {
+                    if (!self.selectedBookId) {
+                        await customAlert('⚠️ 未选择书籍', '提示');
+                        return;
+                    }
+
+                    const book = self.library[self.selectedBookId];
+                    if (!book) {
+                        await customAlert('⚠️ 书籍不存在', '错误');
+                        return;
+                    }
+
+                    // 获取当前配置的分隔符
+                    const config = self._getConfig();
+                    const separator = config.separator || '===';
+
+                    // 将 chunks 拼接回整段文本
+                    const currentText = book.chunks.join('\n' + separator + '\n');
+
+                    // 调用大型编辑器
+                    const newText = await self._customBigEditor(
+                        `✏️ 编辑《${book.name}》源文本`,
+                        currentText
+                    );
+
+                    if (newText === null) return; // 用户取消
+
+                    // 重新切分文本
+                    let newChunks = [];
+                    if (separator === '\\n' || separator === '\n') {
+                        newChunks = newText.split('\n').filter(line => line.trim());
+                    } else {
+                        newChunks = newText.split(separator).filter(chunk => chunk.trim());
+                    }
+
+                    // 更新书籍数据
+                    book.chunks = newChunks.map(chunk => chunk.trim());
+                    book.vectors = new Array(newChunks.length).fill(null);
+                    book.vectorized = new Array(newChunks.length).fill(false);
+
+                    // 保存到全局
+                    self.saveLibrary();
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已更新《${book.name}》，共 ${newChunks.length} 个片段（向量已重置）`, '保存成功');
+                    } else {
+                        await customAlert(`✅ 保存成功\\n\\n片段数: ${newChunks.length}\\n向量状态已重置，请重新向量化`, '成功');
+                    }
+
+                    // 刷新详情区
+                    $('#gg_vm_detail_area').html(self._renderDetailArea(window.Gaigai.ui));
+                    self._bindDetailEvents();
+
+                    // 刷新书架列表（更新进度）
+                    const activeBooks = self.getActiveBooks();
+                    $('#gg_vm_book_list').html(self._renderBookList(window.Gaigai.ui, activeBooks));
+                } catch (e) {
+                    console.error('❌ [VectorManager] 编辑源文本失败:', e);
+                    await customAlert(`❌ 编辑失败\\n\\n${e.message}`, '错误');
+                }
+            });
+
+            // 向量化当前书籍
+            $('#gg_vm_vectorize_book').off('click').on('click', async () => {
+                const btn = $('#gg_vm_vectorize_book');
+                const oldText = btn.html();
+
+                try {
+                    if (!self.selectedBookId) {
+                        await customAlert('⚠️ 未选择书籍', '提示');
+                        return;
+                    }
+
+                    const url = $('#gg_vm_url').val().trim();
+                    const key = $('#gg_vm_key').val().trim();
+
+                    if (!url || !key) {
+                        await customAlert('⚠️ 未配置 API\n\n请先填写 API 地址和密钥。', '配置不完整');
+                        return;
+                    }
+
+                    btn.prop('disabled', true);
+
+                    const result = await self.vectorizeBook(self.selectedBookId, (current, total) => {
+                        btn.html(`<i class="fa-solid fa-spinner fa-spin"></i> 向量化中... ${current}/${total}`);
+                    });
+
+                    if (result.success) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`成功向量化 ${result.count} 个片段`, '完成');
+                        } else {
+                            await customAlert(`✅ 向量化完成\n\n成功: ${result.count} 条`, '成功');
+                        }
+
+                        // 刷新详情区
+                        $('#gg_vm_detail_area').html(self._renderDetailArea(window.Gaigai.ui));
+                        self._bindDetailEvents();
+
+                        // 刷新书架列表（更新进度）
+                        const activeBooks = self.getActiveBooks();
+                        $('#gg_vm_book_list').html(self._renderBookList(window.Gaigai.ui, activeBooks));
+                    } else {
+                        throw new Error('向量化失败');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 向量化失败:', e);
+                    await customAlert(`❌ 向量化失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(oldText).prop('disabled', false);
+                }
+            });
+
+            // 点击片段查看完整内容
+            $(document).off('click', '.gg-chunk-item').on('click', '.gg-chunk-item', async function () {
+                const index = parseInt($(this).data('index'));
+                const book = self.library[self.selectedBookId];
+
+                if (book && book.chunks[index]) {
+                    await customAlert(book.chunks[index], `片段 ${index} (共 ${book.chunks.length} 个)`);
+                }
+            });
+        }
+    }
+
+    // 挂载到 window.Gaigai.VM 命名空间
+    if (!window.Gaigai) window.Gaigai = {};
+    window.Gaigai.VM = new VectorManager();
+
+    console.log('✅ [VectorManager] 已挂载到 window.Gaigai.VM (图书馆架构)');
+})();

@@ -3,7 +3,7 @@
  *
  * 功能：提供调试和维护工具（清除缓存、重置配置等）
  *
- * @version 1.5.2
+ * @version 1.5.3
  * @author Gaigai Team
  */
 

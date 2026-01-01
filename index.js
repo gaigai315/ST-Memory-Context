@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.2
+// 记忆表格 v1.5.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.2 启动');
+    console.log('🚀 记忆表格 v1.5.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.2';
+    const V = 'v1.5.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -67,6 +67,16 @@
         cloudSync: true,
         syncWorldInfo: true,           // ✅ 默认开启世界书同步
         autoBindWI: true,              // ✅ 默认开启自动绑定世界书
+        worldInfoVectorized: true,     // ✅ 默认开启世界书自带向量化
+        // ==================== 独立向量检索配置 ====================
+        vectorEnabled: false,          // ❌ 默认关闭独立向量检索
+        vectorProvider: 'openai',      // 向量服务提供商
+        vectorUrl: '',                 // 向量 API 地址
+        vectorKey: '',                 // 向量 API 密钥
+        vectorModel: 'BAAI/bge-m3',    // 向量模型名称
+        vectorThreshold: 0.6,          // 相似度阈值 (0.0 - 1.0)
+        vectorMaxCount: 3,             // 最大召回条数
+        vectorSeparator: '===',        // 🆕 知识库文本切分符
         customTables: null             // 用户自定义表格结构（格式同 DEFAULT_TABLES）
     };
 
@@ -1251,7 +1261,15 @@
                     filterTags: C.filterTags,
                     filterTagsWhite: C.filterTagsWhite,
                     syncWorldInfo: C.syncWorldInfo,
-                    autoBindWI: C.autoBindWI
+                    autoBindWI: C.autoBindWI,
+                    worldInfoVectorized: C.worldInfoVectorized,
+                    // ✅ 向量检索配置
+                    vectorEnabled: C.vectorEnabled,
+                    vectorUrl: C.vectorUrl,
+                    vectorKey: C.vectorKey,
+                    vectorModel: C.vectorModel,
+                    vectorThreshold: C.vectorThreshold,
+                    vectorMaxCount: C.vectorMaxCount
                 }
             };
 
@@ -1315,6 +1333,14 @@
                 C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
                 C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : true;
                 C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
+                C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : true;
+                // ✅ 向量检索配置
+                C.vectorEnabled = globalConfig.vectorEnabled !== undefined ? globalConfig.vectorEnabled : false;
+                C.vectorUrl = globalConfig.vectorUrl !== undefined ? globalConfig.vectorUrl : '';
+                C.vectorKey = globalConfig.vectorKey !== undefined ? globalConfig.vectorKey : '';
+                C.vectorModel = globalConfig.vectorModel !== undefined ? globalConfig.vectorModel : 'BAAI/bge-m3';
+                C.vectorThreshold = globalConfig.vectorThreshold !== undefined ? globalConfig.vectorThreshold : 0.6;
+                C.vectorMaxCount = globalConfig.vectorMaxCount !== undefined ? globalConfig.vectorMaxCount : 3;
 
                 if (globalApiConfig.summarySource !== undefined) API_CONFIG.summarySource = globalApiConfig.summarySource;
                 else API_CONFIG.summarySource = 'table';
@@ -3796,7 +3822,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         <div class="g-btn-group">
             <button id="gai-btn-add" title="新增一行">➕ 新增</button>
             <button id="gai-btn-del" title="删除选中行">🗑️ 删除</button>
-            <button id="gai-btn-toggle" title="切换选中行的已总结状态">👁️ 显/隐</button>
+            <button id="gai-btn-toggle" title="切换选中行的已总结状态">👻 显/隐</button>
             <button id="gai-btn-sum" title="AI智能总结">📝 总结</button>
             <button id="gai-btn-back" title="追溯历史剧情填表">⚡ 追溯</button>
             <button id="gai-btn-export" title="导出JSON备份">📥 导出</button>
@@ -6129,7 +6155,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         const reasoningContent = chunk.choices?.[0]?.delta?.reasoning_content;
                                         if (reasoningContent) {
                                             fullReasoning += reasoningContent;  // ✅ 累积思考内容
-                                            console.log('🧠 [DeepSeek] 检测到 reasoning_content，长度:', reasoningContent.length);
+                                            console.log('💠 [DeepSeek] 检测到 reasoning_content，长度:', reasoningContent.length);
                                         }
 
                                         // 提取内容（OpenAI 标准格式）
@@ -6168,7 +6194,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
 
                         console.log(`✅ [流式模式] 累积文本长度: ${fullText.length} 字符`);
-                        console.log(`🧠 [流式模式] 累积思考长度: ${fullReasoning.length} 字符`);
+                        console.log(`💠 [流式模式] 累积思考长度: ${fullReasoning.length} 字符`);
 
                         // ========================================
                         // 循环结束后处理：检测异常 + 清洗
@@ -7330,6 +7356,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             console.log('✅ [配置同步] 同步完成');
         }
+
+        // 🔥 [核心修复] 无论是否使用了服务器的 Config，都必须加载服务器的 Library
+        // 因为 Library 不存本地 localStorage，只存服务器 settings.json
+        if (serverData && window.Gaigai.VM && typeof window.Gaigai.VM.loadLibrary === 'function') {
+            const libData = serverData.vectorLibrary;
+            const bookCount = libData ? Object.keys(libData).length : 0;
+
+            // 只有当服务器有数据时才注入，避免覆盖掉刚才可能的本地操作
+            if (bookCount > 0) {
+                console.log(`📚 [独立加载] 忽略时间戳，强制加载云端书架 (${bookCount} 本)`);
+                window.Gaigai.VM.loadLibrary(libData);
+            } else {
+                // 如果服务器没书，但也得告诉 VM 解锁 (允许它保存新书)
+                if (!window.Gaigai.VM.isDataLoaded) {
+                    window.Gaigai.VM.loadLibrary(null);
+                }
+            }
+        }
     }
 
     // ✅✅✅ [新增] 智能解析服务器设置数据（兼容不同版本的酒馆后端）
@@ -7363,16 +7407,26 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             delete cleanedApiConfig.lastSummaryIndex;
             delete cleanedApiConfig.lastBackfillIndex;
 
+            // 🛡️ [数据保护] 必须显式获取向量库数据，防止被覆盖丢失
+            let currentLibrary = {};
+            if (window.Gaigai.VM && window.Gaigai.VM.library) {
+                currentLibrary = window.Gaigai.VM.library;
+            } else if (window.extension_settings && window.extension_settings.st_memory_table && window.extension_settings.st_memory_table.vectorLibrary) {
+                currentLibrary = window.extension_settings.st_memory_table.vectorLibrary;
+            }
+
             const allSettings = {
                 config: C,
                 api: cleanedApiConfig,
                 ui: UI,
                 profiles: window.Gaigai.PromptManager.getProfilesData(),  // ✅ 保存预设数据
+                vectorLibrary: currentLibrary,  // ✅ 修复：必须包含向量库数据！
                 lastModified: Date.now()  // ✅ 添加时间戳用于防止冲突
             };
 
             console.log('🔒 [进度隔离] 已移除角色专属进度，仅保存通用配置');
             console.log(`⏰ [时间戳] 保存时间: ${new Date(allSettings.lastModified).toLocaleString()}`);
+            console.log(`📚 [向量库] 保存书架数据: ${Object.keys(currentLibrary).length} 本书`);
 
             // ✅✅✅ 乐观保存策略：立即更新本地状态，不等待网络请求
             // 这样用户点击保存瞬间，本地数据即刻更新，防止网络延迟期间切换会话导致读取旧数据
@@ -7658,6 +7712,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 将总结内容自动写入名为 <strong>[Memory_Context_Auto]</strong> 的世界书（常驻条目，触发词：总结/summary/前情提要/memory）
             </div>
 
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
+                <input type="checkbox" id="gg_c_worldinfo_vectorized" ${C.worldInfoVectorized ? 'checked' : ''}>
+                <span>💠 启用世界书自带向量化</span>
+            </label>
+            <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
+                开启后，世界书条目将使用酒馆的向量化检索功能（更智能地触发相关记忆，但需要配置向量化服务）
+            </div>
+
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
+                <input type="checkbox" id="gg_c_vector_enabled" ${C.vectorEnabled ? 'checked' : ''}>
+                <span>🔍 启用插件独立向量检索</span>
+            </label>
+            <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
+                使用外部 API 实现语义检索，不依赖酒馆（点击下方"💠 向量化"按钮配置详细参数）
+            </div>
+
             ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
 
             <!-- ✨✨✨ 新增：手动覆盖按钮区域 ✨✨✨ -->
@@ -7671,6 +7741,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         <div style="display: flex; gap: 8px; margin-top: 4px;">
             <button id="gg_open_api" style="flex:1; font-size:11px; padding:8px;">🤖 API配置</button>
             <button id="gg_open_pmt" style="flex:1; font-size:11px; padding:8px;">📝 提示词</button>
+            <button id="gg_open_vector" style="flex:1; font-size:11px; padding:8px;">💠 向量化</button>
         </div>
         <button id="gg_save_cfg" style="width: 100%; padding: 8px; margin-top: 4px; font-weight: bold;">💾 保存配置</button>
 
@@ -8135,6 +8206,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
                 C.autoBindWI = $('#gg_c_auto_bind_wi').is(':checked');
+                C.worldInfoVectorized = $('#gg_c_worldinfo_vectorized').is(':checked');
+                C.vectorEnabled = $('#gg_c_vector_enabled').is(':checked');
 
                 // ✅ 保存世界书自定义配置
                 m.wiConfig.bookName = $('#gg_wi_book_name').val().trim();
@@ -8164,6 +8237,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.error('❌ [syncUIToConfig] localStorage 写入失败:', e);
                 }
             }
+
+            // ✅ [修复] 向量化总开关：点击立即同步并保存
+            $('#gg_c_vector_enabled').on('change', async function () {
+                // 1. 同步到内存配置
+                C.vectorEnabled = $(this).is(':checked');
+
+                // 2. 存入 localStorage
+                try {
+                    localStorage.setItem('gg_config', JSON.stringify(C));
+                } catch (e) {}
+
+                // 3. 实时反馈
+                console.log(`💠 [设置] 独立向量检索已${C.vectorEnabled ? '开启' : '关闭'}`);
+
+                // 4. 尝试同步到云端
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(() => {});
+                }
+            });
 
             $('#gg_c_enabled').on('change', async function () {
                 // 🛡️ 防止配置恢复期间触发保存（修复移动端竞态条件）
@@ -8341,6 +8433,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     await customAlert(`操作失败: ${e.message}`, '错误');
                 } finally {
                     btn.html(oldText).prop('disabled', false);
+                }
+            });
+
+            // ==================== 向量化设置按钮 ====================
+            $('#gg_open_vector').off('click').on('click', () => {
+                if (window.Gaigai && window.Gaigai.VM && typeof window.Gaigai.VM.showUI === 'function') {
+                    navTo('💠 向量化设置', () => window.Gaigai.VM.showUI());
+                } else {
+                    customAlert('向量管理器未加载，请刷新页面后重试', '错误');
                 }
             });
 
@@ -8884,7 +8985,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     // ============================================================
     // 2. 生成前预处理 (修复重Roll时的回档逻辑)
     // ============================================================
-    function opmt(ev) {
+    async function opmt(ev) {
         try {
             const data = ev.detail || ev;
             if (!data) return;
@@ -8968,6 +9069,137 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     data.chat.splice(0, data.chat.length, ...limitedChat);
                     console.log(`✂️ 隐藏楼层已执行`);
                 }
+            }
+
+            // ==================== 💠 独立向量检索 (增强版) ====================
+            // 在注入表格数据之前，先执行向量检索
+
+            // 1. 状态预检
+            const isVectorReady = C.vectorEnabled && window.Gaigai.VM;
+            console.log(`💠 [向量检索预检] 开关: ${C.vectorEnabled}, 模块加载: ${!!window.Gaigai.VM}`);
+
+            if (isVectorReady && data.chat && data.chat.length > 0) {
+                try {
+                    // === 核心修复：穿透查找用户消息 ===
+                    let userQuery = '';
+
+                    // 倒序遍历，寻找最近的一条【非系统】消息
+                    for (let i = data.chat.length - 1; i >= 0; i--) {
+                        const msg = data.chat[i];
+
+                        // 1. 跳过系统指令 (关键修复：跳过末尾注入的 Prompt)
+                        if (msg.role === 'system') continue;
+
+                        // 2. 判定是否为用户 (兼容性增强)
+                        // 只要是 is_user=true 或者 role='user'，或者 name 不是 System/Assistant
+                        const isUser = msg.is_user === true ||
+                                       msg.role === 'user' ||
+                                       (msg.name !== 'System' && msg.role !== 'assistant');
+
+                        if (isUser) {
+                            // 尝试获取内容
+                            const candidateText = msg.mes || msg.content || msg.text || '';
+
+                            // 只有内容有效才采纳
+                            if (candidateText && candidateText.trim()) {
+                                userQuery = candidateText;
+                                console.log('✅ [向量检索] 已穿透 System 层，锁定用户消息:', userQuery.substring(0, 20) + '...');
+                                break; // 找到了，停止循环
+                            }
+                        }
+                    }
+                    // === 修复结束 ===
+
+                    if (userQuery.trim()) {
+                        console.log(`🔍 [向量检索] 正在检索: "${userQuery.substring(0, 20)}..."`);
+
+                        // 异步检索（不阻塞流程）
+                        const results = await window.Gaigai.VM.search(userQuery);
+
+                        // 获取配置的阈值
+                        const threshold = (window.Gaigai.config_obj?.vectorThreshold !== undefined && window.Gaigai.config_obj?.vectorThreshold !== null)
+                            ? window.Gaigai.config_obj.vectorThreshold
+                            : 0.6;
+
+                        if (results && results.length > 0) {
+                            // 找到最高相似度
+                            const maxScore = Math.max(...results.map(r => r.score));
+                            console.log(`✅ [向量检索] 成功注入 ${results.length} 条记忆 (最高相似度: ${maxScore.toFixed(2)})`);
+
+                            // === 格式化检索结果 (纯净版) ===
+                            // 移除所有硬编码标题、来源标注和分割线，只保留内容本身
+                            let vectorContent = results.map(r => r.text).join('\n\n');
+
+                            // 🎯 [核心逻辑] 扫描所有消息，查找 {{VECTOR_MEMORY}} 变量
+                            let foundVariable = false;
+                            for (let i = 0; i < data.chat.length; i++) {
+                                const msg = data.chat[i];
+                                const content = msg.content || msg.mes || '';
+
+                                if (content.includes('{{VECTOR_MEMORY}}')) {
+                                    // ✅ 找到变量，执行替换
+                                    const newContent = content.replace(/\{\{VECTOR_MEMORY\}\}/g, vectorContent);
+                                    msg.content = newContent;
+                                    msg.mes = newContent;
+                                    msg.isGaigaiVector = true; // 标记为向量化消息，供探针识别
+                                    foundVariable = true;
+                                    console.log(`📍 [向量插入] 插入位置: 变量替换 (消息索引: ${i}, 角色: ${msg.role || msg.name || 'unknown'})`);
+                                    break;
+                                }
+                            }
+
+                            // === 核心修复：作为独立消息插入默认位置 ===
+                            if (!foundVariable) {
+                                // 寻找最佳插入点：[Start a new Chat] 之前，或者第一条用户消息之前
+                                let insertIndex = 0;
+                                let strategy = "顶端";
+
+                                for (let i = 0; i < data.chat.length; i++) {
+                                    const msg = data.chat[i];
+
+                                    // 1. 优先找 [Start a new Chat] 标记
+                                    if (msg.role === 'system' && msg.content && msg.content.includes('[Start a new Chat]')) {
+                                        insertIndex = i;
+                                        strategy = "Start标签前";
+                                        break;
+                                    }
+
+                                    // 2. 其次找第一条用户/AI 消息
+                                    if (msg.is_user || msg.role === 'user' || msg.role === 'assistant') {
+                                        insertIndex = i;
+                                        strategy = "首条对话前";
+                                        break;
+                                    }
+
+                                    // 兜底：如果全是系统消息，就插在最后
+                                    insertIndex = i + 1;
+                                }
+
+                                // 构造独立的 System 消息
+                                const vectorMsg = {
+                                    role: 'system',
+                                    name: '向量化', // ✅ UI上会显示为 SYSTEM (向量化)
+                                    content: vectorContent,
+                                    mes: vectorContent,
+                                    isGaigaiVector: true // 标记身份
+                                };
+
+                                // 插入数组
+                                data.chat.splice(insertIndex, 0, vectorMsg);
+                                console.log(`📍 [向量插入] 插入位置: ${strategy} (索引: ${insertIndex}) | 作为独立消息`);
+                            }
+                            // === 修复结束 ===
+                        } else {
+                            console.warn(`ℹ️ [向量检索] 检索完成，但未找到匹配内容 (阈值: ${threshold.toFixed(2)})`);
+                            console.warn(`💡 建议: 尝试调低相似度阈值，或检查知识库是否已向量化。`);
+                        }
+                    }
+                } catch (e) {
+                    // 优雅降级：如果向量检索失败，只记录错误，不影响正常流程
+                    console.error('❌ [向量检索] 运行出错:', e);
+                }
+            } else if (!C.vectorEnabled) {
+                console.log('🚫 [向量检索] 跳过：功能未启用 (请检查配置)');
             }
 
             // 6. 注入 (此时表格已是回档后的干净状态)
@@ -9261,31 +9493,51 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                     .done(function () {
                                                         console.log('✅ [Loader] debug_manager.js 加载成功');
 
-                                                        // ✨ 验证模块是否成功挂载
-                                                        if (!window.Gaigai.IOManager) {
-                                                            console.error('⚠️ [Loader] window.Gaigai.IOManager 未成功挂载！');
-                                                            console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
-                                                        }
-                                                        if (!window.Gaigai.SummaryManager) {
-                                                            console.error('⚠️ [Loader] window.Gaigai.SummaryManager 未成功挂载！');
-                                                            console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
-                                                        }
-                                                        if (!window.Gaigai.BackfillManager) {
-                                                            console.error('⚠️ [Loader] window.Gaigai.BackfillManager 未成功挂载！');
-                                                    console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
-                                                }
-                                                if (!window.Gaigai.WI) {
-                                                    console.error('⚠️ [Loader] window.Gaigai.WI 未成功挂载！');
-                                                    console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
-                                                }
-                                                if (!window.Gaigai.DebugManager) {
-                                                    console.error('⚠️ [Loader] window.Gaigai.DebugManager 未成功挂载！');
-                                                    console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
-                                                }
+                                                        // 🆕 加载 vector_manager.js
+                                                        const vectorManagerUrl = `${EXTENSION_PATH}/vector_manager.js`;
+                                                        $.getScript(vectorManagerUrl)
+                                                            .done(function () {
+                                                                console.log('✅ [Loader] vector_manager.js 加载成功');
 
-                                                // 所有依赖加载完后，再启动主初始化流程
-                                                setTimeout(tryInit, 500);
-                                            })
+                                                                // ✨ 验证模块是否成功挂载
+                                                                if (!window.Gaigai.IOManager) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.IOManager 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
+                                                                }
+                                                                if (!window.Gaigai.SummaryManager) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.SummaryManager 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                                                }
+                                                                if (!window.Gaigai.BackfillManager) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.BackfillManager 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
+                                                                }
+                                                                if (!window.Gaigai.WI) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.WI 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
+                                                                }
+                                                                if (!window.Gaigai.DebugManager) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.DebugManager 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
+                                                                }
+                                                                if (!window.Gaigai.VM) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.VM 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${vectorManagerUrl}`);
+                                                                }
+
+                                                                // 所有依赖加载完后，再启动主初始化流程
+                                                                setTimeout(tryInit, 500);
+                                                            })
+                                                            .fail(function (jqxhr, settings, exception) {
+                                                                console.error('❌ [Loader] vector_manager.js 加载失败！');
+                                                                console.error(`📍 尝试加载的 URL: ${vectorManagerUrl}`);
+                                                                console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
+                                                                console.error(`📍 错误详情:`, exception);
+                                                                console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
+                                                                // 即使加载失败，也继续初始化（降级模式）
+                                                                setTimeout(tryInit, 500);
+                                                            });
+                                                    })
                                             .fail(function (jqxhr, settings, exception) {
                                                 console.error('❌ [Loader] debug_manager.js 加载失败！');
                                                 console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
@@ -9464,7 +9716,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复表格编辑bug ：</strong>修复表格编辑时删除表格时，没有正确更新表头名称的bug.</li>
+                        <li><strong>新增向量化功能 ：</strong>配置界面新增向量化功能.</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
@@ -9786,12 +10038,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (msg.role === 'system') {
                         roleName = 'SYSTEM (系统)';
                         roleColor = '#28a745'; icon = '⚙️';
+
+                        // 表格/总结数据
                         if (msg.isGaigaiData) {
                             // ✅ 修复：优先显示动态名字 (如 sys(总结1))，没有则显示默认
                             roleName = msg.name || 'MEMORY (记忆表格)';
                             roleColor = '#d35400'; icon = '📊';
                         }
-                        if (msg.isGaigaiPrompt) { roleName = 'PROMPT (提示词)'; roleColor = '#e67e22'; icon = '📌'; }
+
+                        // 提示词
+                        if (msg.isGaigaiPrompt) {
+                            roleName = 'PROMPT (提示词)';
+                            roleColor = '#e67e22';
+                            icon = '📌';
+                        }
+
+                        // ✅ 新增：向量化数据识别
+                        if (msg.isGaigaiVector) {
+                            roleName = 'SYSTEM (向量化)';
+                            roleColor = '#e91e63'; // 使用粉色，与向量化主题一致
+                            icon = '💠';
+                        }
                     } else if (msg.role === 'user') {
                         roleName = 'USER (用户)'; roleColor = '#2980b9'; icon = '🧑';
                     } else if (msg.role === 'assistant') {
