@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.3
+// 记忆表格 v1.5.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.3 启动');
+    console.log('🚀 记忆表格 v1.5.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.3';
+    const V = 'v1.5.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -9139,23 +9139,25 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // 移除所有硬编码标题、来源标注和分割线，只保留内容本身
                             let vectorContent = results.map(r => r.text).join('\n\n');
 
-                            // 🎯 [核心逻辑] 扫描所有消息，查找 {{VECTOR_MEMORY}} 变量
-                            let foundVariable = false;
-                            for (let i = 0; i < data.chat.length; i++) {
-                                const msg = data.chat[i];
+                            // 🔥 [核心修复] 全量替换所有消息中的 {{VECTOR_MEMORY}} 变量
+                            let replacedCount = 0;
+                            data.chat.forEach((msg, i) => {
                                 const content = msg.content || msg.mes || '';
-
-                                if (content.includes('{{VECTOR_MEMORY}}')) {
-                                    // ✅ 找到变量，执行替换
+                                if (content && content.includes('{{VECTOR_MEMORY}}')) {
+                                    // 执行全局替换
                                     const newContent = content.replace(/\{\{VECTOR_MEMORY\}\}/g, vectorContent);
                                     msg.content = newContent;
-                                    msg.mes = newContent;
-                                    msg.isGaigaiVector = true; // 标记为向量化消息，供探针识别
-                                    foundVariable = true;
-                                    console.log(`📍 [向量插入] 插入位置: 变量替换 (消息索引: ${i}, 角色: ${msg.role || msg.name || 'unknown'})`);
-                                    break;
+                                    if (msg.mes) msg.mes = newContent;
+
+                                    // 标记为向量化消息 (用于探针显示)
+                                    msg.isGaigaiVector = true;
+                                    replacedCount++;
+                                    console.log(`📍 [向量替换] 第 ${replacedCount} 次替换 (消息索引: ${i}, 角色: ${msg.role || msg.name || 'unknown'})`);
                                 }
-                            }
+                            });
+
+                            let foundVariable = replacedCount > 0;
+                            console.log(`📍 [向量替换] 已在 ${replacedCount} 条消息中完成替换`);
 
                             // === 核心修复：作为独立消息插入默认位置 ===
                             if (!foundVariable) {
@@ -9725,7 +9727,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化向量化储存 ：</strong>为防止缓存卡顿问题，将导入的向量化数据存储为世界书，该世界书请勿开启操作，保持默认即可。建议刷新后点击一次插件设置里的 【💾 保存配置】 按钮，以彻底清理旧缓存，让酒馆运行更流畅。</li>
+                        <li><strong>优化向量化功能 ：</strong>为防止缓存卡顿问题，将导入的向量化数据存储为世界书，该世界书请勿开启操作，保持默认即可。建议刷新后点击一次插件设置里的 【💾 保存配置】 按钮，以彻底清理旧缓存，让酒馆运行更流畅。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

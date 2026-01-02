@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.6.0
+ * @version 1.5.4
  * @author Gaigai Team
  */
 
@@ -17,9 +17,6 @@
 
     class VectorManager {
         constructor() {
-            // 向量索引缓存（内部表格数据）
-            this.vectorIndex = [];
-
             // 📚 图书馆结构（替代旧版 customKnowledge）
             // 格式: { "book_uuid": { name, chunks, vectors, createTime } }
             this.library = {};
@@ -479,116 +476,6 @@
         }
 
         /**
-         * 📚 更新向量索引（遍历表格数据）
-         * @param {Object} memoryManager - Memory 对象 (window.Gaigai.m)
-         * @returns {Promise<Object>} - { success: boolean, count: number, errors: number }
-         */
-        async updateIndex(memoryManager) {
-            console.log('🔄 [VectorManager] 开始重建表格向量索引...');
-
-            if (!memoryManager || !memoryManager.s) {
-                throw new Error('Memory Manager 不可用');
-            }
-
-            const newIndex = [];
-            let successCount = 0;
-            let errorCount = 0;
-
-            try {
-                // 遍历所有表格
-                for (let tableIdx = 0; tableIdx < memoryManager.s.length; tableIdx++) {
-                    const sheet = memoryManager.get(tableIdx);
-
-                    if (!sheet || !sheet.r || sheet.r.length === 0) {
-                        continue;
-                    }
-
-                    const tableName = sheet.t || `表${tableIdx}`;
-                    console.log(`📊 [VectorManager] 处理表格: ${tableName}, 行数: ${sheet.r.length}`);
-
-                    // 遍历表格的每一行
-                    for (let rowIdx = 0; rowIdx < sheet.r.length; rowIdx++) {
-                        const row = sheet.r[rowIdx];
-
-                        // ✅ 兼容 Object 格式的行数据
-                        const rowData = Array.isArray(row) ? row : Object.values(row);
-                        const cellTexts = rowData.filter(cell => cell && typeof cell === 'string' && cell.trim()).join('\n');
-
-                        if (!cellTexts.trim()) {
-                            continue;
-                        }
-
-                        try {
-                            const hash = this._hashText(cellTexts);
-
-                            // 检查是否已有相同文本的向量（避免重复计算）
-                            const existingEntry = this.vectorIndex.find(e => e.hash === hash);
-                            if (existingEntry) {
-                                console.log(`✅ [VectorManager] 复用已有向量: ${tableName} 行${rowIdx}`);
-                                newIndex.push({
-                                    text: cellTexts,
-                                    vector: existingEntry.vector,
-                                    source: `${tableName} 行${rowIdx}`,
-                                    hash: hash
-                                });
-                                successCount++;
-                                continue;
-                            }
-
-                            // 获取向量
-                            const vector = await this.getEmbedding(cellTexts);
-
-                            newIndex.push({
-                                text: cellTexts,
-                                vector: vector,
-                                source: `${tableName} 行${rowIdx}`,
-                                hash: hash
-                            });
-
-                            successCount++;
-                            console.log(`✅ [VectorManager] 已索引: ${tableName} 行${rowIdx}`);
-
-                            // 避免过于频繁的请求，稍微延迟
-                            await new Promise(r => setTimeout(r, 100));
-
-                        } catch (error) {
-                            console.error(`❌ [VectorManager] 索引失败: ${tableName} 行${rowIdx}`, error);
-                            errorCount++;
-                        }
-                    }
-                }
-
-                // 更新索引
-                this.vectorIndex = newIndex;
-
-                console.log(`✅ [VectorManager] 表格索引重建完成: ${successCount} 成功, ${errorCount} 失败`);
-
-                return { success: true, count: successCount, errors: errorCount };
-
-            } catch (error) {
-                console.error('❌ [VectorManager] 更新索引失败:', error);
-                return { success: false, count: successCount, errors: errorCount, error: error.message };
-            }
-        }
-
-        /**
-         * 🗑️ 清空表格向量索引
-         * @returns {Object} - { success: boolean }
-         */
-        clearTableIndex() {
-            console.log('🗑️ [VectorManager] 清空表格向量索引...');
-
-            // 重置表格向量索引为空数组
-            this.vectorIndex = [];
-
-            // 保存到全局配置
-            this.saveLibrary();
-
-            console.log('✅ [VectorManager] 表格索引已清空');
-            return { success: true };
-        }
-
-        /**
          * 📖 导入新书（替代旧版 handleImportCustomFile）
          * @param {File} file - 用户选择的 TXT 文件
          * @param {string} customName - 自定义书名（可选）
@@ -733,9 +620,8 @@
                 }
             }
 
-            const totalCount = this.vectorIndex.length + knowledgeCount;
-            if (totalCount === 0) {
-                console.warn('⚠️ [VectorManager] 向量索引为空，请先重建索引或导入知识库');
+            if (knowledgeCount === 0) {
+                console.warn('⚠️ [VectorManager] 向量索引为空，请先导入知识库并向量化');
                 return [];
             }
 
@@ -745,17 +631,7 @@
 
                 const results = [];
 
-                // 1. 检索表格数据
-                this.vectorIndex.forEach(entry => {
-                    results.push({
-                        text: entry.text,
-                        source: entry.source,
-                        score: this.cosineSimilarity(queryVector, entry.vector),
-                        type: '表格'
-                    });
-                });
-
-                // 2. 检索绑定的知识库
+                // 检索绑定的知识库
                 for (const bookId of allowedBookIds) {
                     const book = this.library[bookId];
                     if (!book) continue;
@@ -778,13 +654,93 @@
                     .sort((a, b) => b.score - a.score)
                     .slice(0, config.maxCount);
 
-                console.log(`🔍 [VectorManager] 混合检索到 ${filtered.length} 条相关记忆 (表格:${this.vectorIndex.length}, 知识库:${knowledgeCount})`);
+                console.log(`🔍 [VectorManager] 检索到 ${filtered.length} 条相关记忆 (知识库:${knowledgeCount})`);
 
                 return filtered;
 
             } catch (error) {
                 console.error('❌ [VectorManager] 检索失败:', error);
                 return [];
+            }
+        }
+
+        /**
+         * 📚 同步总结表到书架
+         * @returns {Promise<Object>} - { success: boolean, count: number, error?: string }
+         */
+        async syncSummaryToBook() {
+            console.log('📚 [VectorManager] 开始同步总结表到书架...');
+
+            try {
+                // 获取 Memory Manager
+                const m = window.Gaigai?.m;
+                if (!m || !m.s || m.s.length === 0) {
+                    throw new Error('Memory Manager 不可用或没有表格数据');
+                }
+
+                // 获取最后一个表格（总结表）
+                const summarySheet = m.s[m.s.length - 1];
+                if (!summarySheet || !summarySheet.r || summarySheet.r.length === 0) {
+                    throw new Error('总结表为空或不存在');
+                }
+
+                // 构建 chunks 数组
+                const chunks = [];
+                for (const row of summarySheet.r) {
+                    // 兼容 Object 和 Array 格式
+                    const rowData = Array.isArray(row) ? row : Object.values(row);
+
+                    // 假设格式：[标题, 内容, 备注, ...]
+                    // 根据实际表格结构调整索引
+                    const title = rowData[0] || '';
+                    const content = rowData[1] || '';
+                    const remark = rowData[2] || '';
+
+                    // 构建片段文本：标题 (备注)\n内容
+                    let chunkText = '';
+                    if (title) {
+                        chunkText += title;
+                        if (remark) {
+                            chunkText += ` (${remark})`;
+                        }
+                        chunkText += '\n';
+                    }
+                    if (content) {
+                        chunkText += content;
+                    }
+
+                    if (chunkText.trim()) {
+                        chunks.push(chunkText.trim());
+                    }
+                }
+
+                if (chunks.length === 0) {
+                    throw new Error('总结表中没有有效内容');
+                }
+
+                // 固定的书籍 ID 和名称
+                const bookId = 'auto_summary_book';
+                const bookName = '《剧情总结归档》';
+
+                // 创建或更新书籍
+                this.library[bookId] = {
+                    name: bookName,
+                    chunks: chunks,
+                    vectors: new Array(chunks.length).fill(null),
+                    vectorized: new Array(chunks.length).fill(false),
+                    createTime: this.library[bookId]?.createTime || Date.now()
+                };
+
+                // 保存到全局
+                this.saveLibrary();
+
+                console.log(`✅ [VectorManager] 已同步 ${chunks.length} 条总结到书架`);
+
+                return { success: true, count: chunks.length, bookId: bookId };
+
+            } catch (error) {
+                console.error('❌ [VectorManager] 同步总结到书架失败:', error);
+                return { success: false, count: 0, error: error.message };
             }
         }
 
@@ -825,10 +781,9 @@
         }
 
         /**
-         * 🧹 清空所有数据（包括表格和书籍）
+         * 🧹 清空所有数据（书籍和缓存）
          */
         clearAll() {
-            this.vectorIndex = [];
             this.library = {};
             this.vectorCache.clear();
             this.pendingRequests.clear();
@@ -838,7 +793,7 @@
         }
 
         /**
-         * 📤 导出向量缓存（表格 + 图书馆）
+         * 📤 导出向量缓存（图书馆）
          * @param {string[]|null} specificBookIds - 指定要导出的书籍ID数组，null或空数组则导出全部
          * @returns {string} - 文件内容
          */
@@ -853,25 +808,8 @@
 
             lines.push('=== Gaigai 向量缓存文件 (图书馆版) ===');
             lines.push(`导出时间: ${new Date().toLocaleString()}`);
-            lines.push(`表格条目: ${this.vectorIndex.length}`);
             lines.push(`书籍数量: ${booksToExport.length}`);
             lines.push('');
-
-            // 导出表格索引
-            lines.push('>>> 表格向量索引 <<<');
-            for (const entry of this.vectorIndex) {
-                lines.push('=== 向量信息 ===');
-                lines.push(`来源: ${entry.source}`);
-                lines.push(`类型: 表格`);
-                lines.push(`哈希: ${entry.hash}`);
-                lines.push('--- 文本内容 ---');
-                lines.push(entry.text);
-                lines.push('--- 向量数据 (Base64) ---');
-                const vectorJson = JSON.stringify(entry.vector);
-                const vectorBase64 = btoa(unescape(encodeURIComponent(vectorJson)));
-                lines.push(vectorBase64);
-                lines.push('');
-            }
 
             // 导出图书馆（仅导出指定的书籍）
             lines.push('>>> 图书馆 <<<');
@@ -900,15 +838,15 @@
             }
 
             const content = lines.join('\n');
-            console.log(`📤 [VectorManager] 导出完成: ${this.vectorIndex.length} 表格 + ${booksToExport.length} 书籍`);
+            console.log(`📤 [VectorManager] 导出完成: ${booksToExport.length} 本书籍`);
 
             return content;
         }
 
         /**
-         * 📥 从 TXT 文件导入向量缓存（表格 + 图书馆）
+         * 📥 从 TXT 文件导入向量缓存（图书馆）
          * @param {File|string} fileOrContent - 文件对象或文本内容
-         * @returns {Promise<Object>} - { success: boolean, tableCount: number, bookCount: number }
+         * @returns {Promise<Object>} - { success: boolean, bookCount: number }
          */
         async importVectors(fileOrContent) {
             try {
@@ -926,7 +864,6 @@
                 }
 
                 const lines = content.split('\n');
-                const newTableIndex = [];
                 const newLibrary = {};
 
                 let currentSection = null;
@@ -939,61 +876,9 @@
                     const line = lines[i].trim();
 
                     // 检测区段
-                    if (line === '>>> 表格向量索引 <<<') {
-                        currentSection = 'table';
-                        continue;
-                    } else if (line === '>>> 图书馆 <<<') {
+                    if (line === '>>> 图书馆 <<<') {
                         currentSection = 'library';
                         continue;
-                    }
-
-                    // 解析表格条目
-                    if (currentSection === 'table') {
-                        if (line === '=== 向量信息 ===') {
-                            if (currentEntry) {
-                                newTableIndex.push(currentEntry);
-                            }
-                            currentEntry = { text: '', vector: null, source: '', hash: '' };
-                            mode = 'meta';
-                            continue;
-                        }
-
-                        if (line === '--- 文本内容 ---') {
-                            mode = 'text';
-                            continue;
-                        }
-
-                        if (line === '--- 向量数据 (Base64) ---') {
-                            mode = 'vector';
-                            continue;
-                        }
-
-                        if (!currentEntry) continue;
-
-                        if (mode === 'meta') {
-                            if (line.startsWith('来源: ')) {
-                                currentEntry.source = line.substring(4);
-                            } else if (line.startsWith('哈希: ')) {
-                                currentEntry.hash = line.substring(4);
-                            }
-                        } else if (mode === 'text') {
-                            if (line && !line.startsWith('---')) {
-                                currentEntry.text += (currentEntry.text ? '\n' : '') + line;
-                            }
-                        } else if (mode === 'vector') {
-                            if (line && !line.startsWith('===')) {
-                                try {
-                                    const vectorJson = decodeURIComponent(escape(atob(line)));
-                                    currentEntry.vector = JSON.parse(vectorJson);
-                                    if (currentEntry.hash) {
-                                        this.vectorCache.set(currentEntry.hash, currentEntry.vector);
-                                    }
-                                } catch (e) {
-                                    console.error('❌ [VectorManager] 向量解码失败:', e);
-                                }
-                                mode = 'done';
-                            }
-                        }
                     }
 
                     // 解析图书馆
@@ -1060,27 +945,20 @@
                     }
                 }
 
-                // 添加最后一个表格条目
-                if (currentEntry && currentSection === 'table') {
-                    newTableIndex.push(currentEntry);
-                }
-
                 // 更新数据
-                this.vectorIndex = newTableIndex;
                 this.library = newLibrary;
                 this.saveLibrary();
 
-                console.log(`📥 [VectorManager] 导入完成: ${newTableIndex.length} 表格 + ${Object.keys(newLibrary).length} 书籍`);
+                console.log(`📥 [VectorManager] 导入完成: ${Object.keys(newLibrary).length} 本书籍`);
 
                 return {
                     success: true,
-                    tableCount: newTableIndex.length,
                     bookCount: Object.keys(newLibrary).length
                 };
 
             } catch (error) {
                 console.error('❌ [VectorManager] 导入失败:', error);
-                return { success: false, tableCount: 0, bookCount: 0, error: error.message };
+                return { success: false, bookCount: 0, error: error.message };
             }
         }
 
@@ -1305,14 +1183,11 @@
                                     📂 导入新书 (TXT)
                                 </button>
                                 <button id="gg_vm_rebuild_table" style="width: 100%; padding: 7px; background: #2196F3; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
-                                    🔄 表格向量化 (手动更新)
+                                    📚 同步总结到书架
                                 </button>
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">
-                                    💡 表格内容修改后，需点击此按钮更新向量。若想防止重复发送，请在主配置中关闭 [注入记忆表格]。
+                                    💡 将最新的记忆总结表转换为书籍，以便进行向量化检索
                                 </div>
-                                <button id="gg_vm_clear_table" style="width: 100%; padding: 7px; background: #FF5722; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500; margin-top: 5px;">
-                                    🗑️ 清空表格向量数据
-                                </button>
                                 <button id="gg_vm_import_all" style="width: 100%; padding: 7px; background: #009688; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
                                     📥 导入图书馆备份
                                 </button>
@@ -1431,8 +1306,9 @@
                 <div style="display: flex; flex-direction: column; height: 100%;">
                     <!-- 书籍标题 -->
                     <div style="margin-bottom: 15px;">
-                        <div style="font-size: 18px; font-weight: bold; color: ${UI.tc}; margin-bottom: 5px;">
-                            ${this._escapeHtml(book.name)}
+                        <div style="font-size: 18px; font-weight: bold; color: ${UI.tc}; margin-bottom: 5px; display: flex; align-items: center; gap: 8px;">
+                            <span>${this._escapeHtml(book.name)}</span>
+                            <i class="fa-solid fa-pen-to-square" id="gg_vm_rename_book" style="font-size: 14px; cursor: pointer; opacity: 0.6; transition: opacity 0.2s;" title="重命名" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"></i>
                         </div>
                         <div style="font-size: 11px; color: ${UI.tc}; opacity: 0.7;">
                             创建于: ${new Date(book.createTime).toLocaleString()} • ${totalChunks} 个片段
@@ -1890,70 +1766,39 @@
                 }
             });
 
-            // 重建表格索引
+            // 同步总结到书架
             $('#gg_vm_rebuild_table').off('click').on('click', async () => {
                 const btn = $('#gg_vm_rebuild_table');
                 const oldText = btn.html();
 
                 try {
-                    const url = $('#gg_vm_url').val().trim();
-                    const key = $('#gg_vm_key').val().trim();
-
-                    if (!url || !key) {
-                        await customAlert('⚠️ 未配置 API\n\n请先填写 API 地址和密钥。', '配置不完整');
-                        return;
-                    }
-
                     if (!m) {
                         await customAlert('⚠️ Memory Manager 不可用', '错误');
                         return;
                     }
 
-                    btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 重建中...').prop('disabled', true);
+                    btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 同步中...').prop('disabled', true);
 
-                    const result = await self.updateIndex(m);
+                    const result = await self.syncSummaryToBook();
 
                     if (result.success) {
                         if (typeof toastr !== 'undefined') {
-                            toastr.success(`成功索引 ${result.count} 条记录`, '重建完成');
+                            toastr.success(`已同步 ${result.count} 条总结到《剧情总结归档》`, '同步成功');
                         } else {
-                            await customAlert(`✅ 重建完成\n\n成功: ${result.count} 条`, '成功');
+                            await customAlert(`✅ 同步成功\n\n已同步 ${result.count} 条总结`, '成功');
                         }
+
+                        // 自动选中新创建/更新的书籍
+                        self.selectedBookId = result.bookId;
+                        self.showUI();
                     } else {
-                        throw new Error(result.error || '重建失败');
+                        throw new Error(result.error || '同步失败');
                     }
                 } catch (e) {
-                    console.error('❌ [VectorManager] 重建失败:', e);
-                    await customAlert(`❌ 重建失败\n\n${e.message}`, '错误');
+                    console.error('❌ [VectorManager] 同步失败:', e);
+                    await customAlert(`❌ 同步失败\n\n${e.message}`, '错误');
                 } finally {
                     btn.html(oldText).prop('disabled', false);
-                }
-            });
-
-            // 清空表格索引
-            $('#gg_vm_clear_table').off('click').on('click', async () => {
-                try {
-                    // 使用自定义确认框
-                    const confirmed = await self._customConfirm(
-                        '确定要清空所有表格的向量索引吗？\n（这不会删除表格里的文字，只是让 AI 不再检索表格内容）',
-                        '⚠️ 确认清空'
-                    );
-
-                    if (!confirmed) return;
-
-                    // 执行清空
-                    const result = self.clearTableIndex();
-
-                    if (result.success) {
-                        if (typeof toastr !== 'undefined') {
-                            toastr.success('表格索引已清空', '操作成功');
-                        } else {
-                            await customAlert('✅ 表格索引已清空', '成功');
-                        }
-                    }
-                } catch (e) {
-                    console.error('❌ [VectorManager] 清空表格索引失败:', e);
-                    await customAlert(`❌ 清空失败\n\n${e.message}`, '错误');
                 }
             });
 
@@ -2051,7 +1896,7 @@
                     const result = await self.importVectors(file);
 
                     if (result.success) {
-                        const message = `成功恢复 ${result.bookCount} 本书 + ${result.tableCount} 条表格索引`;
+                        const message = `成功恢复 ${result.bookCount} 本书`;
                         if (typeof toastr !== 'undefined') {
                             toastr.success(message, '导入成功');
                         } else {
@@ -2193,6 +2038,57 @@
         _bindDetailEvents() {
             const self = this;
             const customAlert = window.Gaigai?.customAlert || alert;
+
+            // 重命名书籍
+            $('#gg_vm_rename_book').off('click').on('click', async () => {
+                try {
+                    if (!self.selectedBookId) {
+                        await customAlert('⚠️ 未选择书籍', '提示');
+                        return;
+                    }
+
+                    const book = self.library[self.selectedBookId];
+                    if (!book) {
+                        await customAlert('⚠️ 书籍不存在', '错误');
+                        return;
+                    }
+
+                    // 使用自定义弹窗询问新书名
+                    const newName = await self._customPrompt(
+                        '请输入新的书名：',
+                        '📝 重命名书籍',
+                        book.name
+                    );
+
+                    if (newName === null || !newName.trim()) return; // 用户取消或输入为空
+
+                    // 检查是否有变化
+                    if (newName.trim() === book.name) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.info('书名未改变', '提示');
+                        }
+                        return;
+                    }
+
+                    // 更新书名
+                    book.name = newName.trim();
+
+                    // 保存到全局
+                    self.saveLibrary();
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已重命名为《${newName.trim()}》`, '重命名成功');
+                    } else {
+                        await customAlert(`✅ 重命名成功\n\n新书名: ${newName.trim()}`, '成功');
+                    }
+
+                    // 刷新整个界面（左侧书架列表和右侧详情都会更新）
+                    self.showUI();
+                } catch (e) {
+                    console.error('❌ [VectorManager] 重命名书籍失败:', e);
+                    await customAlert(`❌ 重命名失败\n\n${e.message}`, '错误');
+                }
+            });
 
             // 编辑/追加源文本
             $('#gg_vm_edit_source').off('click').on('click', async () => {
