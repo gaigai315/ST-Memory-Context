@@ -2499,9 +2499,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ✅ 2. 判定是否启用锚点模式
-        // 只有在 [非批量模式] 且 [提示词管理开启] 时，才允许使用变量作为锚点
-        // 批量模式(autoBackfill)下强制使用默认位置，防止正在生成的历史记录乱跳
-        const allowAnchorMode = !C.autoBackfill && isPromptManagerOn;
+        // 只要 [提示词管理开启]，就允许使用变量作为锚点
+        // 即使开启批量填表(autoBackfill)，也可以通过 {{MEMORY}} 变量控制插入位置
+        const allowAnchorMode = isPromptManagerOn;
 
         // 记录被删除的消息数量，用于修正锚点索引
         let deletedCountBeforeAnchor = 0;

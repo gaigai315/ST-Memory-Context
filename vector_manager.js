@@ -1450,7 +1450,7 @@
                 // ✅ 修复：使用 attr('style') 并加上 !important 来覆盖 style.css 的全局强制样式
                 const $p = $('<div>', {
                     class: 'g-w'
-                }).attr('style', 'width: 300px !important; height: auto !important; max-width: 90vw !important; min-height: 150px !important; pointer-events: auto; display: flex; flex-direction: column;');
+                }).attr('style', 'width: 300px !important; height: auto !important; max-width: 90vw !important; min-height: 150px !important; pointer-events: auto; display: flex; flex-direction: column; margin: auto !important; position: relative !important; bottom: auto !important; left: auto !important; transform: none !important; border-radius: 12px !important;');
 
                 // 标题栏
                 const $hd = $('<div>', { class: 'g-hd' });
@@ -1548,7 +1548,7 @@
 
                 const $p = $('<div>', {
                     class: 'g-w'
-                }).attr('style', 'width: 350px !important; height: auto !important; max-width: 90vw !important; min-height: 150px !important; pointer-events: auto; display: flex; flex-direction: column;');
+                }).attr('style', 'width: 350px !important; height: auto !important; max-width: 90vw !important; min-height: 150px !important; pointer-events: auto; display: flex; flex-direction: column; margin: auto !important; position: relative !important; bottom: auto !important; left: auto !important; transform: none !important; border-radius: 12px !important;');
 
                 // 标题栏
                 const $hd = $('<div>', { class: 'g-hd' });
@@ -1647,7 +1647,7 @@
 
                 const $p = $('<div>', {
                     class: 'g-w'
-                }).attr('style', 'width: 800px !important; height: 600px !important; max-width: 95vw !important; max-height: 90vh !important; display: flex !important; flex-direction: column !important;');
+                }).attr('style', 'width: 800px !important; height: 600px !important; max-width: 95vw !important; max-height: 90vh !important; display: flex !important; flex-direction: column !important; margin: auto !important; position: relative !important; bottom: auto !important; left: auto !important; transform: none !important; border-radius: 12px !important;');
 
                 // 标题栏
                 const $hd = $('<div>', { class: 'g-hd' });
