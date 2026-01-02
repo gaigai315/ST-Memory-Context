@@ -330,6 +330,7 @@
                 model: C.vectorModel || 'BAAI/bge-m3',
                 threshold: (C.vectorThreshold !== undefined && C.vectorThreshold !== null && C.vectorThreshold !== '') ? parseFloat(C.vectorThreshold) : 0.6,
                 maxCount: parseInt(C.vectorMaxCount) || 3,
+                contextDepth: parseInt(C.vectorContextDepth) || 1,
                 separator: C.vectorSeparator || '==='
             };
         }
@@ -576,12 +577,20 @@
                     successCount++;
                     console.log(`✅ [VectorManager] 已向量化片段 ${idx} (${i + 1}/${unvectorizedIndices.length})`);
 
-                    // 避免过于频繁的请求
-                    await new Promise(r => setTimeout(r, 100));
+                    // 增加基础延迟到 1000ms 防止卡顿和封禁
+                    await new Promise(r => setTimeout(r, 1000));
 
                 } catch (error) {
                     console.error(`❌ [VectorManager] 向量化失败: 片段 ${idx}`, error);
                     errorCount++;
+
+                    // 如果检测到 429 (Too Many Requests)，额外等待 5秒
+                    if (error.message && error.message.includes('429')) {
+                        console.warn('⚠️ [429] 触发速率限制，正在冷却 5秒...');
+                        await new Promise(r => setTimeout(r, 5000));
+                    } else {
+                        console.error(`❌ [VectorManager] 错误详情: ${error.message || error.toString()}`);
+                    }
                 }
             }
 

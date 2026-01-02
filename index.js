@@ -657,8 +657,6 @@
                     width: '100%', minHeight: '200px', maxHeight: '400px',
                     padding: '12px', borderRadius: '6px',
                     border: `1px solid ${isDark ? '#dc3545' : '#dc3545'}`,
-                    background: textAreaBg,
-                    color: bodyColor,
                     fontSize: '12px', fontFamily: 'monospace',
                     lineHeight: '1.5',
                     resize: 'vertical',
@@ -666,7 +664,15 @@
                     overflow: 'auto',
                     boxSizing: 'border-box'
                 }
-            }).val(message);
+            });
+
+            // 🔥 强制样式修复：使用 attr 直接写入 style 字符串，确保 !important 生效
+            const finalBg = textAreaBg;
+            const finalColor = 'var(--g-tc)'; // 使用全局 CSS 变量跟随主题
+
+            $errorBox.attr('style', $errorBox.attr('style') + `; background: ${finalBg} !important; color: ${finalColor} !important;`);
+
+            $errorBox.val(message); // 最后赋值
 
             $body.append($errorBox);
 
