@@ -12,6 +12,9 @@
 (function () {
     'use strict';
 
+    // 🗄️ 世界书伪装存储文件名
+    const STORAGE_BOOK_NAME = "Memory_Vector_Database";
+
     class VectorManager {
         constructor() {
             // 向量索引缓存（内部表格数据）
@@ -33,12 +36,9 @@
             // 🔒 安全锁：防止数据未加载时误保存
             this.isDataLoaded = false;
 
-            console.log('✅ [VectorManager] 初始化完成 (图书馆架构)');
+            console.log('✅ [VectorManager] 初始化完成 (图书馆架构 + 世界书存储)');
 
-            // 执行数据迁移
-            this._migrateOldData();
-
-            // 加载图书馆数据
+            // 加载图书馆数据（内含数据迁移逻辑）
             this.loadLibrary();
         }
 
@@ -90,9 +90,9 @@
         }
 
         /**
-         * 💾 保存图书馆数据到全局配置
+         * 💾 保存图书馆数据到世界书存储
          */
-        saveLibrary() {
+        async saveLibrary() {
             // 🛑 安全拦截：数据未加载时禁止保存
             if (!this.isDataLoaded) {
                 console.warn('🛑 [安全拦截] 向量数据尚未加载，禁止保存！防止覆盖存档。');
@@ -100,34 +100,81 @@
             }
 
             try {
-                if (!window.extension_settings) {
-                    window.extension_settings = {};
-                }
-                if (!window.extension_settings.st_memory_table) {
-                    window.extension_settings.st_memory_table = {};
-                }
-
-                // 保存 library 到全局
-                window.extension_settings.st_memory_table.vectorLibrary = this.library;
-
-                // 调用云同步
-                if (typeof window.Gaigai?.saveAllSettingsToCloud === 'function') {
-                    window.Gaigai.saveAllSettingsToCloud().catch(err => {
-                        console.warn('⚠️ [VectorManager] 云同步失败:', err);
-                    });
+                // 获取 CSRF Token
+                let csrfToken = '';
+                try {
+                    if (typeof window.Gaigai?.getCsrfToken === 'function') {
+                        csrfToken = await window.Gaigai.getCsrfToken();
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [VectorManager] 获取CSRF Token失败:', e);
                 }
 
-                console.log('💾 [VectorManager] 图书馆数据已保存到全局配置');
+                // 将图书馆数据序列化为 JSON 字符串
+                const libraryJson = JSON.stringify(this.library);
+
+                // 构造世界书数据结构
+                const payload = {
+                    name: STORAGE_BOOK_NAME,
+                    data: {
+                        name: STORAGE_BOOK_NAME,
+                        entries: {
+                            "0": {
+                                uid: 0,
+                                key: ["DO_NOT_USE"],
+                                keysecondary: [],
+                                comment: "Memory 向量数据库 (请勿编辑/启用)",
+                                content: libraryJson,
+                                constant: false,
+                                vectorized: false,
+                                enabled: false,  // 前端状态：默认禁用，防止被AI检索到
+                                disable: true,   // 后端文件存储状态：强制禁用
+                                position: 0,
+                                order: 0,
+                                extensions: {
+                                    position: 0,
+                                    exclude_recursion: true,
+                                    display_index: 0,
+                                    probability: 0,
+                                    useProbability: false
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // 保存到世界书
+                const response = await fetch('/api/worldinfo/edit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`世界书API保存失败: ${response.status}`);
+                }
+
+                console.log(`💾 [VectorManager] 图书馆数据已保存到世界书: ${STORAGE_BOOK_NAME}`);
+
+                // ✅ 清理旧配置中的数据（防止污染）
+                if (window.extension_settings?.st_memory_table?.vectorLibrary) {
+                    delete window.extension_settings.st_memory_table.vectorLibrary;
+                    console.log('🧹 [VectorManager] 已清理旧配置中的向量数据');
+                }
+
             } catch (error) {
                 console.error('❌ [VectorManager] 保存图书馆失败:', error);
             }
         }
 
         /**
-         * 📂 从全局配置加载图书馆数据
+         * 📂 从世界书存储加载图书馆数据
          * @param {Object|null} explicitData - 显式传入的数据（优先使用）
          */
-        loadLibrary(explicitData = null) {
+        async loadLibrary(explicitData = null) {
             try {
                 // 1. 优先使用传入的显式数据 (来自 index.js 的最新拉取)
                 if (explicitData && typeof explicitData === 'object') {
@@ -137,14 +184,73 @@
                     return;
                 }
 
-                // 2. 其次尝试从全局配置加载 (兜底)
-                const settings = window.extension_settings?.st_memory_table || {};
-                if (settings.vectorLibrary && typeof settings.vectorLibrary === 'object') {
-                    this.library = settings.vectorLibrary;
-                    console.log(`📂 [VectorManager] 已加载全局配置: ${Object.keys(this.library).length} 本书`);
-                } else {
-                    this.library = {};
-                    console.log('📂 [VectorManager] 图书馆为空 (无数据)');
+                // 2. 尝试从世界书 API 加载
+                let loadedFromWorldInfo = false;
+                try {
+                    // 获取 CSRF Token
+                    let csrfToken = '';
+                    try {
+                        if (typeof window.Gaigai?.getCsrfToken === 'function') {
+                            csrfToken = await window.Gaigai.getCsrfToken();
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ [VectorManager] 获取CSRF Token失败:', e);
+                    }
+
+                    // 请求世界书数据
+                    const response = await fetch('/api/worldinfo/get', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken
+                        },
+                        body: JSON.stringify({ name: STORAGE_BOOK_NAME })
+                    });
+
+                    if (response.ok) {
+                        const bookData = await response.json();
+
+                        // 解析世界书中的数据
+                        if (bookData && bookData.entries && bookData.entries["0"] && bookData.entries["0"].content) {
+                            try {
+                                this.library = JSON.parse(bookData.entries["0"].content);
+                                console.log(`📂 [VectorManager] 已从世界书加载: ${Object.keys(this.library).length} 本书`);
+                                loadedFromWorldInfo = true;
+                            } catch (parseError) {
+                                console.error('❌ [VectorManager] 解析世界书数据失败:', parseError);
+                            }
+                        }
+                    } else if (response.status === 404) {
+                        console.log('📝 [VectorManager] 世界书文件不存在（可能是首次使用）');
+                    } else {
+                        console.warn(`⚠️ [VectorManager] 获取世界书失败 (${response.status})`);
+                    }
+                } catch (apiError) {
+                    console.warn('⚠️ [VectorManager] 世界书API调用失败:', apiError);
+                }
+
+                // 3. 数据迁移：如果世界书没数据，但旧配置有数据，则迁移
+                if (!loadedFromWorldInfo) {
+                    const settings = window.extension_settings?.st_memory_table || {};
+                    if (settings.vectorLibrary && typeof settings.vectorLibrary === 'object' && Object.keys(settings.vectorLibrary).length > 0) {
+                        console.log('🔄 [数据迁移] 检测到旧配置中的数据，开始迁移到世界书...');
+                        this.library = settings.vectorLibrary;
+                        console.log(`📂 [VectorManager] 已加载旧配置数据: ${Object.keys(this.library).length} 本书`);
+
+                        // 标记为已加载，允许保存
+                        this.isDataLoaded = true;
+
+                        // 迁移到世界书存储
+                        await this.saveLibrary();
+
+                        // 清理旧配置
+                        delete settings.vectorLibrary;
+                        console.log('✅ [数据迁移] 迁移完成，已清理旧配置');
+                    } else {
+                        // 完全没有数据，初始化为空
+                        this.library = {};
+                        console.log('📂 [VectorManager] 图书馆为空 (无数据)');
+                    }
                 }
 
                 // 无论有没有数据，只要尝试加载过，就视为加载完成
@@ -1162,6 +1268,13 @@
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">每次检索返回的最大结果数</div>
                             </div>
 
+                            <!-- 检索上下文深度 -->
+                            <div style="margin-bottom: 6px;">
+                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">检索上下文深度</label>
+                                <input type="number" id="gg_vm_context_depth" value="${config.contextDepth || 1}" min="1" max="5" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">检索时向前回溯的消息数量 (User+AI)，解决短回复无法检索的问题</div>
+                            </div>
+
                             <!-- 文本切分符 -->
                             <div style="margin-bottom: 8px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">文本切分符</label>
@@ -1198,7 +1311,7 @@
                                     💡 表格内容修改后，需点击此按钮更新向量。若想防止重复发送，请在主配置中关闭 [注入记忆表格]。
                                 </div>
                                 <button id="gg_vm_clear_table" style="width: 100%; padding: 7px; background: #FF5722; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500; margin-top: 5px;">
-                                    🗑️ 清空表格索引
+                                    🗑️ 清空表格向量数据
                                 </button>
                                 <button id="gg_vm_import_all" style="width: 100%; padding: 7px; background: #009688; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
                                     📥 导入图书馆备份
@@ -1751,6 +1864,7 @@
                     const rawThreshold = parseFloat($('#gg_vm_threshold').val());
                     C.vectorThreshold = isNaN(rawThreshold) ? 0.6 : rawThreshold;
                     C.vectorMaxCount = parseInt($('#gg_vm_max_count').val()) || 3;
+                    C.vectorContextDepth = parseInt($('#gg_vm_context_depth').val()) || 1;
                     C.vectorSeparator = $('#gg_vm_separator').val().trim() || '===';
 
                     // 保存到 localStorage

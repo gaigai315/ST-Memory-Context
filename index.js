@@ -7407,20 +7407,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             delete cleanedApiConfig.lastSummaryIndex;
             delete cleanedApiConfig.lastBackfillIndex;
 
-            // 🛡️ [数据保护] 必须显式获取向量库数据，防止被覆盖丢失
-            let currentLibrary = {};
-            if (window.Gaigai.VM && window.Gaigai.VM.library) {
-                currentLibrary = window.Gaigai.VM.library;
-            } else if (window.extension_settings && window.extension_settings.st_memory_table && window.extension_settings.st_memory_table.vectorLibrary) {
-                currentLibrary = window.extension_settings.st_memory_table.vectorLibrary;
-            }
+            // 🛡️ [数据保护] 向量库数据已迁移到世界书存储，不再保存到 settings.json
+            // 强制设为空对象，防止旧数据污染配置文件
+            const currentLibrary = {};
 
             const allSettings = {
                 config: C,
                 api: cleanedApiConfig,
                 ui: UI,
                 profiles: window.Gaigai.PromptManager.getProfilesData(),  // ✅ 保存预设数据
-                vectorLibrary: currentLibrary,  // ✅ 修复：必须包含向量库数据！
+                vectorLibrary: currentLibrary,  // ✅ 强制为空，向量数据已使用世界书存储
                 lastModified: Date.now()  // ✅ 添加时间戳用于防止冲突
             };
 
@@ -9080,33 +9076,46 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             if (isVectorReady && data.chat && data.chat.length > 0) {
                 try {
-                    // === 核心修复：穿透查找用户消息 ===
+                    // === 增强版：多轮上下文检索 ===
                     let userQuery = '';
 
-                    // 倒序遍历，寻找最近的一条【非系统】消息
-                    for (let i = data.chat.length - 1; i >= 0; i--) {
+                    // 获取配置的上下文深度（默认1）
+                    const depth = C.vectorContextDepth || 1;
+                    console.log(`💠 [向量检索] 上下文深度: ${depth}`);
+
+                    // 倒序收集最近的 depth 条有效消息（User + Assistant）
+                    const collectedMessages = [];
+                    for (let i = data.chat.length - 1; i >= 0 && collectedMessages.length < depth; i--) {
                         const msg = data.chat[i];
 
-                        // 1. 跳过系统指令 (关键修复：跳过末尾注入的 Prompt)
+                        // 1. 跳过系统指令
                         if (msg.role === 'system') continue;
 
-                        // 2. 判定是否为用户 (兼容性增强)
-                        // 只要是 is_user=true 或者 role='user'，或者 name 不是 System/Assistant
+                        // 2. 判定是否为有效消息 (User 或 Assistant)
                         const isUser = msg.is_user === true ||
                                        msg.role === 'user' ||
                                        (msg.name !== 'System' && msg.role !== 'assistant');
 
-                        if (isUser) {
+                        const isAssistant = !isUser && (msg.role === 'assistant' || msg.name !== 'System');
+
+                        if (isUser || isAssistant) {
                             // 尝试获取内容
                             const candidateText = msg.mes || msg.content || msg.text || '';
 
                             // 只有内容有效才采纳
                             if (candidateText && candidateText.trim()) {
-                                userQuery = candidateText;
-                                console.log('✅ [向量检索] 已穿透 System 层，锁定用户消息:', userQuery.substring(0, 20) + '...');
-                                break; // 找到了，停止循环
+                                collectedMessages.unshift({  // 使用 unshift 保持时间顺序
+                                    role: isUser ? 'User' : 'AI',
+                                    content: candidateText
+                                });
                             }
                         }
+                    }
+
+                    // 拼接收集到的消息（按时间顺序）
+                    if (collectedMessages.length > 0) {
+                        userQuery = collectedMessages.map(m => m.content).join('\n');
+                        console.log(`✅ [向量检索] 已收集 ${collectedMessages.length} 条消息作为检索上下文`);
                     }
                     // === 修复结束 ===
 
@@ -9716,7 +9725,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增向量化功能 ：</strong>配置界面新增向量化功能.</li>
+                        <li><strong>优化向量化储存 ：</strong>为防止缓存卡顿问题，将导入的向量化数据存储为世界书，该世界书请勿开启操作，保持默认即可。建议刷新后点击一次插件设置里的 【💾 保存配置】 按钮，以彻底清理旧缓存，让酒馆运行更流畅。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
