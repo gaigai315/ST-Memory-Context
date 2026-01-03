@@ -595,8 +595,8 @@
                         const sheet = m.s[batch.index];
                         const totalRows = sheet.r.length;
                         updateStatus(`正在优化：表${batch.index} ${batch.name} (${totalRows}行)`, '#17a2b8');
-                        
-                        result = await this.handleTableOptimization(0, totalRows, true, batch.index, customNote);
+
+                        result = await this.handleTableOptimization(0, totalRows, true, batch.index, customNote, 0, forceSilent);
                     } else {
                         // 💬 聊天追溯
                         updateStatus(`正在追溯：${batch.start}-${batch.end}层`, '#17a2b8');
@@ -748,7 +748,7 @@
             // 🆕 根据模式分支处理
             if (mode === 'table') {
                 // 📊 基于现有表格优化模式
-                return this.handleTableOptimization(start, end, isManual, targetIndex, customNote);
+                return this.handleTableOptimization(start, end, isManual, targetIndex, customNote, 0, forceSilent);
             } else {
                 // 💬 基于聊天记录追溯模式（原逻辑）
                 return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, 0, isOverwrite, forceSilent, skipLoad);
@@ -1137,8 +1137,9 @@
          * @param {number} targetIndex - 目标表格索引（必须指定单个表格，不支持 -1）
          * @param {string} customNote - 用户自定义建议
          * @param {number} retryCount - 当前重试次数（防止递归爆炸）
+         * @param {boolean} forceSilent - 强制静默模式（批量执行时使用）
          */
-        async handleTableOptimization(startRow, endRow, isManual = false, targetIndex = -1, customNote = '', retryCount = 0) {
+        async handleTableOptimization(startRow, endRow, isManual = false, targetIndex = -1, customNote = '', retryCount = 0, forceSilent = null) {
             const ctx = window.SillyTavern.getContext();
             const m = window.Gaigai.m;
             const API_CONFIG = window.Gaigai.config;
@@ -1291,7 +1292,7 @@
 
                 if (shouldRetry) {
                     // 用户点击"重试"，递归调用
-                    return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1);
+                    return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1, forceSilent);
                 } else {
                     // 用户点击"取消"，停止任务
                     return { success: false, reason: 'user_cancelled' };
@@ -1378,7 +1379,15 @@
                 }
 
                 // ✨ 弹出确认框（如果不是静默模式）
-                const isSilentMode = isManual ? ($('#gg_bf_silent-mode').length > 0 && $('#gg_bf_silent-mode').is(':checked')) : C.autoBackfillSilent;
+                // 优先使用传入的 forceSilent 参数
+                let isSilentMode;
+                if (forceSilent !== null) {
+                    // 如果上一步传来了明确的状态（true/false），直接用它！
+                    isSilentMode = forceSilent;
+                } else {
+                    // 如果没传（比如手动触发），才去查界面或配置
+                    isSilentMode = isManual ? ($('#gg_bf_silent-mode').length > 0 && $('#gg_bf_silent-mode').is(':checked')) : C.autoBackfillSilent;
+                }
 
                 if (isSilentMode) {
                     // 静默模式：直接执行
@@ -1401,7 +1410,7 @@
 
                 // ✅ 使用 customRetryAlert 让用户选择重试或放弃（传递原始错误）
                 const shouldRetry = await window.Gaigai.customRetryAlert(result.error || 'Unknown error', '⚠️ AI 生成失败');
-                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1);
+                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1, forceSilent);
                 return { success: false, reason: 'api_failed' };
             }
         }

@@ -321,8 +321,13 @@
 
                     console.log(`📊 [表格总结] 用户选择了 ${selectedTableIndices.length} 个表格: ${selectedTableIndices.join(', ')}`);
 
+                    // ✅ 修复：读取静默执行状态（从聊天区域的复选框读取，或使用全局配置）
+                    const isSilent = $('#gg_sum_silent-mode').length > 0
+                        ? $('#gg_sum_silent-mode').is(':checked')
+                        : C.autoSummarySilent;
+
                     $btn.text('⏳ AI正在阅读...').prop('disabled', true).css('opacity', 0.7);
-                    await self.callAIForSummary(null, null, 'table', false, false, false, selectedTableIndices);
+                    await self.callAIForSummary(null, null, 'table', isSilent, false, false, selectedTableIndices);
                     $btn.text(oldText).prop('disabled', false).css('opacity', 1);
                 });
 
@@ -333,6 +338,22 @@
                     } else {
                         $('#gg_sum_batch-options').slideUp(200);
                     }
+                });
+
+                // ✅ 静默执行复选框 - 保存状态到配置
+                $('#gg_sum_silent-mode').on('change', function () {
+                    const isChecked = $(this).is(':checked');
+                    window.Gaigai.config_obj.autoSummarySilent = isChecked;
+                    localStorage.setItem('gg_config', JSON.stringify(window.Gaigai.config_obj));
+
+                    // 同步到云端
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                        window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                            console.warn('⚠️ [静默执行配置] 云端同步失败:', err);
+                        });
+                    }
+
+                    console.log(`💾 [静默执行配置] 已保存: ${isChecked}`);
                 });
 
                 // 范围变化时智能提示
@@ -774,41 +795,34 @@
                     m.sm.save(cleanSummary, currentRangeStr);
                     await window.Gaigai.syncToWorldInfo(cleanSummary);
 
-                    // ✨✨✨ 关键修复：表格模式下，检查用户的静默配置
+                    // ✨✨✨ 修复：只要 isSilent 为 true，就直接执行静默保存，不再检查全局配置
                     if (isTableMode && currentMode === 'table') {
-                        if (!C.autoSummarySilent) {
-                            // 用户未勾选"完成后静默保存"，需要弹出三选一操作框
-                            // 不要在这里标记为绿色，让代码继续走到 showSummaryPreview
-                            console.log('📊 [表格总结] 用户未勾选静默保存，将弹出三选一操作框');
-                            // 什么都不做，让代码继续执行到下面的 else 分支
-                        } else {
-                            // 用户勾选了静默保存，自动标记为绿色并结束
-                            // 🔧 修复：只标记参与总结的表格（filteredTables），而不是所有表格（tables）
-                            filteredTables.forEach(table => {
-                                const ti = m.all().indexOf(table);
-                                if (ti !== -1) {
-                                    for (let ri = 0; ri < table.r.length; ri++) window.Gaigai.markAsSummarized(ti, ri);
-                                }
+                        // 用户勾选了静默保存，自动标记为绿色并结束
+                        // 🔧 修复：只标记参与总结的表格（filteredTables），而不是所有表格（tables）
+                        filteredTables.forEach(table => {
+                            const ti = m.all().indexOf(table);
+                            if (ti !== -1) {
+                                for (let ri = 0; ri < table.r.length; ri++) window.Gaigai.markAsSummarized(ti, ri);
+                            }
+                        });
+
+                        if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                            window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                                console.warn('⚠️ [自动总结] 云端同步失败:', err);
                             });
-
-                            if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                                window.Gaigai.saveAllSettingsToCloud().catch(err => {
-                                    console.warn('⚠️ [自动总结] 云端同步失败:', err);
-                                });
-                            }
-
-                            m.save();
-                            if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
-                                window.Gaigai.updateCurrentSnapshot();
-                            }
-
-                            if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
-
-                            if (typeof toastr !== 'undefined') {
-                                if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
-                            }
-                            return { success: true };
                         }
+
+                        m.save();
+                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                            window.Gaigai.updateCurrentSnapshot();
+                        }
+
+                        if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
+
+                        if (typeof toastr !== 'undefined') {
+                            if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
+                        }
+                        return { success: true };
                     } else {
                         // 非表格模式（聊天总结），正常静默执行
                         if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
