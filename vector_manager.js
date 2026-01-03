@@ -350,6 +350,43 @@
         }
 
         /**
+         * 🔄 替换文本中的占位符变量
+         * @param {string} text - 要处理的文本
+         * @returns {string} - 替换后的文本
+         * @private
+         */
+        _resolvePlaceholders(text) {
+            if (!text) return text;
+
+            try {
+                // 获取上下文
+                const ctx = window.Gaigai?.m?.ctx();
+                if (!ctx) {
+                    console.warn('⚠️ [VectorManager] 无法获取上下文，跳过变量替换');
+                    return text;
+                }
+
+                // 获取名字
+                const userName = ctx.name1 || 'User';
+                const charName = ctx.name2 || 'Char';
+
+                // 执行替换（支持多种变体）
+                let result = text;
+
+                // 替换 {{user}} 和 {{User}}
+                result = result.replace(/\{\{user\}\}/gi, userName);
+
+                // 替换 {{char}} 和 {{Char}}
+                result = result.replace(/\{\{char\}\}/gi, charName);
+
+                return result;
+            } catch (error) {
+                console.error('❌ [VectorManager] 变量替换失败:', error);
+                return text; // 出错时返回原文本
+            }
+        }
+
+        /**
          * 🌐 调用 Embedding API 获取向量
          * @param {string} text - 要编码的文本
          * @returns {Promise<number[]>} - 向量数组
@@ -485,12 +522,15 @@
         async importBook(file, customName = null) {
             try {
                 // 读取文件内容
-                const content = await new Promise((resolve, reject) => {
+                let content = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = (e) => resolve(e.target.result);
                     reader.onerror = reject;
                     reader.readAsText(file, 'UTF-8');
                 });
+
+                // ✅ 变量替换：将 {{user}} 和 {{char}} 替换为实际名字
+                content = this._resolvePlaceholders(content);
 
                 const config = this._getConfig();
                 const separator = config.separator || '===';
@@ -717,6 +757,9 @@
                     if (content) {
                         chunkText += content;
                     }
+
+                    // ✅ 变量替换：将 {{user}} 和 {{char}} 替换为实际名字
+                    chunkText = this._resolvePlaceholders(chunkText);
 
                     if (chunkText.trim()) {
                         chunks.push(chunkText.trim());
@@ -2128,12 +2171,15 @@
 
                     if (newText === null) return; // 用户取消
 
+                    // ✅ 变量替换：将 {{user}} 和 {{char}} 替换为实际名字
+                    const processedText = self._resolvePlaceholders(newText);
+
                     // 重新切分文本
                     let newChunks = [];
                     if (separator === '\\n' || separator === '\n') {
-                        newChunks = newText.split('\n').filter(line => line.trim());
+                        newChunks = processedText.split('\n').filter(line => line.trim());
                     } else {
-                        newChunks = newText.split(separator).filter(chunk => chunk.trim());
+                        newChunks = processedText.split(separator).filter(chunk => chunk.trim());
                     }
 
                     // 更新书籍数据
