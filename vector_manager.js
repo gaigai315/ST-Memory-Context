@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.5.4
+ * @version 1.5.5
  * @author Gaigai Team
  */
 
@@ -1187,7 +1187,7 @@
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 4px;">
                                     相似度阈值: <span id="gg_vm_threshold_val" style="font-weight: 600; color: #4CAF50;">${config.threshold}</span>
                                 </label>
-                                <input type="range" id="gg_vm_threshold" min="0" max="1" step="0.05" value="${config.threshold}" style="width: 100%;" />
+                                <input type="range" id="gg_vm_threshold" min="0" max="1" step="0.01" value="${config.threshold}" style="width: 100%;" />
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">低于此分数的结果将被过滤</div>
                             </div>
 

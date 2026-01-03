@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.5.4
+ * @version 1.5.5
  * @author Gaigai Team
  */
 
@@ -263,6 +263,22 @@
                     }
 
                     console.log(`✅ [手动修正] 追溯进度已更新: ${newValue}`);
+                });
+
+                // ✅ 静默执行复选框 - 保存状态到配置
+                $('#gg_bf_silent-mode').on('change', function () {
+                    const isChecked = $(this).is(':checked');
+                    window.Gaigai.config_obj.autoBackfillSilent = isChecked;
+                    localStorage.setItem('gg_config', JSON.stringify(window.Gaigai.config_obj));
+
+                    // 同步到云端
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                        window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                            console.warn('⚠️ [静默执行配置] 云端同步失败:', err);
+                        });
+                    }
+
+                    console.log(`💾 [静默执行配置] 已保存: ${isChecked}`);
                 });
 
                 // ✅ 分批模式复选框切换

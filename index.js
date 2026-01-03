@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.4
+// 记忆表格 v1.5.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.4 启动');
+    console.log('🚀 记忆表格 v1.5.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.4';
+    const V = 'v1.5.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -8655,6 +8655,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         console.log(`🔍 [阈值计算] 间隔:${bfInterval}, 延迟:${bfDelay}, 阈值:${bfThreshold}, 延迟开关:${C.autoBackfillDelay}`);
 
                         if (diff >= bfThreshold) {
+                            // 🛡️ UI 冲突检测：检查是否有插件弹窗正在显示
+                            if ($('.g-ov').length > 0) {
+                                console.log('⏸️ [自动批量填表] 检测到插件弹窗打开，跳过本次触发以防止覆盖用户界面');
+                                return;
+                            }
+
                             // 计算目标结束点 (Target End Floor)
                             // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
                             // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
@@ -8720,6 +8726,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const sumThreshold = sumInterval + sumDelay;
 
                         if (newMsgCount >= sumThreshold) {
+                            // 🛡️ UI 冲突检测：检查是否有插件弹窗正在显示
+                            if ($('.g-ov').length > 0) {
+                                console.log('⏸️ [自动总结] 检测到插件弹窗打开，跳过本次触发以防止覆盖用户界面');
+                                return;
+                            }
+
                             // 计算目标结束点 (Target End Floor)
                             // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
                             // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
@@ -9130,6 +9142,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         // 异步检索（不阻塞流程）
                         const results = await window.Gaigai.VM.search(userQuery);
+
+                        // ==================== 💎 名称匹配加权 (Re-ranking) ====================
+                        // 遍历检索结果，根据是否命中关键词（角色名）对分数进行微调
+                        if (results && results.length > 0) {
+                            console.log(`🎯 [向量重排] 开始名称匹配加权，共 ${results.length} 条结果`);
+
+                            results.forEach((item, index) => {
+                                // 提取片段内容中的名字（支持多种格式）
+                                const nameMatch = item.text.match(/(?:姓名|Name|name|角色)[:：]\s*([^\s\n，,。.]+)/i);
+
+                                if (nameMatch && nameMatch[1]) {
+                                    const name = nameMatch[1].trim();
+
+                                    // 检查用户输入是否包含这个名字
+                                    if (userQuery.includes(name)) {
+                                        const oldScore = item.score;
+                                        item.score += 0.1;
+                                        console.log(`[向量重排] 命中关键词: "${name}", 分数修正: ${oldScore.toFixed(4)} -> ${item.score.toFixed(4)}`);
+                                    }
+                                }
+                            });
+
+                            // 重新排序：按 score 从大到小排序
+                            results.sort((a, b) => b.score - a.score);
+                            console.log(`✅ [向量重排] 重排完成，当前最高分: ${results[0].score.toFixed(4)}`);
+                        }
+                        // ==================== 名称匹配加权结束 ====================
 
                         // 获取配置的阈值
                         const threshold = (window.Gaigai.config_obj?.vectorThreshold !== undefined && window.Gaigai.config_obj?.vectorThreshold !== null)
@@ -9733,7 +9772,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化向量化功能 ：</strong>为防止缓存卡顿问题，将导入的向量化数据存储为世界书，该世界书请勿开启操作，保持默认即可。建议刷新后点击一次插件设置里的 【💾 保存配置】 按钮，以彻底清理旧缓存，让酒馆运行更流畅。</li>
+                        <li><strong>优化向量化功能 ：</strong>优化向量化可调节的阈值数值</li>
+                        <li><strong>修复复选框 ：</strong>修复追溯填表内的复选框勾选问题</li>
+                        <li><strong>修复竞态问题 ：</strong>修复填表和总结同时触发时发生竞态问题。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
