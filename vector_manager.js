@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.5.5
+ * @version 1.5.6
  * @author Gaigai Team
  */
 
@@ -37,6 +37,9 @@
 
             // 加载图书馆数据（内含数据迁移逻辑）
             this.loadLibrary();
+
+            // 隐藏向量数据库文件的 UI 选项
+            this._hideStorageBookFromUI();
         }
 
         /**
@@ -84,6 +87,58 @@
          */
         _generateUUID() {
             return 'book_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+        }
+
+        /**
+         * 🕵️‍♂️ UI隐藏：将向量数据库文件从下拉列表中隐藏
+         * 防止用户误操作，但不影响 API 调用
+         * @private
+         */
+        _hideStorageBookFromUI() {
+            const styleId = 'gg-hide-vector-db';
+            if (document.getElementById(styleId)) return;
+
+            const css = `
+                /* 隐藏原生下拉框中的选项 */
+                option[value="${STORAGE_BOOK_NAME}"],
+                /* 隐藏可能存在的自定义列表项 */
+                li[data-value="${STORAGE_BOOK_NAME}"],
+                /* 隐藏世界书管理界面的特定条目 (如果能匹配到) */
+                .world_info_entry[data-uid="${STORAGE_BOOK_NAME}"]
+                { display: none !important; }
+            `;
+
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.textContent = css;
+            document.head.appendChild(style);
+
+            console.log('🕵️‍♂️ [VectorManager] 已注入 CSS 隐藏规则');
+
+            // ✅ 启动 DOM 监听，动态隐藏（应对动态渲染场景）
+            const observer = new MutationObserver((mutations) => {
+                // 查找所有包含特定文本的元素（选项、列表项、div等）
+                const selector = `option, li, div.world_info_entry`;
+                const elements = document.querySelectorAll(selector);
+
+                elements.forEach(el => {
+                    // 检查文本内容或属性是否包含存储文件名
+                    if (el.textContent.includes(STORAGE_BOOK_NAME) ||
+                        el.value === STORAGE_BOOK_NAME ||
+                        el.getAttribute('data-uid') === STORAGE_BOOK_NAME) {
+
+                        // 强制隐藏
+                        if (el.style.display !== 'none') {
+                            el.style.display = 'none';
+                            el.style.setProperty('display', 'none', 'important');
+                        }
+                    }
+                });
+            });
+
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            console.log('🕵️‍♂️ [VectorManager] 已启动 DOM 监听器，实时隐藏数据库 UI 选项');
         }
 
         /**
@@ -275,7 +330,8 @@
                 // 从 chatMetadata 读取 activeBooks
                 const activeBooks = ctx.chatMetadata?.gaigai_activeBooks || [];
 
-                return Array.isArray(activeBooks) ? activeBooks : [];
+                // ✅ 修复：使用 Set 强制去重，防止同一本书被处理多次
+                return [...new Set(Array.isArray(activeBooks) ? activeBooks : [])];
             } catch (error) {
                 console.error('❌ [VectorManager] 获取 activeBooks 失败:', error);
                 return [];
@@ -328,9 +384,9 @@
                 url: C.vectorUrl || '',
                 key: C.vectorKey || '',
                 model: C.vectorModel || 'BAAI/bge-m3',
-                threshold: (C.vectorThreshold !== undefined && C.vectorThreshold !== null && C.vectorThreshold !== '') ? parseFloat(C.vectorThreshold) : 0.6,
-                maxCount: parseInt(C.vectorMaxCount) || 3,
-                contextDepth: parseInt(C.vectorContextDepth) || 1,
+                threshold: (C.vectorThreshold !== undefined && C.vectorThreshold !== null && C.vectorThreshold !== '') ? parseFloat(C.vectorThreshold) : 0.3,
+                maxCount: parseInt(C.vectorMaxCount) || 10,
+                contextDepth: parseInt(C.vectorContextDepth) || 2,
                 separator: C.vectorSeparator || '==='
             };
         }
@@ -679,6 +735,7 @@
                 const queryVector = await this.getEmbedding(query);
 
                 const results = [];
+                const seenContent = new Set(); // ✅ 修复：内容去重集合
 
                 // 检索绑定的知识库
                 for (const bookId of allowedBookIds) {
@@ -687,12 +744,55 @@
 
                     for (let i = 0; i < book.chunks.length; i++) {
                         if (book.vectorized[i] && book.vectors[i]) {
-                            results.push({
-                                text: book.chunks[i],
-                                source: `${book.name} 片段${i}`,
-                                score: this.cosineSimilarity(queryVector, book.vectors[i]),
-                                type: '知识库'
-                            });
+                            // 计算基础向量相似度
+                            const score = this.cosineSimilarity(queryVector, book.vectors[i]);
+
+                            let finalScore = score;
+                            let isKeywordHit = false;
+                            let hitReason = '';
+
+                            // 🔍 增强版实体提取正则：支持 姓名/地点/物品/组织/设定
+                            // 匹配格式如： "姓名：张三"、"地点: 洛阳"、"Item: Excalibur"
+                            const entityRegex = /(?:姓名|名字|角色|Name|地点|位置|场景|Location|Place|物品|道具|装备|Item|Object|组织|势力|帮派|Organization|Group|设定|概念|Concept)[:：]\s*([^\s\n，,。.;；]+)/ig;
+
+                            // 遍历所有可能的匹配项 (因为一个片段可能包含多个定义)
+                            let match;
+                            while ((match = entityRegex.exec(book.chunks[i])) !== null) {
+                                if (match[1]) {
+                                    const entityName = match[1].trim();
+                                    // 只有当实体名长度大于1时才匹配（避免匹配到 "我"、"他" 这种单字）
+                                    if (entityName.length > 1 && query.includes(entityName)) {
+                                        isKeywordHit = true;
+                                        hitReason = entityName;
+                                        break; // 只要命中一个关键词，就足够召回了
+                                    }
+                                }
+                            }
+
+                            // 策略 2: 短查询词兜底 (如果查询很短且片段包含查询词，也强制召回)
+                            if (!isKeywordHit && query.length < 15 && book.chunks[i].includes(query)) {
+                                isKeywordHit = true;
+                                hitReason = '短语精确匹配';
+                            }
+
+                            // 💥 强制加分：直接加 0.5 分，确保它绝对排在前面且超过阈值
+                            if (isKeywordHit) {
+                                finalScore += 0.5;
+                                // console.log(`🎯 [强制召回] 命中关键词: "${hitReason}" -> 提分至 ${finalScore.toFixed(2)}`);
+                            }
+
+                            // ✅ 修复：内容去重
+                            // 只有当这个文本片段没出现过时，才加入结果
+                            if (!seenContent.has(book.chunks[i])) {
+                                seenContent.add(book.chunks[i]); // 记录已添加的内容
+
+                                results.push({
+                                    text: book.chunks[i],
+                                    source: `${book.name} 片段${i}`,
+                                    score: finalScore,
+                                    type: isKeywordHit ? '关键词⭐' : '知识库'
+                                });
+                            }
                         }
                     }
                 }
@@ -1971,7 +2071,7 @@
             // 导出图书馆（支持仅导出勾选书籍）
             $('#gg_vm_export_all').off('click').on('click', async () => {
                 try {
-                    if (self.vectorIndex.length === 0 && Object.keys(self.library).length === 0) {
+                    if (Object.keys(self.library).length === 0) {
                         await customAlert('⚠️ 没有可导出的数据', '提示');
                         return;
                     }

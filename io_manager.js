@@ -3,7 +3,7 @@
  *
  * 功能：处理数据的导入导出操作，支持JSON和TXT格式
  *
- * @version 1.5.5
+ * @version 1.5.6
  * @author Gaigai Team
  */
 
@@ -269,7 +269,18 @@
             const V = window.Gaigai.V || 'v1.0.0';
             const customAlert = window.Gaigai.customAlert || alert;
 
-            // 🌙 获取主题配置
+            // 🔄 强制刷新 UI 配置（确保获取最新的主题设置）
+            try {
+                const savedUI = localStorage.getItem('gg_ui');
+                if (savedUI) {
+                    const parsed = JSON.parse(savedUI);
+                    Object.assign(UI, parsed);
+                }
+            } catch (e) {
+                console.warn('⚠️ [IOManager] 刷新 UI 配置失败:', e);
+            }
+
+            // 🌙 获取主题配置（重新读取以确保准确）
             const isDark = UI.darkMode;
             const themeColor = UI.c;
             const textColor = UI.tc;
@@ -299,7 +310,7 @@
             const $box = $('<div>', {
                 css: {
                     background: isDark ? '#1e1e1e' : '#fff',
-                    color: 'var(--g-tc)',
+                    color: textColor,
                     border: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
                     width: '320px',
                     maxWidth: '90vw',
@@ -323,7 +334,7 @@
                     fontSize: '16px',
                     fontWeight: '600',
                     textAlign: 'center',
-                    color: 'var(--g-tc)'
+                    color: textColor
                 }
             });
 
@@ -332,7 +343,7 @@
                 text: '请选择要导出的内容',
                 css: {
                     fontSize: '12px',
-                    color: 'var(--g-tc)',
+                    color: textColor,
                     opacity: '0.8',
                     marginBottom: '8px',
                     textAlign: 'center'
@@ -365,11 +376,11 @@
 
             const $formatLabel = $('<label>', {
                 for: 'export-txt-format',
-                html: `📄 保存为 TXT 格式 <span style="font-size:11px;color:var(--g-tc);opacity:0.6;">(方便手机传输)</span>`,
+                html: `📄 保存为 TXT 格式 <span style="font-size:11px;color:${textColor};opacity:0.6;">(方便手机传输)</span>`,
                 css: {
                     cursor: 'pointer',
                     fontSize: '13px',
-                    color: 'var(--g-tc)',
+                    color: textColor,
                     flex: 1,
                     userSelect: 'none'
                 }
@@ -442,10 +453,11 @@
                 text: '取消',
                 css: {
                     ...btnStyle,
-                    background: UI.c,
-                    color: UI.tc,
-                    opacity: '0.6',
-                    marginTop: '8px'
+                    background: 'transparent',
+                    border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid ' + themeColor,
+                    color: textColor,
+                    marginTop: '8px',
+                    opacity: '0.8'
                 }
             }).on('click', function () {
                 $overlay.remove();

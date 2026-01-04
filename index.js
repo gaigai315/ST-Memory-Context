@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.5
+// 记忆表格 v1.5.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.5 启动');
+    console.log('🚀 记忆表格 v1.5.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.5';
+    const V = 'v1.5.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -74,8 +74,8 @@
         vectorUrl: '',                 // 向量 API 地址
         vectorKey: '',                 // 向量 API 密钥
         vectorModel: 'BAAI/bge-m3',    // 向量模型名称
-        vectorThreshold: 0.6,          // 相似度阈值 (0.0 - 1.0)
-        vectorMaxCount: 3,             // 最大召回条数
+        vectorThreshold: 0.3,          // 相似度阈值 (0.0 - 1.0)
+        vectorMaxCount: 10,            // 最大召回条数
         vectorSeparator: '===',        // 🆕 知识库文本切分符
         customTables: null             // 用户自定义表格结构（格式同 DEFAULT_TABLES）
     };
@@ -808,7 +808,10 @@
                 flex: '1',
                 minWidth: '100px',
                 textAlign: 'center',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center'
             };
 
             const $cancelBtn = $('<button>', {
@@ -9092,7 +9095,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const isVectorReady = C.vectorEnabled && window.Gaigai.VM;
             console.log(`💠 [向量检索预检] 开关: ${C.vectorEnabled}, 模块加载: ${!!window.Gaigai.VM}`);
 
-            if (isVectorReady && data.chat && data.chat.length > 0) {
+            // 🛡️ 2. 配置预检：开启了但没配好 API
+            if (C.vectorEnabled && (!C.vectorUrl || !C.vectorKey)) {
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning('⚠️ 向量化 API 未配置，已自动跳过检索', '配置提醒', { timeOut: 3000 });
+                }
+                console.warn('🚫 [向量检索] 配置缺失 (URL/Key为空)，跳过检索');
+                // 注意：不 return，代码会继续往下执行到 inj(data)
+            }
+            // 3. 正常执行检索
+            else if (isVectorReady && data.chat && data.chat.length > 0) {
                 try {
                     // === 增强版：多轮上下文检索 ===
                     let userQuery = '';
@@ -9118,9 +9130,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         if (isUser || isAssistant) {
                             // 尝试获取内容
-                            const candidateText = msg.mes || msg.content || msg.text || '';
+                            let candidateText = msg.mes || msg.content || msg.text || '';
 
-                            // 只有内容有效才采纳
+                            // ✅ 新增：执行清洗，去除 Memory 标签和用户黑名单标签(如 think)
+                            candidateText = window.Gaigai.cleanMemoryTags(candidateText);
+                            if (window.Gaigai.tools && typeof window.Gaigai.tools.filterContentByTags === 'function') {
+                                candidateText = window.Gaigai.tools.filterContentByTags(candidateText);
+                            }
+
+                            // 只有清洗后内容有效才采纳
                             if (candidateText && candidateText.trim()) {
                                 collectedMessages.unshift({  // 使用 unshift 保持时间顺序
                                     role: isUser ? 'User' : 'AI',
@@ -9183,6 +9201,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // === 格式化检索结果 (纯净版) ===
                             // 移除所有硬编码标题、来源标注和分割线，只保留内容本身
                             let vectorContent = results.map(r => r.text).join('\n\n');
+
+                            // ✅ 修复：执行运行时变量替换，确保 {{user}}/{{char}} 显示为真名
+                            if (window.Gaigai.PromptManager && typeof window.Gaigai.PromptManager.resolveVariables === 'function') {
+                                const currentCtx = window.Gaigai.m.ctx();
+                                vectorContent = window.Gaigai.PromptManager.resolveVariables(vectorContent, currentCtx);
+                                console.log('✅ [向量检索] 已解析运行时变量 ({{user}}/{{char}})');
+                            }
 
                             // 🔥 [核心修复] 全量替换所有消息中的 {{VECTOR_MEMORY}} 变量
                             let replacedCount = 0;
@@ -9251,8 +9276,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     }
                 } catch (e) {
-                    // 优雅降级：如果向量检索失败，只记录错误，不影响正常流程
-                    console.error('❌ [向量检索] 运行出错:', e);
+                    // 🛡️ 优雅降级：如果向量检索失败，只记录错误，不影响正常流程
+                    console.error('❌ [向量检索] 运行出错 (非阻断):', e);
+
+                    // 用户友好提示
+                    if (typeof toastr !== 'undefined') {
+                        const errorMsg = e.message || '未知错误';
+                        toastr.error(`向量检索失败: ${errorMsg}，但这不影响聊天`, '非阻断错误', { timeOut: 4000 });
+                    }
                 }
             } else if (!C.vectorEnabled) {
                 console.log('🚫 [向量检索] 跳过：功能未启用 (请检查配置)');
@@ -9772,9 +9803,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化向量化功能 ：</strong>优化向量化可调节的阈值数值</li>
-                        <li><strong>修复复选框 ：</strong>修复追溯填表内的复选框勾选问题</li>
-                        <li><strong>修复竞态问题 ：</strong>修复填表和总结同时触发时发生竞态问题。</li>
+                        <li><strong>优化向量化功能 ：</strong>向量化增加关键词匹配兜底，增加召回的关联度</li>
+                        <li><strong>优化css ：</strong>优化部分css问题</li>
+                        <li><strong>优化向量化api ：</strong>优化向量api未正确配置导致插件卡死的问题。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

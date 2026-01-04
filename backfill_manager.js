@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.5.5
+ * @version 1.5.6
  * @author Gaigai Team
  */
 
@@ -866,7 +866,7 @@
             if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
                 const sheet = m.s[targetIndex];
                 const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
-                backfillInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
+                backfillInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注且填写【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
                 console.log(`🎯 [单表模式] 最终提醒已追加到指令末尾`);
             }
 
