@@ -491,6 +491,9 @@
         /**
          * 🌐 实际的 API 请求
          * @private
+         * @param {string|string[]} text - 单个文本或文本数组（批量）
+         * @param {Object} config - 配置对象
+         * @returns {Promise<number[]|number[][]>} - 单个向量或向量数组
          */
         async _fetchEmbedding(text, config) {
             // ✅ 优化 URL 拼接逻辑，避免重复 /v1
@@ -500,12 +503,13 @@
             }
             const url = baseUrl + '/v1/embeddings';
 
+            const isBatch = Array.isArray(text);
             const payload = {
                 model: config.model,
-                input: text
+                input: text  // OpenAI API 支持 string 或 string[]
             };
 
-            console.log(`🔄 [VectorManager] 调用 Embedding API: ${url}`);
+            console.log(`🔄 [VectorManager] 调用 Embedding API: ${url} ${isBatch ? `(批量: ${text.length} 条)` : '(单条)'}`);
 
             try {
                 const response = await fetch(url, {
@@ -524,13 +528,23 @@
 
                 const data = await response.json();
 
-                // 标准 OpenAI 格式: { data: [{ embedding: [...] }] }
-                if (data.data && data.data[0] && data.data[0].embedding) {
-                    console.log('✅ [VectorManager] 获取向量成功，维度:', data.data[0].embedding.length);
-                    return data.data[0].embedding;
-                } else {
-                    throw new Error('API 返回格式不正确');
+                // ✅ 标准 OpenAI 格式: { data: [{ embedding: [...] }, ...] }
+                if (data.data && Array.isArray(data.data)) {
+                    if (isBatch) {
+                        // 批量模式：返回向量数组
+                        const vectors = data.data.map(item => item.embedding);
+                        console.log(`✅ [VectorManager] 获取批量向量成功，数量: ${vectors.length}, 维度: ${vectors[0]?.length || 0}`);
+                        return vectors;
+                    } else {
+                        // 单条模式：返回单个向量
+                        if (data.data[0] && data.data[0].embedding) {
+                            console.log('✅ [VectorManager] 获取向量成功，维度:', data.data[0].embedding.length);
+                            return data.data[0].embedding;
+                        }
+                    }
                 }
+
+                throw new Error('API 返回格式不正确');
             } catch (error) {
                 console.error('❌ [VectorManager] Embedding API 错误:', error);
                 throw error;
@@ -625,7 +639,7 @@
         }
 
         /**
-         * ⚡ 向量化指定书籍（替代旧版 vectorizeCustomKnowledge）
+         * ⚡ 向量化指定书籍（批量优化版）
          * @param {string} bookId - 书籍 ID
          * @param {Function} progressCallback - 进度回调 (current, total)
          * @returns {Promise<Object>} - { success: boolean, count: number, errors: number }
@@ -653,44 +667,75 @@
 
             let successCount = 0;
             let errorCount = 0;
+            let currentBatchSize = 10; // 动态批量大小，遇到 429 时会降级
 
-            for (let i = 0; i < unvectorizedIndices.length; i++) {
-                const idx = unvectorizedIndices[i];
+            const config = this._getConfig();
+
+            // 🚀 批量处理：每次发送 currentBatchSize 个片段
+            for (let i = 0; i < unvectorizedIndices.length; i += currentBatchSize) {
+                const batchIndices = unvectorizedIndices.slice(i, i + currentBatchSize);
+                const batchTexts = batchIndices.map(idx => book.chunks[idx]);
 
                 try {
                     // 调用进度回调
                     if (progressCallback) {
-                        progressCallback(i + 1, unvectorizedIndices.length);
+                        progressCallback(Math.min(i + currentBatchSize, unvectorizedIndices.length), unvectorizedIndices.length);
                     }
 
-                    // 获取向量
-                    const vector = await this.getEmbedding(book.chunks[idx]);
+                    console.log(`📦 [VectorManager] 批量处理: ${i + 1}-${Math.min(i + currentBatchSize, unvectorizedIndices.length)}/${unvectorizedIndices.length}`);
 
-                    // 更新书籍数据
-                    book.vectors[idx] = vector;
-                    book.vectorized[idx] = true;
+                    // 🔥 批量获取向量
+                    const vectors = await this._fetchEmbedding(batchTexts, config);
 
-                    successCount++;
-                    console.log(`✅ [VectorManager] 已向量化片段 ${idx} (${i + 1}/${unvectorizedIndices.length})`);
+                    // 批量更新书籍数据
+                    for (let j = 0; j < batchIndices.length; j++) {
+                        const idx = batchIndices[j];
+                        book.vectors[idx] = vectors[j];
+                        book.vectorized[idx] = true;
+                        successCount++;
+                    }
 
-                    // 增加基础延迟到 1000ms 防止卡顿和封禁
+                    console.log(`✅ [VectorManager] 批量完成: ${batchIndices.length} 个片段向量化`);
+
+                    // 批量处理后延迟 1 秒，避免过快触发速率限制
                     await new Promise(r => setTimeout(r, 1000));
 
-                } catch (error) {
-                    console.error(`❌ [VectorManager] 向量化失败: 片段 ${idx}`, error);
-                    errorCount++;
-
-                    // 如果检测到 429 (Too Many Requests)，额外等待 5秒
-                    if (error.message && error.message.includes('429')) {
-                        console.warn('⚠️ [429] 触发速率限制，正在冷却 5秒...');
-                        await new Promise(r => setTimeout(r, 5000));
-                    } else {
-                        console.error(`❌ [VectorManager] 错误详情: ${error.message || error.toString()}`);
+                    // 🔄 定期自动存档（每处理 50 个片段）
+                    if (successCount % 50 === 0) {
+                        this.saveLibrary();
+                        console.log(`💾 [VectorManager] 自动存档 (已完成 ${successCount} 个)`);
                     }
+
+                } catch (error) {
+                    console.error(`❌ [VectorManager] 批量向量化失败: 片段 ${batchIndices[0]}-${batchIndices[batchIndices.length - 1]}`, error);
+
+                    // 🛡️ 检测到 429 错误：降级策略
+                    if (error.message && error.message.includes('429')) {
+                        console.warn('⚠️ [429] 触发速率限制，执行降级策略...');
+
+                        // 降低批量大小
+                        if (currentBatchSize > 1) {
+                            currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+                            console.log(`🔽 [降级] Batch Size 降低至: ${currentBatchSize}`);
+                        }
+
+                        // 冷却等待
+                        console.log('❄️ [冷却] 等待 10 秒...');
+                        await new Promise(r => setTimeout(r, 10000));
+
+                        // 🔄 重试当前批次（使用更小的批量）
+                        i -= currentBatchSize; // 回退索引，重新处理这一批
+                        continue;
+                    }
+
+                    // 其他错误：跳过当前批次，继续下一批
+                    errorCount += batchIndices.length;
+                    console.error(`❌ [VectorManager] 错误详情: ${error.message || error.toString()}`);
+                    console.warn(`⚠️ [跳过] 跳过当前批次 ${batchIndices.length} 个片段`);
                 }
             }
 
-            // 保存到全局
+            // 最终保存
             this.saveLibrary();
 
             console.log(`✅ [VectorManager] 书籍向量化完成: ${successCount} 成功, ${errorCount} 失败`);
