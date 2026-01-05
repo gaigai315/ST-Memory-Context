@@ -7205,9 +7205,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const result = await callIndependentAPI(testPrompt);
 
                         if (result.success) {
-                            let alertMsg = `✅ API连接成功！`;
-                            if (result.summary) alertMsg += `\n\nAI回复预览:\n${result.summary.slice(0, 100)}...`;
-                            await customAlert(alertMsg, '成功');
+                            await customAlert('✅ API连接成功！\n\n网络通畅。', '成功');
                         } else {
                             // API 返回失败，弹出重试弹窗
                             const errorMsg = `❌ 连接失败\n\n${result.error}\n\n是否重新尝试？`;
