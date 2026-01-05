@@ -662,12 +662,13 @@
 
             if (unvectorizedIndices.length === 0) {
                 console.log('✅ [VectorManager] 所有片段已向量化');
-                return { success: true, count: 0, errors: 0 };
+                return { success: true, count: 0, errors: 0, lastError: null };
             }
 
             let successCount = 0;
             let errorCount = 0;
             let currentBatchSize = 10; // 动态批量大小，遇到 429 时会降级
+            let lastErrorMessage = null; // ✅ 记录最后一次错误信息
 
             const config = this._getConfig();
 
@@ -709,6 +710,9 @@
                 } catch (error) {
                     console.error(`❌ [VectorManager] 批量向量化失败: 片段 ${batchIndices[0]}-${batchIndices[batchIndices.length - 1]}`, error);
 
+                    // ✅ 记录错误信息
+                    lastErrorMessage = error.message || error.toString();
+
                     // 🛡️ 检测到 429 错误：降级策略
                     if (error.message && error.message.includes('429')) {
                         console.warn('⚠️ [429] 触发速率限制，执行降级策略...');
@@ -740,7 +744,7 @@
 
             console.log(`✅ [VectorManager] 书籍向量化完成: ${successCount} 成功, ${errorCount} 失败`);
 
-            return { success: true, count: successCount, errors: errorCount };
+            return { success: true, count: successCount, errors: errorCount, lastError: lastErrorMessage };
         }
 
         /**
@@ -2380,10 +2384,20 @@
                     });
 
                     if (result.success) {
-                        if (typeof toastr !== 'undefined') {
-                            toastr.success(`成功向量化 ${result.count} 个片段`, '完成');
+                        // ✅ 检查是否所有片段都失败了
+                        if (result.count === 0 && result.errors > 0) {
+                            // 所有片段处理失败，显示详细错误信息
+                            await customAlert(
+                                `❌ 所有片段处理失败！\n\n原因: ${result.lastError || '未知错误'}\n\n请检查 API 地址、密钥和模型名称是否正确。`,
+                                '⚠️ 向量化失败'
+                            );
                         } else {
-                            await customAlert(`✅ 向量化完成\n\n成功: ${result.count} 条`, '成功');
+                            // 至少有部分成功
+                            if (typeof toastr !== 'undefined') {
+                                toastr.success(`成功向量化 ${result.count} 个片段`, '完成');
+                            } else {
+                                await customAlert(`✅ 向量化完成\n\n成功: ${result.count} 条`, '成功');
+                            }
                         }
 
                         // 刷新详情区

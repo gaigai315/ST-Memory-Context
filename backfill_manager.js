@@ -435,6 +435,16 @@
                         // 停止任务
                         window.Gaigai.stopBatchBackfill = true;
                         console.log('🛑 [用户操作] 请求停止批量追溯');
+
+                        // ✅ 立即更新按钮状态，给用户视觉反馈
+                        const $btn = $(this);
+                        $btn.text('🛑 正在停止...')
+                            .prop('disabled', true)
+                            .css({
+                                'background': '#666',
+                                'opacity': '0.8'
+                            });
+
                         return;
                     }
 
@@ -535,194 +545,206 @@
 
             // 2. 执行循环
             window.Gaigai.stopBatchBackfill = false;
-            window.Gaigai.isBatchBackfillRunning = true;
-
-            // ✅ 初始化全局进度状态（用于UI恢复）
-            window.Gaigai.backfillProgress = { current: 0, total: batches.length };
 
             let successCount = 0;
             let failedBatches = [];
             let isUserCancelled = false;
-            let actualProgress = (mode === 'chat') ? start : 0; 
+            let actualProgress = (mode === 'chat') ? start : 0;
 
-            // 辅助函数
-            const updateBtn = (text, isRunning) => {
-                const $btn = $('#gg_bf_gen');
-                if ($btn.length > 0) {
-                    $btn.text(text)
-                        .css('background', isRunning ? '#dc3545' : window.Gaigai.ui.c)
-                        .css('opacity', '1')
-                        .prop('disabled', false);
-                }
-            };
-            const updateStatus = (text, color = null) => {
-                const $status = $('#gg_bf_status');
-                if ($status.length > 0) {
-                    $status.text(text).css(color ? {color} : {});
-                }
-            };
+            try {
+                window.Gaigai.isBatchBackfillRunning = true;
 
-            if (typeof toastr !== 'undefined') toastr.info(`开始执行 ${batches.length} 个任务`, mode === 'table' ? '表格优化' : '批量追溯');
+                // ✅ 初始化全局进度状态（用于UI恢复）
+                window.Gaigai.backfillProgress = { current: 0, total: batches.length };
 
-            // --- 循环开始 ---
-            for (let i = 0; i < batches.length; i++) {
-                // 🛑 检查点 1：任务开始前
-                if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
-
-                // 冷却逻辑
-                if (i > 0) {
-                    for (let d = 5; d > 0; d--) {
-                        if (window.Gaigai.stopBatchBackfill) break; // 🛑 检查点 2：冷却期间
-                        updateBtn(`⏳ 冷却 ${d}s... (点此停止)`, true);
-                        updateStatus(`批次间冷却... ${d}秒`, '#ffc107');
-                        await new Promise(r => setTimeout(r, 1000));
+                // 辅助函数
+                const updateBtn = (text, isRunning) => {
+                    const $btn = $('#gg_bf_gen');
+                    if ($btn.length > 0) {
+                        $btn.text(text)
+                            .css('background', isRunning ? '#dc3545' : window.Gaigai.ui.c)
+                            .css('opacity', '1')
+                            .prop('disabled', false);
                     }
-                }
-                if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
-
-                const batch = batches[i];
-                const batchNum = i + 1;
-
-                // ✅ 更新全局进度状态
-                window.Gaigai.backfillProgress.current = batchNum;
-
-                updateBtn(`🛑 停止 (${batchNum}/${batches.length})`, true);
-
-                try {
-                    let result;
-                    if (batch.type === 'table') {
-                        // 📊 表格优化
-                        const sheet = m.s[batch.index];
-                        const totalRows = sheet.r.length;
-                        updateStatus(`正在优化：表${batch.index} ${batch.name} (${totalRows}行)`, '#17a2b8');
-
-                        result = await this.handleTableOptimization(0, totalRows, true, batch.index, customNote, 0, forceSilent);
-                    } else {
-                        // 💬 聊天追溯
-                        updateStatus(`正在追溯：${batch.start}-${batch.end}层`, '#17a2b8');
-                        // ✅ 仅第一批使用 isOverwrite，后续批次强制为 false，避免清空上一批数据
-                        const batchOverwrite = (i === 0) ? isOverwrite : false;
-                        // ✅ 批量模式下传递 skipLoad=true，避免重新加载导致数据丢失
-                         result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat', batchOverwrite, forceSilent, true);
-                }
-
-                    // 🛑 检查点 3：API返回后立即检查
-                    // 如果在生成过程中点了停止，这里马上生效，不再记录成功状态
-                    if (window.Gaigai.stopBatchBackfill) {
-                         console.warn(`🛑 [批量任务] 任务 ${batchNum} 执行期间被中止`);
-                         isUserCancelled = true;
-                         break;
+                };
+                const updateStatus = (text, color = null) => {
+                    const $status = $('#gg_bf_status');
+                    if ($status.length > 0) {
+                        $status.text(text).css(color ? {color} : {});
                     }
+                };
 
-                    if (!result || result.success === false) {
-                        updateStatus(`🛑 任务 ${batchNum} 失败/取消`, '#dc3545');
-                        // 失败了通常意味着用户在弹窗里点了取消，视为手动停止
-                        isUserCancelled = true; 
-                        break;
-                    }
+                if (typeof toastr !== 'undefined') toastr.info(`开始执行 ${batches.length} 个任务`, mode === 'table' ? '表格优化' : '批量追溯');
 
-                    successCount++;
+                // --- 循环开始 ---
+                for (let i = 0; i < batches.length; i++) {
+                    // 🛑 检查点 1：任务开始前
+                    if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
-                    // ✅ 仅聊天模式更新进度条 (修复你的担心)
-                    if (batch.type === 'chat') {
-                        actualProgress = batch.end;
-                        API_CONFIG.lastBackfillIndex = actualProgress;
-                        try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch(e){}
-                    }
-
-                    if (typeof toastr !== 'undefined') toastr.success(`任务 ${batchNum}/${batches.length} 完成`, '进度');
-
-                    // ⏳ [新增] 批次间延迟，防止API限流
-                    const C = window.Gaigai.config_obj || {};
-                    if (C.autoBackfillDelay && i < batches.length - 1) {
-                        console.log('⏳ [Batch Backfill] Cooling down for 5s to avoid rate limit...');
-                        // 分秒检查停止标志，确保UI及时响应
-                        for (let delay = 5; delay > 0; delay--) {
-                            if (window.Gaigai.stopBatchBackfill) break;
-                            updateStatus(`⏳ 冷却中，避免触发限流 (${delay}秒)...`, '#ffc107');
+                    // 冷却逻辑
+                    if (i > 0) {
+                        for (let d = 5; d > 0; d--) {
+                            if (window.Gaigai.stopBatchBackfill) break; // 🛑 检查点 2：冷却期间
+                            updateBtn(`⏳ 冷却 ${d}s... (点此停止)`, true);
+                            updateStatus(`批次间冷却... ${d}秒`, '#ffc107');
                             await new Promise(r => setTimeout(r, 1000));
                         }
                     }
-
-                    // 🛑 检查点：延迟后立即检查停止标志
                     if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
 
-                } catch (error) {
-                    // ✨✨✨ 修复：如果用户已经点了停止，直接退出，不要弹窗问废话
-                    if (window.Gaigai.stopBatchBackfill) {
-                        console.warn(`🛑 [批量追溯] 检测到用户停止，跳过异常弹窗`);
-                        isUserCancelled = true; // 标记为用户取消
-                        break; 
+                    const batch = batches[i];
+                    const batchNum = i + 1;
+
+                    // ✅ 更新全局进度状态
+                    window.Gaigai.backfillProgress.current = batchNum;
+
+                    updateBtn(`🛑 停止 (${batchNum}/${batches.length})`, true);
+
+                    try {
+                        let result;
+                        if (batch.type === 'table') {
+                            // 📊 表格优化
+                            const sheet = m.s[batch.index];
+                            const totalRows = sheet.r.length;
+                            updateStatus(`正在优化：表${batch.index} ${batch.name} (${totalRows}行)`, '#17a2b8');
+
+                            result = await this.handleTableOptimization(0, totalRows, true, batch.index, customNote, 0, forceSilent);
+                        } else {
+                            // 💬 聊天追溯
+                            updateStatus(`正在追溯：${batch.start}-${batch.end}层`, '#17a2b8');
+                            // ✅ 仅第一批使用 isOverwrite，后续批次强制为 false，避免清空上一批数据
+                            const batchOverwrite = (i === 0) ? isOverwrite : false;
+                            // ✅ 批量模式下传递 skipLoad=true，避免重新加载导致数据丢失
+                             result = await this.autoRunBackfill(batch.start, batch.end, true, targetIndex, customNote, 'chat', batchOverwrite, forceSilent, true);
                     }
 
-                    console.error(error);
-                    failedBatches.push({ batch: batchNum, error: error.message });
-                    const userChoice = await window.Gaigai.customConfirm(
-                        `任务 ${batchNum} 发生异常：\n${error.message}\n\n是否继续后续任务？`,
-                        '异常处理', '继续', '停止'
-                    );
-                    if (!userChoice) { isUserCancelled = true; break; }
+                        // 🛑 检查点 3：API返回后立即检查
+                        // 如果在生成过程中点了停止，这里马上生效，不再记录成功状态
+                        if (window.Gaigai.stopBatchBackfill) {
+                             console.warn(`🛑 [批量任务] 任务 ${batchNum} 执行期间被中止`);
+                             isUserCancelled = true;
+                             break;
+                        }
+
+                        if (!result || result.success === false) {
+                            updateStatus(`🛑 任务 ${batchNum} 失败/取消`, '#dc3545');
+                            // 失败了通常意味着用户在弹窗里点了取消，视为手动停止
+                            isUserCancelled = true;
+                            break;
+                        }
+
+                        successCount++;
+
+                        // ✅ 仅聊天模式更新进度条 (修复你的担心)
+                        if (batch.type === 'chat') {
+                            actualProgress = batch.end;
+                            API_CONFIG.lastBackfillIndex = actualProgress;
+                            try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch(e){}
+                        }
+
+                        if (typeof toastr !== 'undefined') toastr.success(`任务 ${batchNum}/${batches.length} 完成`, '进度');
+
+                        // ⏳ [新增] 批次间延迟，防止API限流
+                        const C = window.Gaigai.config_obj || {};
+                        if (C.autoBackfillDelay && i < batches.length - 1) {
+                            console.log('⏳ [Batch Backfill] Cooling down for 5s to avoid rate limit...');
+                            // 分秒检查停止标志，确保UI及时响应
+                            for (let delay = 5; delay > 0; delay--) {
+                                if (window.Gaigai.stopBatchBackfill) break;
+                                updateStatus(`⏳ 冷却中，避免触发限流 (${delay}秒)...`, '#ffc107');
+                                await new Promise(r => setTimeout(r, 1000));
+                            }
+                        }
+
+                        // 🛑 检查点：延迟后立即检查停止标志
+                        if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
+
+                    } catch (error) {
+                        // ✨✨✨ 修复：如果用户已经点了停止，直接退出，不要弹窗问废话
+                        if (window.Gaigai.stopBatchBackfill) {
+                            console.warn(`🛑 [批量追溯] 检测到用户停止，跳过异常弹窗`);
+                            isUserCancelled = true; // 标记为用户取消
+                            break;
+                        }
+
+                        console.error(error);
+                        failedBatches.push({ batch: batchNum, error: error.message });
+                        const userChoice = await window.Gaigai.customConfirm(
+                            `任务 ${batchNum} 发生异常：\n${error.message}\n\n是否继续后续任务？`,
+                            '异常处理', '继续', '停止'
+                        );
+                        if (!userChoice) { isUserCancelled = true; break; }
+                    }
+
+                    // 🛑 检查点 4：落盘等待前
+                    if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
+
+                    // ⏳ 只有在没按停止的时候，才等待落盘
+                    // ✅ [修复截断] 增加等待时间从 3 秒到 6 秒，适配 thinking 模型和云同步
+                    // ✅ [优化] 将等待改为可中断的循环，提升停止响应速度
+                    console.log(`⏳ [IO缓冲] 等待数据完全写入 (6秒)...`);
+                    for (let waitSec = 0; waitSec < 6; waitSec++) {
+                        if (window.Gaigai.stopBatchBackfill) {
+                            console.log(`🛑 [IO缓冲] 检测到停止标志，中断等待`);
+                            isUserCancelled = true;
+                            break;
+                        }
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                    if (isUserCancelled) break;
                 }
-                
-                // 🛑 检查点 4：落盘等待前
-                if (window.Gaigai.stopBatchBackfill) { isUserCancelled = true; break; }
+            } finally {
+                // 3. 结束收尾 - 无论是否出错，都要执行清理
+                window.Gaigai.isBatchBackfillRunning = false;
+                window.Gaigai.stopBatchBackfill = false;
 
-                // ⏳ 只有在没按停止的时候，才等待落盘
-                // ✅ [修复截断] 增加等待时间从 3 秒到 6 秒，适配 thinking 模型和云同步
-                console.log(`⏳ [IO缓冲] 等待数据完全写入 (6秒)...`);
-                await new Promise(r => setTimeout(r, 6000));
-            }
+                // ✅ 清除全局进度状态
+                delete window.Gaigai.backfillProgress;
 
-            // 3. 结束收尾
-            window.Gaigai.isBatchBackfillRunning = false;
-            window.Gaigai.stopBatchBackfill = false;
+                if (isUserCancelled) {
+                    if (!isManual) await window.Gaigai.customAlert('批量任务已手动停止或取消', '已中止');
 
-            // ✅ 清除全局进度状态
-            delete window.Gaigai.backfillProgress;
+                    // ✨ FIX: Explicitly reset button state immediately
+                    const $btn = $('#gg_bf_gen');
+                    if ($btn.length > 0) {
+                        $btn.text('🚀 开始分析并生成')
+                            .css('background', window.Gaigai.ui.c) // Restore theme color
+                            .css('opacity', '1')
+                            .prop('disabled', false);
+                    }
 
-            if (isUserCancelled) {
-                if (!isManual) await window.Gaigai.customAlert('批量任务已手动停止或取消', '已中止');
-
-                // ✨ FIX: Explicitly reset button state immediately
-                const $btn = $('#gg_bf_gen');
-                if ($btn.length > 0) {
-                    $btn.text('🚀 开始分析并生成')
-                        .css('background', window.Gaigai.ui.c) // Restore theme color
-                        .css('opacity', '1')
-                        .prop('disabled', false);
+                    setTimeout(() => updateStatus('', null), 3000);
+                    return;
                 }
 
+                // 保存最终状态
+                if (successCount > 0) {
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
+                    window.Gaigai.m.save();
+
+                    // ✅✅✅ 批量任务完成后，强制更新快照，确保与实时填表同步
+                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                        window.Gaigai.updateCurrentSnapshot();
+                    }
+                    console.log('📸 [批量填表完成] 已更新当前楼层快照');
+                }
+
+                const msg = failedBatches.length > 0
+                    ? `⚠️ 完成，但有 ${failedBatches.length} 个任务失败。`
+                    : `✅ 全部完成！共处理 ${successCount} 个任务。`;
+
+                if (typeof toastr !== 'undefined') {
+                    const isWarning = failedBatches.length > 0;
+                    // 如果有失败，用 warning；全成功用 success
+                    if (isWarning) toastr.warning(msg, '批量追溯');
+                    else toastr.success(msg, '批量追溯');
+                }
+
+                updateStatus('✅ 就绪', '#28a745');
                 setTimeout(() => updateStatus('', null), 3000);
-                return;
+
+                if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
             }
-
-            // 保存最终状态
-            if (successCount > 0) {
-                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
-                window.Gaigai.m.save();
-
-                // ✅✅✅ 批量任务完成后，强制更新快照，确保与实时填表同步
-                if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
-                    window.Gaigai.updateCurrentSnapshot();
-                }
-                console.log('📸 [批量填表完成] 已更新当前楼层快照');
-            }
-
-            const msg = failedBatches.length > 0
-                ? `⚠️ 完成，但有 ${failedBatches.length} 个任务失败。`
-                : `✅ 全部完成！共处理 ${successCount} 个任务。`;
-
-            if (typeof toastr !== 'undefined') {
-                const isWarning = failedBatches.length > 0;
-                // 如果有失败，用 warning；全成功用 success
-                if (isWarning) toastr.warning(msg, '批量追溯');
-                else toastr.success(msg, '批量追溯');
-            }
-
-            updateStatus('✅ 就绪', '#28a745');
-            setTimeout(() => updateStatus('', null), 3000);
-            
-            if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
         }
 
         /**
@@ -1015,6 +1037,12 @@
             }
 
             if (result && result.success) {
+                // 🛑 [优化] 在解析和保存数据之前检查停止标志
+                if (window.Gaigai.stopBatchBackfill) {
+                    console.warn(`🛑 [批量任务] 检测到停止标志，跳过数据保存`);
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '');
 
@@ -1302,6 +1330,12 @@
             }
 
             if (result && result.success) {
+                // 🛑 [优化] 在解析和保存数据之前检查停止标志
+                if (window.Gaigai.stopBatchBackfill) {
+                    console.warn(`🛑 [批量任务] 检测到停止标志，跳过数据保存`);
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '').trim();
 
@@ -2033,6 +2067,12 @@
             }
 
             if (result && result.success) {
+                // 🛑 [优化] 在解析和保存数据之前检查停止标志
+                if (window.Gaigai.stopBatchBackfill) {
+                    console.warn(`🛑 [批量任务] 检测到停止标志，跳过数据保存`);
+                    return { success: false, reason: 'user_cancelled' };
+                }
+
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '');
 

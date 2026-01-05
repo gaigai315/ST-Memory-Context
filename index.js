@@ -67,7 +67,7 @@
         cloudSync: true,
         syncWorldInfo: true,           // ✅ 默认开启世界书同步
         autoBindWI: true,              // ✅ 默认开启自动绑定世界书
-        worldInfoVectorized: true,     // ✅ 默认开启世界书自带向量化
+        worldInfoVectorized: false,    // ❌ 默认关闭世界书自带向量化（已移除UI选项）
         // ==================== 独立向量检索配置 ====================
         vectorEnabled: false,          // ❌ 默认关闭独立向量检索
         vectorProvider: 'openai',      // 向量服务提供商
@@ -1342,7 +1342,7 @@
                 C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
                 C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : true;
                 C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
-                C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : true;
+                C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : false;
                 // ✅ 向量检索配置
                 C.vectorEnabled = globalConfig.vectorEnabled !== undefined ? globalConfig.vectorEnabled : false;
                 C.vectorUrl = globalConfig.vectorUrl !== undefined ? globalConfig.vectorUrl : '';
@@ -7718,14 +7718,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </div>
 
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
-                <input type="checkbox" id="gg_c_worldinfo_vectorized" ${C.worldInfoVectorized ? 'checked' : ''}>
-                <span>💠 启用世界书自带向量化</span>
-            </label>
-            <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
-                开启后，世界书条目将使用酒馆的向量化检索功能（更智能地触发相关记忆，但需要配置向量化服务）
-            </div>
-
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
                 <input type="checkbox" id="gg_c_vector_enabled" ${C.vectorEnabled ? 'checked' : ''}>
                 <span>🔍 启用插件独立向量检索</span>
             </label>
@@ -8211,7 +8203,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
                 C.autoBindWI = $('#gg_c_auto_bind_wi').is(':checked');
-                C.worldInfoVectorized = $('#gg_c_worldinfo_vectorized').is(':checked');
                 C.vectorEnabled = $('#gg_c_vector_enabled').is(':checked');
 
                 // ✅ 保存世界书自定义配置
@@ -9803,9 +9794,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化向量化功能 ：</strong>向量化增加关键词匹配兜底，增加召回的关联度</li>
-                        <li><strong>优化css ：</strong>优化部分css问题</li>
-                        <li><strong>优化向量化api ：</strong>优化向量api未正确配置导致插件卡死的问题。</li>
+                        <li><strong>优化提示 ：</strong>向量化增失败显示失败原因</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
@@ -9886,105 +9875,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
             checkForUpdates(cleanVer);
-
-            // ✅ [修复] 使用事件委托绑定更新按钮 (解决异步加载导致无法点击的问题)
-            $(document).off('click', '#auto-update-plugin-btn').on('click', '#auto-update-plugin-btn', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                performPluginUpdate();
-            });
         }, 100);
 
         $o.on('click', e => { if (e.target === $o[0]) $o.remove(); });
     }
 
-    // ✨✨✨ 修复：版本更新检查函数 (v1.1.13 图标终极兼容版) ✨✨✨
-    /**
-     * 一键热更新插件（自动调用酒馆后端 API）
-     */
-    async function performPluginUpdate() {
-        const btn = $('#auto-update-plugin-btn');
-        const oldText = btn.text();
-        btn.text('📥 下载中...').prop('disabled', true);
-
-        try {
-            // 步骤A: 获取 CSRF Token
-            const csrf = await getCsrfToken();
-
-            // 步骤B: 获取所有扩展列表
-            const listRes = await fetch('/api/extensions/list', {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-Token': csrf,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!listRes.ok) {
-                throw new Error('无法获取扩展列表');
-            }
-
-            const extensions = await listRes.json();
-
-            // 步骤C: 在列表中查找包含 gaigai315/ST-Memory-Context 的扩展
-            const myExtension = extensions.find(e =>
-                e.url && e.url.toLowerCase().includes('gaigai315/st-memory-context')
-            );
-
-            if (!myExtension) {
-                throw new Error('未找到安装记录，请手动前往"扩展"页面更新');
-            }
-
-            console.log(`🔍 [热更新] 识别到插件目录: ${myExtension.name}`);
-
-            // 步骤D: 发送更新请求
-            btn.text('🔄 更新中...');
-            const updateRes = await fetch('/api/extensions/update', {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-Token': csrf,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ name: myExtension.name })
-            });
-
-            if (!updateRes.ok) {
-                const errorText = await updateRes.text();
-                throw new Error(errorText || '更新请求失败');
-            }
-
-            const result = await updateRes.json();
-
-            if (result.success === false) {
-                throw new Error(result.error || '更新失败');
-            }
-
-            // 步骤E: 成功提示并刷新页面
-            if (typeof toastr !== 'undefined') {
-                toastr.success('🎉 更新成功！即将刷新页面...', '系统');
-            }
-            btn.text('✅ 更新完成');
-
-            setTimeout(() => {
-                location.reload();
-            }, 1000);
-
-        } catch (e) {
-            // 步骤F: 错误处理
-            console.error('[热更新] 失败:', e);
-
-            // ✅ [修复] 使用友好的弹窗提示，而不仅仅是 toastr
-            const errorMsg = `❌ 自动更新失败\n\n错误信息：${e.message}\n\n💡 解决方案：\n1. 检查网络连接\n2. 前往酒馆"扩展"页面手动更新\n3. 检查 CSRF Token 是否有效`;
-
-            await customAlert(errorMsg, '更新失败');
-
-            if (typeof toastr !== 'undefined') {
-                toastr.error(e.message, '更新失败');
-            }
-
-            btn.text(oldText).prop('disabled', false);
-        }
-    }
 
     async function checkForUpdates(currentVer) {
         // 1. 获取UI元素
@@ -10011,11 +9906,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if ($status.length > 0) {
                         $status.html(`
                             <div style="color:#d32f2f; font-weight:bold;">
-                                ⬆️ 发现新版本: v${latestVer}
+                                ⬆️ 发现新版本: v${latestVer} (请手动更新)
                             </div>
-                            <button id="auto-update-plugin-btn" style="background:#d32f2f; color:#fff; padding:4px 12px; border:none; border-radius:6px; cursor:pointer; margin-left:5px; font-weight:bold; transition:all 0.2s;">
-                                🚀 立即更新
-                            </button>
+                            <div style="font-size:10px; color:var(--g-tc); opacity:0.8; margin-top:4px;">
+                                由于网络环境差异，请前往 GitHub 下载或使用 git pull 更新
+                            </div>
                         `);
                     }
                 } else {
