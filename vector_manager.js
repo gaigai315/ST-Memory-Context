@@ -117,21 +117,45 @@
 
             // ✅ 启动 DOM 监听，动态隐藏（应对动态渲染场景）
             const observer = new MutationObserver((mutations) => {
-                // 查找所有包含特定文本的元素（选项、列表项、div等）
-                const selector = `option, li, div.world_info_entry`;
+                // 扩大查找范围（宽进）：包括 option, li, label 和 .world_info_entry
+                const selector = `option, li, .world_info_entry, label`;
                 const elements = document.querySelectorAll(selector);
 
                 elements.forEach(el => {
-                    // 检查文本内容或属性是否包含存储文件名
-                    if (el.textContent.includes(STORAGE_BOOK_NAME) ||
-                        el.value === STORAGE_BOOK_NAME ||
-                        el.getAttribute('data-uid') === STORAGE_BOOK_NAME) {
+                    let shouldHide = false;
 
-                        // 强制隐藏
-                        if (el.style.display !== 'none') {
-                            el.style.display = 'none';
-                            el.style.setProperty('display', 'none', 'important');
+                    // A. 精准属性匹配（最高优先级，最安全）
+                    if (el.value === STORAGE_BOOK_NAME ||
+                        el.getAttribute('data-uid') === STORAGE_BOOK_NAME ||
+                        el.getAttribute('data-name') === STORAGE_BOOK_NAME ||
+                        el.getAttribute('data-value') === STORAGE_BOOK_NAME ||
+                        el.title === STORAGE_BOOK_NAME) {
+                        shouldHide = true;
+                    }
+                    // B. 文本内容匹配（解决没有ID属性的列表项）
+                    else if (el.textContent.includes(STORAGE_BOOK_NAME)) {
+                        // 🛡️ 防御机制：防止误伤父级分组（严出）🛡️
+
+                        // 1. 如果它是分组标题，跳过
+                        if (el.classList.contains('inline-drawer-header') ||
+                            el.classList.contains('binder-header')) {
+                            return;
                         }
+
+                        // 2. 如果它里面包含子列表(ul/ol)，说明它是父容器，跳过！
+                        // (这是解决"分组消失"问题的关键)
+                        if (el.querySelector('ul, ol')) {
+                            return;
+                        }
+
+                        // 通过了防御检查，说明它是最底层的条目，可以隐藏
+                        shouldHide = true;
+                    }
+
+                    // 强制隐藏
+                    if (shouldHide && el.style.display !== 'none') {
+                        el.style.display = 'none';
+                        el.style.setProperty('display', 'none', 'important');
                     }
                 });
             });
