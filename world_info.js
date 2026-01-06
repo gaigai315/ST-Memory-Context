@@ -342,6 +342,18 @@
                     console.log('✅ [世界书同步-覆盖] 热更新完成，无需等待UI刷新');
                 }
 
+                // ⚡ 自动化流：触发自动向量化
+                if (window.Gaigai.config_obj.autoVectorizeSummary) {
+                    if (window.Gaigai.VM && typeof window.Gaigai.VM.syncSummaryToBook === 'function') {
+                        console.log('⚡ [自动化流] 世界书同步完成，正在触发自动向量化...');
+                        try {
+                            await window.Gaigai.VM.syncSummaryToBook(true);
+                        } catch (error) {
+                            console.error('❌ [自动化流] 自动向量化失败:', error);
+                        }
+                    }
+                }
+
             } catch (error) {
                 console.error('❌ [世界书同步-覆盖] 异常:', error);
             }
@@ -469,6 +481,18 @@
                 }
 
                 console.log('✅ [世界书同步-追加] 追加操作完成');
+
+                // ⚡ 自动化流：触发自动向量化
+                if (window.Gaigai.config_obj.autoVectorizeSummary) {
+                    if (window.Gaigai.VM && typeof window.Gaigai.VM.syncSummaryToBook === 'function') {
+                        console.log('⚡ [自动化流] 世界书同步完成，正在触发自动向量化...');
+                        try {
+                            await window.Gaigai.VM.syncSummaryToBook(true);
+                        } catch (error) {
+                            console.error('❌ [自动化流] 自动向量化失败:', error);
+                        }
+                    }
+                }
 
             } catch (error) {
                 console.error('❌ [世界书同步-追加] 异常:', error);

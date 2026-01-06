@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.7
+// 记忆表格 v1.5.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.7 启动');
+    console.log('🚀 记忆表格 v1.5.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.7';
+    const V = 'v1.5.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1050,6 +1050,23 @@
             sumSheet.ins(rowData);
 
             this.m.save();
+
+            // ⚡ 自动化流：如果开启了"总结后自动向量化"，且未开启"同步到世界书"，则直接触发向量化
+            // （如果开启了世界书同步，向量化会在世界书同步完成后触发，避免重复）
+            const currentConfig = window.Gaigai?.config_obj;
+            if (currentConfig && currentConfig.autoVectorizeSummary && !currentConfig.syncWorldInfo) {
+                if (window.Gaigai.VM && typeof window.Gaigai.VM.syncSummaryToBook === 'function') {
+                    console.log('⚡ [自动化流] 总结保存完成，正在触发自动向量化（未启用世界书同步）...');
+                    // 使用 setTimeout 避免阻塞保存流程
+                    setTimeout(async () => {
+                        try {
+                            await window.Gaigai.VM.syncSummaryToBook(true);
+                        } catch (error) {
+                            console.error('❌ [自动化流] 自动向量化失败:', error);
+                        }
+                    }, 100);
+                }
+            }
         }
 
         // 读取逻辑也微调一下，让多条总结之间有间隔，方便AI理解
@@ -5583,7 +5600,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 return;
             }
 
-            // ✅ 分支 B: 普通表格 (Index 0-7) 的原有逻辑 (保持不变)
+            // ✅ 分支 B: 普通表格（所有非总结表）的原有逻辑
             if (selectedRows.length > 0) {
                 if (!summarizedRows[ti]) summarizedRows[ti] = [];
                 selectedRows.forEach(ri => {
@@ -5604,7 +5621,106 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 m.save(true);
                 refreshTable(ti);
             } else {
-                await customAlert('请先选中要操作的行（勾选复选框或点击行）', '提示');
+                // ✅ 批量显隐操作面板（当没有选中任何行时）
+                const id = 'batch-toggle-dialog-' + Date.now();
+                const $overlay = $('<div>', {
+                    id: id,
+                    css: {
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        width: '100vw', height: '100vh',
+                        background: 'rgba(0,0,0,0.5)', zIndex: 10000020,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }
+                });
+
+                // 获取当前主题状态，定义动态颜色变量
+                const isDark = UI.darkMode;
+                const dialogBg = isDark ? '#1e1e1e' : '#fff';
+                const borderColor = isDark ? 'rgba(255,255,255,0.2)' : '#ddd';
+                const btnColor = UI.tc; // 按钮文字跟随全局字体颜色
+
+                const $box = $('<div>', {
+                    css: {
+                        background: dialogBg, color: UI.tc, borderRadius: '12px', padding: '20px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                        width: '320px', maxWidth: '90vw',
+                        display: 'flex', flexDirection: 'column', gap: '12px'
+                    }
+                });
+
+                const totalRows = sh.r.length;
+
+                $box.append(`<div style="font-weight:bold; font-size:15px; text-align:center; color:${UI.tc};">👻 批量显隐操作</div>`);
+                $box.append(`<div style="font-size:12px; color:${UI.tc}; opacity:0.6; text-align:center; margin-bottom:5px;">当前表格共 ${totalRows} 行</div>`);
+
+                // 按钮样式对象
+                const btnCss = {
+                    padding: '12px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    textAlign: 'center'
+                };
+
+                // 1. 全部显示按钮（白色/浅色背景）
+                const $btnShowAll = $('<button>', {
+                    html: '👻 全部显示 (白色)',
+                    css: {
+                        ...btnCss,
+                        background: isDark ? '#3a3a3a' : '#f5f5f5',
+                        color: UI.tc
+                    }
+                }).on('click', () => {
+                    // 清空隐藏列表
+                    if (summarizedRows[ti]) {
+                        summarizedRows[ti] = [];
+                    }
+                    finish('所有行已设为显示');
+                });
+
+                // 2. 全部隐藏按钮（绿色背景）
+                const $btnHideAll = $('<button>', {
+                    html: '👻 全部隐藏 (绿色)',
+                    css: {
+                        ...btnCss,
+                        background: '#4caf50',
+                        color: '#fff'
+                    }
+                }).on('click', () => {
+                    // 将所有行索引加入隐藏列表
+                    if (!summarizedRows[ti]) summarizedRows[ti] = [];
+                    summarizedRows[ti] = Array.from({ length: totalRows }, (_, k) => k);
+                    finish('所有行已设为隐藏');
+                });
+
+                // 3. 取消按钮
+                const $cancelBtn = $('<button>', {
+                    text: '取消',
+                    css: {
+                        padding: '10px',
+                        background: 'transparent',
+                        border: '1px solid ' + borderColor,
+                        borderRadius: '6px',
+                        color: UI.tc,
+                        opacity: '0.7',
+                        cursor: 'pointer'
+                    }
+                }).on('click', () => $overlay.remove());
+
+                // 完成函数
+                function finish(msg) {
+                    saveSummarizedRows();
+                    m.save(true);
+                    refreshTable(ti);
+                    $overlay.remove();
+                    if (typeof toastr !== 'undefined') toastr.success(msg);
+                }
+
+                $box.append($btnShowAll, $btnHideAll, $cancelBtn);
+                $overlay.append($box);
+                $('body').append($overlay);
             }
         });
     }
@@ -7644,7 +7760,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <div id="gg_auto_bf_settings" style="font-size: 11px; background: rgba(0,0,0,0.03); padding: 8px; border-radius: 4px; margin-bottom: 5px; ${C.autoBackfill ? '' : 'display:none;'}">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                     <span>每</span>
-                    <input type="number" id="gg_c_auto_bf_floor" value="${C.autoBackfillFloor || 10}" min="2" style="width:50px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_bf_floor" value="${C.autoBackfillFloor || 10}" min="2" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
                     <span>层触发一次</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:8px; border-left:2px solid rgba(255,152,0,0.3);">
@@ -7654,7 +7770,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </label>
                     <span style="opacity:0.7;">|</span>
                     <span style="opacity:0.8;">滞后</span>
-                    <input type="number" id="gg_c_auto_bf_delay_count" value="${C.autoBackfillDelayCount || 5}" min="1" style="width:40px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_bf_delay_count" value="${C.autoBackfillDelayCount || 5}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
                     <span style="opacity:0.8;">层再执行</span>
                 </div>
                 <div style="background: rgba(33, 150, 243, 0.08); border: 1px solid rgba(33, 150, 243, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 6px;">
@@ -7681,7 +7797,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <label style="font-weight: 600;">✂️ 隐藏楼层</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">留</span>
-                    <input type="number" id="gg_c_limit_count" value="${C.contextLimitCount}" min="5" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_limit_count" value="${C.contextLimitCount}" min="5" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
                     <input type="checkbox" id="gg_c_limit_on" ${C.contextLimit ? 'checked' : ''}>
                 </div>
             </div>
@@ -7711,7 +7827,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <label style="font-weight: 600;">🤖 自动总结</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">每</span>
-                    <input type="number" id="gg_c_auto_floor" value="${C.autoSummaryFloor}" min="10" style="width: 50px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_floor" value="${C.autoSummaryFloor}" min="10" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
                     <span style="font-size: 11px;">层</span>
                     <input type="checkbox" id="gg_c_auto_sum" ${C.autoSummary ? 'checked' : ''} style="transform: scale(1.2);">
                 </div>
@@ -7773,7 +7889,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </label>
                     <span style="opacity:0.7;">|</span>
                     <span style="opacity:0.8;">滞后</span>
-                    <input type="number" id="gg_c_auto_sum_delay_count" value="${C.autoSummaryDelayCount || 5}" min="1" style="width:40px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_sum_delay_count" value="${C.autoSummaryDelayCount || 5}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
                     <span style="opacity:0.8;">层再执行</span>
                 </div>
 
@@ -7829,6 +7945,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </label>
             <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
                 使用外部 API 实现语义检索，不依赖酒馆（点击下方"💠 向量化"按钮配置详细参数）
+            </div>
+
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
+                <input type="checkbox" id="gg_c_auto_vectorize" ${C.autoVectorizeSummary ? 'checked' : ''}>
+                <span>⚡ 总结后自动向量化</span>
+            </label>
+            <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
+                总结完成后，自动将内容同步到专属向量书并执行向量化
             </div>
 
             ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
@@ -8310,6 +8434,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
                 C.autoBindWI = $('#gg_c_auto_bind_wi').is(':checked');
                 C.vectorEnabled = $('#gg_c_vector_enabled').is(':checked');
+                C.autoVectorizeSummary = $('#gg_c_auto_vectorize').is(':checked');
 
                 // ✅ 保存世界书自定义配置
                 m.wiConfig.bookName = $('#gg_wi_book_name').val().trim();
@@ -9900,7 +10025,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增表格倒序显示 ：</strong>【视图】工具内新增倒序显示功能</li>
+                        <li><strong>新增功能 ：</strong>新增自动将总结的内容向量化</li>
+                        <li><strong>优化功能 ：</strong>优化配置界面楼层数字显示的css过窄的问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
