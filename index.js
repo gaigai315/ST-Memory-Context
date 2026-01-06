@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.6
+// 记忆表格 v1.5.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.6 启动');
+    console.log('🚀 记忆表格 v1.5.7 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.6';
+    const V = 'v1.5.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -77,7 +77,8 @@
         vectorThreshold: 0.3,          // 相似度阈值 (0.0 - 1.0)
         vectorMaxCount: 10,            // 最大召回条数
         vectorSeparator: '===',        // 🆕 知识库文本切分符
-        customTables: null             // 用户自定义表格结构（格式同 DEFAULT_TABLES）
+        customTables: null,            // 用户自定义表格结构（格式同 DEFAULT_TABLES）
+        reverseView: false             // ❌ 默认关闭倒序显示（最新行在上）
     };
 
     // ==================== API配置对象 ====================
@@ -1278,7 +1279,9 @@
                     vectorKey: C.vectorKey,
                     vectorModel: C.vectorModel,
                     vectorThreshold: C.vectorThreshold,
-                    vectorMaxCount: C.vectorMaxCount
+                    vectorMaxCount: C.vectorMaxCount,
+                    // ✅ 视图配置
+                    reverseView: C.reverseView
                 }
             };
 
@@ -1312,52 +1315,6 @@
         load() {
             const id = this.gid();
             if (!id) return;
-
-            // ✅ Per-Chat Configuration: STEP 1 - 彻底重置为全局默认
-            try {
-                const globalConfigStr = localStorage.getItem(CK);
-                const globalConfig = globalConfigStr ? JSON.parse(globalConfigStr) : {};
-                const globalApiStr = localStorage.getItem(AK);
-                const globalApiConfig = globalApiStr ? JSON.parse(globalApiStr) : {};
-
-                // --- 1. 开关类 ---
-                C.enabled = globalConfig.enabled !== undefined ? globalConfig.enabled : true;
-                C.autoBackfill = globalConfig.autoBackfill !== undefined ? globalConfig.autoBackfill : false;
-                C.autoSummary = globalConfig.autoSummary !== undefined ? globalConfig.autoSummary : true;
-                // --- 2. 数值类 ---
-                C.autoBackfillFloor = globalConfig.autoBackfillFloor !== undefined ? globalConfig.autoBackfillFloor : 20;
-                C.autoSummaryFloor = globalConfig.autoSummaryFloor !== undefined ? globalConfig.autoSummaryFloor : 50;
-                C.autoBackfillDelay = globalConfig.autoBackfillDelay !== undefined ? globalConfig.autoBackfillDelay : true;
-                C.autoBackfillDelayCount = globalConfig.autoBackfillDelayCount !== undefined ? globalConfig.autoBackfillDelayCount : 6;
-                C.autoSummaryDelay = globalConfig.autoSummaryDelay !== undefined ? globalConfig.autoSummaryDelay : true;
-                C.autoSummaryDelayCount = globalConfig.autoSummaryDelayCount !== undefined ? globalConfig.autoSummaryDelayCount : 4;
-                // --- 3. 其他 ---
-                C.autoBackfillPrompt = globalConfig.autoBackfillPrompt !== undefined ? globalConfig.autoBackfillPrompt : true;
-                C.autoBackfillSilent = globalConfig.autoBackfillSilent !== undefined ? globalConfig.autoBackfillSilent : true;
-                C.autoSummaryPrompt = globalConfig.autoSummaryPrompt !== undefined ? globalConfig.autoSummaryPrompt : true;
-                C.autoSummarySilent = globalConfig.autoSummarySilent !== undefined ? globalConfig.autoSummarySilent : true;
-                C.contextLimit = globalConfig.contextLimit !== undefined ? globalConfig.contextLimit : true;
-                C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
-                C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
-                C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
-                C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : true;
-                C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
-                C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : false;
-                // ✅ 向量检索配置
-                C.vectorEnabled = globalConfig.vectorEnabled !== undefined ? globalConfig.vectorEnabled : false;
-                C.vectorUrl = globalConfig.vectorUrl !== undefined ? globalConfig.vectorUrl : '';
-                C.vectorKey = globalConfig.vectorKey !== undefined ? globalConfig.vectorKey : '';
-                C.vectorModel = globalConfig.vectorModel !== undefined ? globalConfig.vectorModel : 'BAAI/bge-m3';
-                C.vectorThreshold = globalConfig.vectorThreshold !== undefined ? globalConfig.vectorThreshold : 0.6;
-                C.vectorMaxCount = globalConfig.vectorMaxCount !== undefined ? globalConfig.vectorMaxCount : 3;
-
-                if (globalApiConfig.summarySource !== undefined) API_CONFIG.summarySource = globalApiConfig.summarySource;
-                else API_CONFIG.summarySource = 'table';
-
-                console.log('🧹 [配置清洗] 内存状态已重置为全局/默认值，准备加载会话专属配置...');
-            } catch (e) {
-                console.warn('⚠️ [配置重置] 失败，可能导致配置串味:', e);
-            }
 
             if (this.id !== id) {
                 // 🔄 检测到会话切换
@@ -1414,7 +1371,57 @@
             else if (cloudData) finalData = cloudData;
             else if (localData) finalData = localData;
 
+            // ✅ 时间戳检查 (提前到重置逻辑之前!)
             if (finalData && finalData.ts <= lastInternalSaveTime) return;
+
+            // ✅ Per-Chat Configuration: STEP 1 - 彻底重置为全局默认
+            // (只有确定要加载数据了才重置，避免无效重置导致配置丢失)
+            try {
+                const globalConfigStr = localStorage.getItem(CK);
+                const globalConfig = globalConfigStr ? JSON.parse(globalConfigStr) : {};
+                const globalApiStr = localStorage.getItem(AK);
+                const globalApiConfig = globalApiStr ? JSON.parse(globalApiStr) : {};
+
+                // --- 1. 开关类 ---
+                C.enabled = globalConfig.enabled !== undefined ? globalConfig.enabled : true;
+                C.autoBackfill = globalConfig.autoBackfill !== undefined ? globalConfig.autoBackfill : false;
+                C.autoSummary = globalConfig.autoSummary !== undefined ? globalConfig.autoSummary : true;
+                // --- 2. 数值类 ---
+                C.autoBackfillFloor = globalConfig.autoBackfillFloor !== undefined ? globalConfig.autoBackfillFloor : 20;
+                C.autoSummaryFloor = globalConfig.autoSummaryFloor !== undefined ? globalConfig.autoSummaryFloor : 50;
+                C.autoBackfillDelay = globalConfig.autoBackfillDelay !== undefined ? globalConfig.autoBackfillDelay : true;
+                C.autoBackfillDelayCount = globalConfig.autoBackfillDelayCount !== undefined ? globalConfig.autoBackfillDelayCount : 6;
+                C.autoSummaryDelay = globalConfig.autoSummaryDelay !== undefined ? globalConfig.autoSummaryDelay : true;
+                C.autoSummaryDelayCount = globalConfig.autoSummaryDelayCount !== undefined ? globalConfig.autoSummaryDelayCount : 4;
+                // --- 3. 其他 ---
+                C.autoBackfillPrompt = globalConfig.autoBackfillPrompt !== undefined ? globalConfig.autoBackfillPrompt : true;
+                C.autoBackfillSilent = globalConfig.autoBackfillSilent !== undefined ? globalConfig.autoBackfillSilent : true;
+                C.autoSummaryPrompt = globalConfig.autoSummaryPrompt !== undefined ? globalConfig.autoSummaryPrompt : true;
+                C.autoSummarySilent = globalConfig.autoSummarySilent !== undefined ? globalConfig.autoSummarySilent : true;
+                C.contextLimit = globalConfig.contextLimit !== undefined ? globalConfig.contextLimit : true;
+                C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
+                C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
+                C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
+                C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : true;
+                C.autoBindWI = globalConfig.autoBindWI !== undefined ? globalConfig.autoBindWI : true;
+                C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : false;
+                // ✅ 向量检索配置
+                C.vectorEnabled = globalConfig.vectorEnabled !== undefined ? globalConfig.vectorEnabled : false;
+                C.vectorUrl = globalConfig.vectorUrl !== undefined ? globalConfig.vectorUrl : '';
+                C.vectorKey = globalConfig.vectorKey !== undefined ? globalConfig.vectorKey : '';
+                C.vectorModel = globalConfig.vectorModel !== undefined ? globalConfig.vectorModel : 'BAAI/bge-m3';
+                C.vectorThreshold = globalConfig.vectorThreshold !== undefined ? globalConfig.vectorThreshold : 0.6;
+                C.vectorMaxCount = globalConfig.vectorMaxCount !== undefined ? globalConfig.vectorMaxCount : 3;
+                // ✅ 视图配置
+                C.reverseView = globalConfig.reverseView !== undefined ? globalConfig.reverseView : false;
+
+                if (globalApiConfig.summarySource !== undefined) API_CONFIG.summarySource = globalApiConfig.summarySource;
+                else API_CONFIG.summarySource = 'table';
+
+                console.log('🧹 [配置清洗] 内存状态已重置为全局/默认值，准备加载会话专属配置...');
+            } catch (e) {
+                console.warn('⚠️ [配置重置] 失败，可能导致配置串味:', e);
+            }
 
             if (finalData && finalData.v && finalData.d) {
                 // 恢复结构
@@ -1909,6 +1916,87 @@
         $controlRow.append($slider, $numInput);
         $sliderContainer.append($controlRow);
         $box.append($sliderContainer);
+
+        // 🔃 倒序显示开关
+        const $reverseContainer = $('<div>', {
+            css: {
+                background: isDark ? 'rgba(255,255,255,0.05)' : '#f8f9fa',
+                padding: '12px',
+                borderRadius: '8px',
+                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #eee',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+            }
+        });
+
+        const $reverseLabel = $('<div>', {
+            html: '<span style="font-size:12px; font-weight:600; color:var(--g-tc);">🔃 倒序显示</span><br><span style="font-size:10px; color:#999;">最新行显示在上方</span>',
+            css: { flex: 1 }
+        });
+
+        const $reverseToggle = $('<label>', {
+            css: {
+                position: 'relative',
+                display: 'inline-block',
+                width: '44px',
+                height: '24px',
+                cursor: 'pointer'
+            }
+        });
+
+        const $reverseCheckbox = $('<input>', {
+            type: 'checkbox',
+            checked: C.reverseView,
+            css: { display: 'none' }
+        });
+
+        const $reverseSlider = $('<span>', {
+            css: {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: C.reverseView ? themeColor : (isDark ? '#555' : '#ccc'),
+                borderRadius: '24px',
+                transition: 'background-color 0.3s',
+                cursor: 'pointer'
+            }
+        });
+
+        const $reverseKnob = $('<span>', {
+            css: {
+                position: 'absolute',
+                height: '18px',
+                width: '18px',
+                left: C.reverseView ? '23px' : '3px',
+                bottom: '3px',
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                transition: 'left 0.3s',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            }
+        });
+
+        $reverseSlider.append($reverseKnob);
+        $reverseToggle.append($reverseCheckbox, $reverseSlider);
+        $reverseContainer.append($reverseLabel, $reverseToggle);
+        $box.append($reverseContainer);
+
+        // 倒序开关事件
+        $reverseCheckbox.on('change', function() {
+            const isReversed = $(this).is(':checked');
+            C.reverseView = isReversed;
+
+            // 更新开关样式
+            $reverseSlider.css('backgroundColor', isReversed ? themeColor : (isDark ? '#555' : '#ccc'));
+            $reverseKnob.css('left', isReversed ? '23px' : '3px');
+
+            // 保存并刷新视图
+            m.save();
+            shw();
+        });
 
         // 5. 按钮区域
         const $btnGroup = $('<div>', {
@@ -4085,7 +4173,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // ✅ Fix colspan: RowNum(1) + DataColumns(s.c.length)
             h += `<tr class="g-emp"><td colspan="${s.c.length + 1}">暂无数据</td></tr>`;
         } else {
-            s.r.forEach((rw, ri) => {
+            // ✅ 倒序显示逻辑：根据 C.reverseView 决定渲染顺序
+            const renderRows = () => {
+                if (C.reverseView) {
+                    // 倒序渲染：从最后一行到第一行
+                    for (let ri = s.r.length - 1; ri >= 0; ri--) {
+                        renderRow(ri);
+                    }
+                } else {
+                    // 正序渲染：从第一行到最后一行
+                    s.r.forEach((rw, ri) => {
+                        renderRow(ri);
+                    });
+                }
+            };
+
+            // 渲染单行的函数（保持 data-r 为真实索引）
+            const renderRow = (ri) => {
+                const rw = s.r[ri];
                 const summarizedClass = isSummarized(ti, ri) ? ' g-summarized' : '';
                 h += `<tr data-r="${ri}" data-ti="${ti}" class="g-row${summarizedClass}">`;
 
@@ -4123,7 +4228,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </td>`;
 
                 h += '</tr>';
-            });
+            };
+
+            // 执行渲染
+            renderRows();
         }
         h += '</tbody></table></div></div>';
         return h;
@@ -9792,7 +9900,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化提示 ：</strong>向量化增失败显示失败原因</li>
+                        <li><strong>新增表格倒序显示 ：</strong>【视图】工具内新增倒序显示功能</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

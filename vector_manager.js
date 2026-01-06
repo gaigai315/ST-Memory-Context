@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.5.6
+ * @version 1.5.7
  * @author Gaigai Team
  */
 
