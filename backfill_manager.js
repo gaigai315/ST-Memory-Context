@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.5.6
+ * @version 1.5.9
  * @author Gaigai Team
  */
 
@@ -1126,12 +1126,31 @@
                             }
                             return { success: true };
                         } else {
-                            console.warn('⚠️ [静默中断] AI输出格式无效，自动降级为手动确认窗口');
-                            if (typeof toastr !== 'undefined') toastr.warning('AI未按格式输出，转为手动确认', '静默中断', { timeOut: 3000 });
+                            // 解析失败分支
+                            console.warn('⚠️ [静默中断] AI输出格式无效 (未识别到指令)');
 
+                            // ✅ 修复:如果是批量模式,先暂停并弹窗询问,防止不知情卡死
+                            if (skipLoad) {
+                                if (typeof toastr !== 'undefined') toastr.error('当前批次内容无效,任务已暂停', '需要人工介入');
+
+                                // 弹出阻断性提示
+                                const keepGoing = await window.Gaigai.customConfirm(
+                                    `⚠️ **批量任务已暂停** (进度: ${start}-${end}层)\n\nAI 返回的内容无效(未识别到填表指令)。\n\n是否打开编辑窗口进行 **手动修正** 或 **重新生成**?\n(点击"取消"将停止后续所有任务)`,
+                                    '🛑 异常暂停'
+                                );
+
+                                if (!keepGoing) {
+                                    return { success: false, reason: 'user_stopped_batch_error' };
+                                }
+                            } else {
+                                if (typeof toastr !== 'undefined') toastr.warning('AI未按格式输出,转为手动确认', '静默中断', { timeOut: 3000 });
+                            }
+
+                            // 打开编辑/重试窗口
                             const regenParams = { start, end, isManual, targetIndex, customNote, isOverwrite };
                             const userAction = await this.showBackfillEditPopup(finalOutput, end, regenParams);
-                            if (!userAction.success) return { success: false, reason: 'fallback_to_manual' };
+
+                            if (!userAction.success) return { success: false, reason: 'fallback_to_manual_cancelled' };
                             return { success: true };
                         }
                     } else {

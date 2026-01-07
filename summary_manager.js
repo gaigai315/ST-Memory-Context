@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.5.6
+ * @version 1.5.9
  * @author Gaigai Team
  */
 
@@ -795,6 +795,19 @@
                     m.sm.save(cleanSummary, currentRangeStr);
                     await window.Gaigai.syncToWorldInfo(cleanSummary);
 
+                    // ✅✅✅ [新增] 自动向量化开启时,自动隐藏总结表所有行
+                    if (window.Gaigai.config_obj.autoVectorizeSummary) {
+                        const sumIdx = m.s.length - 1; // 总结表索引
+                        const sumSheet = m.get(sumIdx);
+                        if (sumSheet && sumSheet.r.length > 0) {
+                            // 遍历所有行进行隐藏标记(覆盖旧数据)
+                            for (let ri = 0; ri < sumSheet.r.length; ri++) {
+                                window.Gaigai.markAsSummarized(sumIdx, ri);
+                            }
+                            console.log('⚡ [自动向量化] 已自动隐藏总结表所有行');
+                        }
+                    }
+
                     // ✨✨✨ 修复：只要 isSilent 为 true，就直接执行静默保存，不再检查全局配置
                     if (isTableMode && currentMode === 'table') {
                         // 用户勾选了静默保存，自动标记为绿色并结束
@@ -1040,6 +1053,19 @@
 
                         m.sm.save(editedSummary, noteValue);
                         await window.Gaigai.syncToWorldInfo(editedSummary);
+
+                        // ✅✅✅ [新增] 自动向量化开启时,自动隐藏总结表所有行
+                        if (window.Gaigai.config_obj.autoVectorizeSummary) {
+                            const sumIdx = m.s.length - 1; // 总结表索引
+                            const sumSheet = m.get(sumIdx);
+                            if (sumSheet && sumSheet.r.length > 0) {
+                                // 遍历所有行进行隐藏标记(覆盖旧数据)
+                                for (let ri = 0; ri < sumSheet.r.length; ri++) {
+                                    window.Gaigai.markAsSummarized(sumIdx, ri);
+                                }
+                                console.log('⚡ [自动向量化] 已自动隐藏总结表所有行');
+                            }
+                        }
 
                         // ✅✅✅ [修复] 删除 !isTableMode 限制，无论什么模式都应更新进度指针
                         if (newIndex !== null && newIndex !== undefined) {

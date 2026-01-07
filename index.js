@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.8
+// 记忆表格 v1.5.9
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.8 启动');
+    console.log('🚀 记忆表格 v1.5.9 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.8';
+    const V = 'v1.5.9';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -7952,7 +7952,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <span>⚡ 总结后自动向量化</span>
             </label>
             <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
-                总结完成后，自动将内容同步到专属向量书并执行向量化
+                总结完成后,自动将内容同步到专属向量书并执行向量化<br>
+                (注:勾选后,总结表中已被向量化的内容将自动标记为隐藏/绿色)
             </div>
 
             ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
