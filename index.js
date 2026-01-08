@@ -1355,21 +1355,15 @@
             let localData = null;
             if (C.cloudSync) { try { const ctx = this.ctx(); if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) cloudData = ctx.chatMetadata.gaigai; } catch (e) { } }
 
-            // 🛡️ [防串味修复] 检查云端数据是否属于当前角色
+            // 🛡️ [数据迁移修复] 检查云端数据 (支持重命名、分支迁移)
             if (cloudData) {
-                // ✨ 智能分支补丁：如果当前是分支 (ID含Branch)，允许继承 ID 不匹配的父级数据
-                const isBranch = id.includes('_Branch') || id.includes('Branch') || id.includes('分支');
-
+                // 只要数据存在于当前 chatMetadata 中，我们就认为是合法的，允许迁移
                 if (cloudData.id !== id) {
-                    if (isBranch) {
-                        console.log(`🌿 [分支继承] 检测到分支模式，允许继承父会话数据 (Cloud: ${cloudData.id} -> Curr: ${id})`);
-                        // 允许通过，不置空 cloudData
-                    } else {
-                        console.warn(`🔴 [数据隔离] 云端数据 ID 不匹配，已忽略。云端 ID: ${cloudData.id}，当前 ID: ${id}`);
-                        cloudData = null;
-                    }
+                    console.log(`🔄 [数据迁移] 检测到 ID 变更 (可能是重命名或分支)，自动迁移数据。 (原ID: ${cloudData.id} -> 新ID: ${id})`);
+                    // 强制更新内存对象中的 ID，确保后续保存时使用新 ID
+                    cloudData.id = id;
                 } else {
-                    console.log(`✅ [数据验证] 云端数据 ID 匹配: ${id}`);
+                    console.log(`✅ [数据验证] ID 匹配: ${id}`);
                 }
             }
 
@@ -10026,8 +10020,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增功能 ：</strong>新增自动将总结的内容向量化</li>
-                        <li><strong>优化功能 ：</strong>优化配置界面楼层数字显示的css过窄的问题</li>
+                        <li><strong>优化功能 ：</strong>优化会话窗口变更名字后表格数据丢失的问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
