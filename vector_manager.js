@@ -1211,11 +1211,14 @@
                     }
                 }
 
-                // 更新数据
-                this.library = newLibrary;
+                // 更新数据（合并模式）
+                // 保留旧书架 (this.library)，将导入的新书 (newLibrary) 合并进去
+                // 如果ID相同，新导入的会覆盖旧的
+                Object.assign(this.library, newLibrary);
+
                 this.saveLibrary();
 
-                console.log(`📥 [VectorManager] 导入完成: ${Object.keys(newLibrary).length} 本书籍`);
+                console.log(`📥 [VectorManager] 导入合并完成: 新增/更新了 ${Object.keys(newLibrary).length} 本书籍，当前总数: ${Object.keys(this.library).length}`);
 
                 return {
                     success: true,
