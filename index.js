@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.5.9
+// 记忆表格 v1.6.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.5.9 启动');
+    console.log('🚀 记忆表格 v1.6.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.5.9';
+    const V = 'v1.6.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -7582,21 +7582,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('✅ [配置同步] 同步完成');
         }
 
-        // 🔥 [核心修复] 无论是否使用了服务器的 Config，都必须加载服务器的 Library
-        // 因为 Library 不存本地 localStorage，只存服务器 settings.json
-        if (serverData && window.Gaigai.VM && typeof window.Gaigai.VM.loadLibrary === 'function') {
-            const libData = serverData.vectorLibrary;
-            const bookCount = libData ? Object.keys(libData).length : 0;
-
-            // 只有当服务器有数据时才注入，避免覆盖掉刚才可能的本地操作
-            if (bookCount > 0) {
-                console.log(`📚 [独立加载] 忽略时间戳，强制加载云端书架 (${bookCount} 本)`);
-                window.Gaigai.VM.loadLibrary(libData);
-            } else {
-                // 如果服务器没书，但也得告诉 VM 解锁 (允许它保存新书)
-                if (!window.Gaigai.VM.isDataLoaded) {
-                    window.Gaigai.VM.loadLibrary(null);
-                }
+        // 🔥 [核心修复] 向量库已迁移至世界书存储,不再从 settings.json 加载旧数据
+        // 我们只需要确保 VM 解锁即可
+        if (window.Gaigai.VM && typeof window.Gaigai.VM.loadLibrary === 'function') {
+            // 移除从 serverData 加载的逻辑,防止覆盖最新的 World Info 数据
+            if (!window.Gaigai.VM.isDataLoaded) {
+                window.Gaigai.VM.loadLibrary(null); // 仅解锁,不覆盖
             }
         }
     }
@@ -10020,7 +10011,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化功能 ：</strong>优化会话窗口变更名字后表格数据丢失的问题</li>
+                        <li><strong>优化追溯 ：</strong>优化分批追溯时网络复用导致的报错问题</li>
+                        <li><strong>优化向量化 ：</strong>优化向量化切换会话复用旧向量化的逻辑问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

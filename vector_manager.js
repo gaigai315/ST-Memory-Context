@@ -252,10 +252,10 @@
          */
         async loadLibrary(explicitData = null) {
             try {
-                // 1. 优先使用传入的显式数据 (来自 index.js 的最新拉取)
+                // 1. 优先使用传入的显式数据 (改为合并模式)
                 if (explicitData && typeof explicitData === 'object') {
-                    this.library = explicitData;
-                    console.log(`📂 [VectorManager] 已加载传入的数据: ${Object.keys(this.library).length} 本书`);
+                    console.log('🔄 [VectorManager] 合并外部传入的数据...');
+                    Object.assign(this.library, explicitData); // 温和合并,不覆盖
                     this.isDataLoaded = true; // ✅ 解锁
                     return;
                 }
