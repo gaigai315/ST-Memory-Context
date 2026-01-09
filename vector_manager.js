@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.6.1
+ * @version 1.6.2
  * @author Gaigai Team
  */
 
@@ -878,6 +878,14 @@
 
             const config = this._getConfig();
 
+            // 🎯 2倍召回 + 漏斗筛选机制
+            const targetCount = config.maxCount; // 最终需要的条数 (例如 10)
+            const multiplier = 2; // 设定为 2 倍召回
+            // 如果开启 Rerank，向量阶段召回 2 倍数据；否则只召回 1 倍
+            const recallCount = config.rerankEnabled ? (targetCount * multiplier) : targetCount;
+            // 如果开启 Rerank，强制降低向量检索的门槛到 0.05，确保能捞出足够多的候选集；否则保持用户设置的阈值
+            const initialThreshold = config.rerankEnabled ? 0.05 : config.threshold;
+
             // 如果未提供 allowedBookIds，从当前会话获取
             if (!allowedBookIds) {
                 allowedBookIds = this.getActiveBooks();
@@ -965,21 +973,20 @@
                     }
                 }
 
-                // Step 1: 粗排 - 筛选超过阈值的结果并排序
+                // Step 1: 粗排 - 使用初始阈值筛选并排序
                 let candidates = results
-                    .filter(r => r.score >= config.threshold)
+                    .filter(r => r.score >= initialThreshold)
                     .sort((a, b) => b.score - a.score);
 
-                // Step 2: 扩展候选集 - 如果启用了 Rerank，取更多候选项
-                const candidateCount = config.rerankEnabled ? Math.max(config.maxCount * 3, 20) : config.maxCount;
-                candidates = candidates.slice(0, candidateCount);
+                // Step 2: 扩展候选集 - 根据是否启用 Rerank 决定召回数量
+                candidates = candidates.slice(0, recallCount);
 
-                console.log(`📊 [VectorManager] 粗排完成: ${candidates.length} 条候选结果 (阈值: ${config.threshold})`);
+                console.log(`📊 [VectorManager] 粗排完成: ${candidates.length} 条候选结果 (阈值: ${initialThreshold}, 召回目标: ${recallCount})`);
 
                 // Step 3: Rerank - 如果启用且有候选项
                 if (config.rerankEnabled && candidates.length > 0 && config.rerankKey) {
                     try {
-                        console.log(`🎯 [VectorManager] 开始 Rerank (候选数: ${candidates.length})...`);
+                        console.log(`🎯 [漏斗模式] 目标: ${targetCount} | 向量召回: ${candidates.length} | 准备 Rerank...`);
                         console.log(`🔧 [Rerank 配置] 模型: ${config.rerankModel}, URL: ${config.rerankUrl}`);
                         console.log('📋 [Before Rerank] 分数:', candidates.map((c, i) => `[${i}] ${c.score.toFixed(3)}`).join(', '));
 
@@ -991,32 +998,23 @@
 
                         // 如果 Rerank 成功返回了分数
                         if (rerankScores && rerankScores.length === candidates.length) {
-                            // 检查 Rerank 分数是否普遍极低（top1 < 0.1）
                             const maxRerankScore = Math.max(...rerankScores);
                             console.log(`📊 [Rerank 分数范围] 最高: ${maxRerankScore.toFixed(4)}, 最低: ${Math.min(...rerankScores).toFixed(4)}`);
 
-                            if (maxRerankScore < 0.1) {
-                                // 自动回退：Rerank 分数普遍极低，使用原始向量分数
-                                console.warn(`⚠️ [VectorManager] Rerank 分数普遍极低 (top1=${maxRerankScore.toFixed(4)} < 0.1)，已回退使用原始向量分数`);
-                                console.warn(`💡 提示: 请检查 Rerank 模型是否正确 (当前: ${config.rerankModel})，确保使用的是 Rerank 模型而非 Embedding 模型`);
-                                // candidates 保持原有的 score（向量相似度），无需额外操作
-                            } else {
-                                // 混合分数策略：originalScore * 0.3 + rerankScore * 0.7
-                                for (let i = 0; i < candidates.length; i++) {
-                                    candidates[i].originalScore = candidates[i].score; // 保存原始分数
-                                    candidates[i].rerankScore = rerankScores[i]; // 保存 Rerank 分数
-                                    // 混合分数：30% 向量相似度 + 70% Rerank 分数
-                                    candidates[i].score = (candidates[i].originalScore * 0.3) + (rerankScores[i] * 0.7);
-                                }
-
-                                // 重新排序
-                                candidates.sort((a, b) => b.score - a.score);
-
-                                console.log('📋 [After Rerank] 混合分数:', candidates.map((c, i) =>
-                                    `[${i}] ${c.score.toFixed(3)} (向量:${c.originalScore.toFixed(3)} + Rerank:${c.rerankScore.toFixed(3)})`
-                                ).join(', '));
-                                console.log('✅ [VectorManager] Rerank 完成，使用混合分数重排序 (向量30% + Rerank70%)');
+                            // 完全信任 Rerank 的排序结果，直接使用 Rerank 分数
+                            for (let i = 0; i < candidates.length; i++) {
+                                candidates[i].originalScore = candidates[i].score; // 保存原始分数
+                                candidates[i].rerankScore = rerankScores[i]; // 保存 Rerank 分数
+                                candidates[i].score = rerankScores[i]; // 直接使用 Rerank 分数
                             }
+
+                            // 重新排序
+                            candidates.sort((a, b) => b.score - a.score);
+
+                            console.log('📋 [After Rerank] 分数:', candidates.map((c, i) =>
+                                `[${i}] ${c.score.toFixed(4)} (原向量:${c.originalScore.toFixed(3)})`
+                            ).join(', '));
+                            console.log('✅ [VectorManager] Rerank 完成，完全使用 Rerank 分数排序');
                         } else {
                             // 降级逻辑：Rerank 失败或超时，使用原始向量排序
                             console.warn('⚠️ [VectorManager] Rerank 失败或超时，已降级为原始向量排序');
@@ -1029,20 +1027,21 @@
                     }
                 }
 
-                // Step 4: 自适应阈值过滤 + 最终切片
-                // 如果启用了 Rerank，使用更低的阈值（0.01），因为混合分数范围可能不同
-                const finalThreshold = config.rerankEnabled ? 0.01 : config.threshold;
-                const filtered = candidates
-                    .filter(r => r.score >= finalThreshold)
-                    .slice(0, config.maxCount);
+                // Step 4: 最终过滤 + 截断
+                // 如果启用了 Rerank，强制使用极低阈值(0.001)以保留低分但有效的结果；否则使用用户设置的阈值。
+                const finalThreshold = config.rerankEnabled ? 0.001 : config.threshold;
 
-                if (config.rerankEnabled && finalThreshold !== config.threshold) {
-                    console.log(`🔧 [自适应阈值] Rerank 模式使用较低阈值: ${finalThreshold} (原阈值: ${config.threshold})`);
+                if (config.rerankEnabled) {
+                    console.log(`🔧 [自适应阈值] Rerank 模式已接管，将阈值从 ${config.threshold} 临时降低至 ${finalThreshold} 以保留结果`);
                 }
 
-                console.log(`🔍 [VectorManager] 检索到 ${filtered.length} 条相关记忆 (知识库:${knowledgeCount})`);
+                let filtered = candidates.filter(r => r.score >= finalThreshold);
+                const finalResults = filtered.slice(0, targetCount);
 
-                return filtered;
+                console.log(`✅ [最终结果] Rerank 精选后保留: ${finalResults.length} 条`);
+                console.log(`🔍 [VectorManager] 检索到 ${finalResults.length} 条相关记忆 (知识库:${knowledgeCount})`);
+
+                return finalResults;
 
             } catch (error) {
                 console.error('❌ [VectorManager] 检索失败:', error);

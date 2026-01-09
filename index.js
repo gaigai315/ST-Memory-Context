@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.6.1
+// 记忆表格 v1.6.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.6.1 启动');
+    console.log('🚀 记忆表格 v1.6.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.6.1';
+    const V = 'v1.6.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -9228,6 +9228,171 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     // ============================================================
+    // 🔥 独立向量检索函数 (用于 Hook 和 Fetch Hijack)
+    // ============================================================
+    /**
+     * 执行向量检索并替换 {{VECTOR_MEMORY}} 变量
+     * @param {Object} data - 包含 .chat 数组的对象，或直接是 chat 数组
+     * @returns {Promise<string>} - 返回向量检索结果文本（用于 Fetch Hijack 热替换）
+     */
+    async function executeVectorSearch(data) {
+        let vectorContent = ''; // 默认返回空字符串
+
+        try {
+            // 兼容处理：如果传入的是数组，包装成对象；如果是对象，直接使用
+            const chatData = Array.isArray(data) ? { chat: data } : data;
+
+            if (!chatData || !chatData.chat || chatData.chat.length === 0) {
+                console.log('💠 [向量检索] 跳过：chat 数组为空');
+                return vectorContent;
+            }
+
+            // 1. 状态预检
+            const isVectorReady = C.vectorEnabled && window.Gaigai.VM;
+            console.log(`💠 [向量检索预检] 开关: ${C.vectorEnabled}, 模块加载: ${!!window.Gaigai.VM}`);
+
+            // 🛡️ 2. 配置预检：开启了但没配好 API
+            if (C.vectorEnabled && (!C.vectorUrl || !C.vectorKey)) {
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning('⚠️ 向量化 API 未配置，已自动跳过检索', '配置提醒', { timeOut: 3000 });
+                }
+                console.warn('🚫 [向量检索] 配置缺失 (URL/Key为空)，跳过检索');
+                return vectorContent; // 返回空字符串
+            }
+
+            // 3. 正常执行检索
+            if (isVectorReady && chatData.chat && chatData.chat.length > 0) {
+                // === 增强版：多轮上下文检索 ===
+                let userQuery = '';
+
+                // 获取配置的上下文深度（默认1）
+                const depth = C.vectorContextDepth || 1;
+                console.log(`💠 [向量检索] 上下文深度: ${depth}`);
+
+                // 倒序收集最近的 depth 条有效消息（User + Assistant）
+                const collectedMessages = [];
+                for (let i = chatData.chat.length - 1; i >= 0 && collectedMessages.length < depth; i--) {
+                    const msg = chatData.chat[i];
+
+                    // 1. 跳过系统指令
+                    if (msg.role === 'system') continue;
+
+                    // 2. 判定是否为有效消息 (User 或 Assistant)
+                    const isUser = msg.is_user === true ||
+                                   msg.role === 'user' ||
+                                   (msg.name !== 'System' && msg.role !== 'assistant');
+
+                    const isAssistant = !isUser && (msg.role === 'assistant' || msg.name !== 'System');
+
+                    if (isUser || isAssistant) {
+                        // 尝试获取内容
+                        let candidateText = msg.mes || msg.content || msg.text || '';
+
+                        // ✅ 新增：执行清洗，去除 Memory 标签和用户黑名单标签(如 think)
+                        candidateText = window.Gaigai.cleanMemoryTags(candidateText);
+                        if (window.Gaigai.tools && typeof window.Gaigai.tools.filterContentByTags === 'function') {
+                            candidateText = window.Gaigai.tools.filterContentByTags(candidateText);
+                        }
+
+                        // 只有清洗后内容有效才采纳
+                        if (candidateText && candidateText.trim()) {
+                            collectedMessages.unshift({  // 使用 unshift 保持时间顺序
+                                role: isUser ? 'User' : 'AI',
+                                content: candidateText
+                            });
+                        }
+                    }
+                }
+
+                // 拼接收集到的消息（按时间顺序）
+                if (collectedMessages.length > 0) {
+                    userQuery = collectedMessages.map(m => m.content).join('\n');
+                    console.log(`✅ [向量检索] 已收集 ${collectedMessages.length} 条消息作为检索上下文`);
+                }
+
+                if (userQuery.trim()) {
+                    console.log(`🔍 [向量检索] 正在检索: "${userQuery.substring(0, 20)}..."`);
+
+                    // 异步检索
+                    const results = await window.Gaigai.VM.search(userQuery);
+
+                    // ==================== 💎 名称匹配加权 (Re-ranking) ====================
+                    if (results && results.length > 0) {
+                        console.log(`🎯 [向量重排] 开始名称匹配加权，共 ${results.length} 条结果`);
+
+                        results.forEach((item, index) => {
+                            // 提取片段内容中的名字（支持多种格式）
+                            const nameMatch = item.text.match(/(?:姓名|Name|name|角色)[:：]\s*([^\s\n，,。.]+)/i);
+
+                            if (nameMatch && nameMatch[1]) {
+                                const name = nameMatch[1].trim();
+
+                                // 检查用户输入是否包含这个名字
+                                if (userQuery.includes(name)) {
+                                    const oldScore = item.score;
+                                    item.score += 0.1;
+                                    console.log(`[向量重排] 命中关键词: "${name}", 分数修正: ${oldScore.toFixed(4)} -> ${item.score.toFixed(4)}`);
+                                }
+                            }
+                        });
+
+                        // 重新排序：按 score 从大到小排序
+                        results.sort((a, b) => b.score - a.score);
+                        console.log(`✅ [向量重排] 重排完成，当前最高分: ${results[0].score.toFixed(4)}`);
+                    }
+                    // ==================== 名称匹配加权结束 ====================
+
+                    // 获取配置的阈值
+                    const threshold = (window.Gaigai.config_obj?.vectorThreshold !== undefined && window.Gaigai.config_obj?.vectorThreshold !== null)
+                        ? window.Gaigai.config_obj.vectorThreshold
+                        : 0.6;
+
+                    // vectorContent 已在函数开头声明，这里直接使用
+
+                    if (results && results.length > 0) {
+                        // 找到最高相似度
+                        const maxScore = Math.max(...results.map(r => r.score));
+                        console.log(`✅ [向量检索] 成功检索 ${results.length} 条记忆 (最高相似度: ${maxScore.toFixed(2)})`);
+
+                        // === 格式化检索结果 (纯净版) ===
+                        vectorContent = results.map(r => r.text).join('\n\n');
+
+                        // ✅ 执行运行时变量替换，确保 {{user}}/{{char}} 显示为真名
+                        if (window.Gaigai.PromptManager && typeof window.Gaigai.PromptManager.resolveVariables === 'function') {
+                            const currentCtx = window.Gaigai.m.ctx();
+                            vectorContent = window.Gaigai.PromptManager.resolveVariables(vectorContent, currentCtx);
+                            console.log('✅ [向量检索] 已解析运行时变量 ({{user}}/{{char}})');
+                        }
+
+                        console.log(`📦 [向量检索] 返回内容长度: ${vectorContent.length} 字符`);
+                    } else {
+                        console.warn(`ℹ️ [向量检索] 检索完成，但未找到匹配内容 (阈值: ${threshold.toFixed(2)})`);
+                        console.warn(`💡 建议: 尝试调低相似度阈值，或检查知识库是否已向量化。`);
+                    }
+                }
+            } else if (!C.vectorEnabled) {
+                console.log('🚫 [向量检索] 跳过：功能未启用');
+            }
+
+            // 返回向量内容（用于 Fetch Hijack 热替换）
+            return vectorContent;
+
+        } catch (e) {
+            // 🛡️ 优雅降级：如果向量检索失败，只记录错误，不影响正常流程
+            console.error('❌ [向量检索] 运行出错 (非阻断):', e);
+
+            // 用户友好提示
+            if (typeof toastr !== 'undefined') {
+                const errorMsg = e.message || '未知错误';
+                toastr.error(`向量检索失败: ${errorMsg}，但这不影响聊天`, '非阻断错误', { timeOut: 4000 });
+            }
+
+            // 即使出错也返回空字符串
+            return vectorContent;
+        }
+    }
+
+    // ============================================================
     // 2. 生成前预处理 (修复重Roll时的回档逻辑)
     // ============================================================
     async function opmt(ev) {
@@ -9316,206 +9481,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             }
 
-            // ==================== 💠 独立向量检索 (增强版) ====================
-            // 在注入表格数据之前，先执行向量检索
-
-            // 1. 状态预检
-            const isVectorReady = C.vectorEnabled && window.Gaigai.VM;
-            console.log(`💠 [向量检索预检] 开关: ${C.vectorEnabled}, 模块加载: ${!!window.Gaigai.VM}`);
-
-            // 🛡️ 2. 配置预检：开启了但没配好 API
-            if (C.vectorEnabled && (!C.vectorUrl || !C.vectorKey)) {
-                if (typeof toastr !== 'undefined') {
-                    toastr.warning('⚠️ 向量化 API 未配置，已自动跳过检索', '配置提醒', { timeOut: 3000 });
-                }
-                console.warn('🚫 [向量检索] 配置缺失 (URL/Key为空)，跳过检索');
-                // 注意：不 return，代码会继续往下执行到 inj(data)
-            }
-            // 3. 正常执行检索
-            else if (isVectorReady && data.chat && data.chat.length > 0) {
-                try {
-                    // === 增强版：多轮上下文检索 ===
-                    let userQuery = '';
-
-                    // 获取配置的上下文深度（默认1）
-                    const depth = C.vectorContextDepth || 1;
-                    console.log(`💠 [向量检索] 上下文深度: ${depth}`);
-
-                    // 倒序收集最近的 depth 条有效消息（User + Assistant）
-                    const collectedMessages = [];
-                    for (let i = data.chat.length - 1; i >= 0 && collectedMessages.length < depth; i--) {
-                        const msg = data.chat[i];
-
-                        // 1. 跳过系统指令
-                        if (msg.role === 'system') continue;
-
-                        // 2. 判定是否为有效消息 (User 或 Assistant)
-                        const isUser = msg.is_user === true ||
-                                       msg.role === 'user' ||
-                                       (msg.name !== 'System' && msg.role !== 'assistant');
-
-                        const isAssistant = !isUser && (msg.role === 'assistant' || msg.name !== 'System');
-
-                        if (isUser || isAssistant) {
-                            // 尝试获取内容
-                            let candidateText = msg.mes || msg.content || msg.text || '';
-
-                            // ✅ 新增：执行清洗，去除 Memory 标签和用户黑名单标签(如 think)
-                            candidateText = window.Gaigai.cleanMemoryTags(candidateText);
-                            if (window.Gaigai.tools && typeof window.Gaigai.tools.filterContentByTags === 'function') {
-                                candidateText = window.Gaigai.tools.filterContentByTags(candidateText);
-                            }
-
-                            // 只有清洗后内容有效才采纳
-                            if (candidateText && candidateText.trim()) {
-                                collectedMessages.unshift({  // 使用 unshift 保持时间顺序
-                                    role: isUser ? 'User' : 'AI',
-                                    content: candidateText
-                                });
-                            }
-                        }
-                    }
-
-                    // 拼接收集到的消息（按时间顺序）
-                    if (collectedMessages.length > 0) {
-                        userQuery = collectedMessages.map(m => m.content).join('\n');
-                        console.log(`✅ [向量检索] 已收集 ${collectedMessages.length} 条消息作为检索上下文`);
-                    }
-                    // === 修复结束 ===
-
-                    if (userQuery.trim()) {
-                        console.log(`🔍 [向量检索] 正在检索: "${userQuery.substring(0, 20)}..."`);
-
-                        // 异步检索（不阻塞流程）
-                        const results = await window.Gaigai.VM.search(userQuery);
-
-                        // ==================== 💎 名称匹配加权 (Re-ranking) ====================
-                        // 遍历检索结果，根据是否命中关键词（角色名）对分数进行微调
-                        if (results && results.length > 0) {
-                            console.log(`🎯 [向量重排] 开始名称匹配加权，共 ${results.length} 条结果`);
-
-                            results.forEach((item, index) => {
-                                // 提取片段内容中的名字（支持多种格式）
-                                const nameMatch = item.text.match(/(?:姓名|Name|name|角色)[:：]\s*([^\s\n，,。.]+)/i);
-
-                                if (nameMatch && nameMatch[1]) {
-                                    const name = nameMatch[1].trim();
-
-                                    // 检查用户输入是否包含这个名字
-                                    if (userQuery.includes(name)) {
-                                        const oldScore = item.score;
-                                        item.score += 0.1;
-                                        console.log(`[向量重排] 命中关键词: "${name}", 分数修正: ${oldScore.toFixed(4)} -> ${item.score.toFixed(4)}`);
-                                    }
-                                }
-                            });
-
-                            // 重新排序：按 score 从大到小排序
-                            results.sort((a, b) => b.score - a.score);
-                            console.log(`✅ [向量重排] 重排完成，当前最高分: ${results[0].score.toFixed(4)}`);
-                        }
-                        // ==================== 名称匹配加权结束 ====================
-
-                        // 获取配置的阈值
-                        const threshold = (window.Gaigai.config_obj?.vectorThreshold !== undefined && window.Gaigai.config_obj?.vectorThreshold !== null)
-                            ? window.Gaigai.config_obj.vectorThreshold
-                            : 0.6;
-
-                        if (results && results.length > 0) {
-                            // 找到最高相似度
-                            const maxScore = Math.max(...results.map(r => r.score));
-                            console.log(`✅ [向量检索] 成功注入 ${results.length} 条记忆 (最高相似度: ${maxScore.toFixed(2)})`);
-
-                            // === 格式化检索结果 (纯净版) ===
-                            // 移除所有硬编码标题、来源标注和分割线，只保留内容本身
-                            let vectorContent = results.map(r => r.text).join('\n\n');
-
-                            // ✅ 修复：执行运行时变量替换，确保 {{user}}/{{char}} 显示为真名
-                            if (window.Gaigai.PromptManager && typeof window.Gaigai.PromptManager.resolveVariables === 'function') {
-                                const currentCtx = window.Gaigai.m.ctx();
-                                vectorContent = window.Gaigai.PromptManager.resolveVariables(vectorContent, currentCtx);
-                                console.log('✅ [向量检索] 已解析运行时变量 ({{user}}/{{char}})');
-                            }
-
-                            // 🔥 [核心修复] 全量替换所有消息中的 {{VECTOR_MEMORY}} 变量
-                            let replacedCount = 0;
-                            data.chat.forEach((msg, i) => {
-                                const content = msg.content || msg.mes || '';
-                                if (content && content.includes('{{VECTOR_MEMORY}}')) {
-                                    // 执行全局替换
-                                    const newContent = content.replace(/\{\{VECTOR_MEMORY\}\}/g, vectorContent);
-                                    msg.content = newContent;
-                                    if (msg.mes) msg.mes = newContent;
-
-                                    // 标记为向量化消息 (用于探针显示)
-                                    msg.isGaigaiVector = true;
-                                    replacedCount++;
-                                    console.log(`📍 [向量替换] 第 ${replacedCount} 次替换 (消息索引: ${i}, 角色: ${msg.role || msg.name || 'unknown'})`);
-                                }
-                            });
-
-                            let foundVariable = replacedCount > 0;
-                            console.log(`📍 [向量替换] 已在 ${replacedCount} 条消息中完成替换`);
-
-                            // === 核心修复：作为独立消息插入默认位置 ===
-                            if (!foundVariable) {
-                                // 寻找最佳插入点：[Start a new Chat] 之前，或者第一条用户消息之前
-                                let insertIndex = 0;
-                                let strategy = "顶端";
-
-                                for (let i = 0; i < data.chat.length; i++) {
-                                    const msg = data.chat[i];
-
-                                    // 1. 优先找 [Start a new Chat] 标记
-                                    if (msg.role === 'system' && msg.content && msg.content.includes('[Start a new Chat]')) {
-                                        insertIndex = i;
-                                        strategy = "Start标签前";
-                                        break;
-                                    }
-
-                                    // 2. 其次找第一条用户/AI 消息
-                                    if (msg.is_user || msg.role === 'user' || msg.role === 'assistant') {
-                                        insertIndex = i;
-                                        strategy = "首条对话前";
-                                        break;
-                                    }
-
-                                    // 兜底：如果全是系统消息，就插在最后
-                                    insertIndex = i + 1;
-                                }
-
-                                // 构造独立的 System 消息
-                                const vectorMsg = {
-                                    role: 'system',
-                                    name: '向量化', // ✅ UI上会显示为 SYSTEM (向量化)
-                                    content: vectorContent,
-                                    mes: vectorContent,
-                                    isGaigaiVector: true // 标记身份
-                                };
-
-                                // 插入数组
-                                data.chat.splice(insertIndex, 0, vectorMsg);
-                                console.log(`📍 [向量插入] 插入位置: ${strategy} (索引: ${insertIndex}) | 作为独立消息`);
-                            }
-                            // === 修复结束 ===
-                        } else {
-                            console.warn(`ℹ️ [向量检索] 检索完成，但未找到匹配内容 (阈值: ${threshold.toFixed(2)})`);
-                            console.warn(`💡 建议: 尝试调低相似度阈值，或检查知识库是否已向量化。`);
-                        }
-                    }
-                } catch (e) {
-                    // 🛡️ 优雅降级：如果向量检索失败，只记录错误，不影响正常流程
-                    console.error('❌ [向量检索] 运行出错 (非阻断):', e);
-
-                    // 用户友好提示
-                    if (typeof toastr !== 'undefined') {
-                        const errorMsg = e.message || '未知错误';
-                        toastr.error(`向量检索失败: ${errorMsg}，但这不影响聊天`, '非阻断错误', { timeOut: 4000 });
-                    }
-                }
-            } else if (!C.vectorEnabled) {
-                console.log('🚫 [向量检索] 跳过：功能未启用 (请检查配置)');
-            }
+            // 注意：向量检索已移至 Fetch Hijack 中处理，确保在发送请求前完成
 
             // 6. 注入 (此时表格已是回档后的干净状态)
             inj(data);
@@ -9543,7 +9509,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     async function ini() {
         // 1. 基础依赖检查
         if (typeof $ === 'undefined' || typeof SillyTavern === 'undefined') {
-            console.log('⏳ 等待依赖加载...');
+            console.log('⏳ 等待依赖加载... (jQuery, SillyTavern)');
             setTimeout(ini, 500);
             return;
         }
@@ -9655,7 +9621,167 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 x.eventSource.on(x.event_types.CHAT_CHANGED, function () { ochat(); });
 
                 // 监听提示词准备事件（用于注入记忆表格）
-                x.eventSource.on(x.event_types.CHAT_COMPLETION_PROMPT_READY, function (ev) { opmt(ev); });
+                // 🔥 [核心修复] 使用 Hook 系统或 Fetch Hijack 解决异步竞态条件
+                if (window.hooks && typeof window.hooks.addFilter === 'function') {
+                    // Modern SillyTavern: 使用 Hook 系统
+                    console.log('✅ [初始化] 使用 Modern Hook 系统注册 chat_completion_prompt_ready (支持异步等待)');
+                    window.hooks.addFilter('chat_completion_prompt_ready', async (chat) => {
+                        // Hook Filter 接收 chat 数组，需要包装成 opmt 期望的格式
+                        await opmt({ chat: chat });
+                        // 向量检索在 opmt 之后单独执行
+                        await executeVectorSearch(chat);
+                        return chat; // Filter 必须返回修改后的数据
+                    });
+                } else {
+                    // Legacy SillyTavern: 使用 Fetch Hijack + 智能注入
+
+                    // 注册传统事件监听器（用于表格注入等功能）
+                    x.eventSource.on(x.event_types.CHAT_COMPLETION_PROMPT_READY, function (ev) {
+                        opmt(ev); // 处理快照和表格注入
+                    });
+
+                    // 🔥 劫持 window.fetch 以在发送请求前强制等待向量检索
+                    const originalFetch = window.fetch;
+                    window.fetch = async function(...args) {
+                        const url = args[0] ? args[0].toString() : '';
+
+                        // 检查是否是生成请求
+                        if (url.includes('/api/backends/chat-completions/generate') ||
+                            url.includes('/generate') ||
+                            url.includes('/v1/chat/completions')) {
+                            console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
+
+                            try {
+                                // 在发送前获取当前 chat 状态
+                                const ctx = SillyTavern.getContext();
+                                if (ctx && ctx.chat) {
+                                    // 🔥 强制等待向量检索完成，并获取向量内容文本
+                                    const vectorText = await executeVectorSearch(ctx.chat);
+                                    console.log(`✅ [Fetch Hijack] 向量检索完成，内容长度: ${vectorText.length}`);
+
+                                    // 🔥 CRITICAL: 智能注入 - 直接修改请求体
+                                    if (args[1] && args[1].body && vectorText) {
+                                        // 🛡️ SAFETY: 防止双重注入 - 如果请求体已包含向量内容，跳过
+                                        if (args[1].body.includes(vectorText)) {
+                                            console.warn('⚠️ [Fetch Hijack] 检测到向量内容已存在，跳过注入防止重复');
+                                            console.log('▶️ [Fetch Hijack] 直接放行请求');
+                                            return originalFetch.apply(this, args);
+                                        }
+
+                                        try {
+                                            let bodyObj = JSON.parse(args[1].body);
+                                            let injected = false; // 标记是否已注入
+
+                                            // 使用正则表达式匹配 [Start a new Chat]（不区分大小写）
+                                            const startChatRegex = /\[Start a new chat\]/i;
+
+                                            // 递归遍历注入函数
+                                            const injectContent = (obj) => {
+                                                for (let key in obj) {
+                                                    if (typeof obj[key] === 'string') {
+                                                        // 情况 A (最高优先级): 替换 {{VECTOR_MEMORY}} 标签
+                                                        if (obj[key].includes('{{VECTOR_MEMORY}}')) {
+                                                            obj[key] = obj[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
+                                                            console.log(`🎯 [智能注入] 在 ${key} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
+                                                            injected = true;
+                                                        }
+                                                        // 情况 B (兜底策略): 在 [Start a new Chat] 前插入（使用正则保留原始大小写）
+                                                        else if (!injected && startChatRegex.test(obj[key])) {
+                                                            // 使用正则替换，保留原始标签
+                                                            obj[key] = obj[key].replace(startChatRegex, (match) => {
+                                                                return vectorText + '\n\n' + match;
+                                                            });
+                                                            console.log(`🎯 [智能注入] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
+                                                            injected = true;
+                                                        }
+                                                    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                                        injectContent(obj[key]);
+                                                    }
+                                                }
+                                            };
+
+                                            // 执行智能注入
+                                            injectContent(bodyObj);
+
+                                            if (injected) {
+                                                // 更新请求体
+                                                args[1].body = JSON.stringify(bodyObj);
+                                                console.log('✅ [Fetch Hijack] 智能注入完成');
+
+                                                // 🔥 CRITICAL: 强制更新探针数据，确保向量内容显示为 SYSTEM
+                                                try {
+                                                    const finalBody = JSON.parse(args[1].body);
+                                                    let debugChat = [];
+
+                                                    // 提取 chat 数组（兼容多种 API 格式）
+                                                    if (finalBody.messages) {
+                                                        debugChat = finalBody.messages;
+                                                    } else if (finalBody.contents) {
+                                                        debugChat = finalBody.contents;
+                                                    } else if (finalBody.prompt) {
+                                                        debugChat = Array.isArray(finalBody.prompt)
+                                                            ? finalBody.prompt
+                                                            : [{role: 'user', content: finalBody.prompt}];
+                                                    }
+
+                                                    // 🔥 强制标记包含向量内容的消息为 SYSTEM
+                                                    let markedCount = 0;
+                                                    debugChat.forEach((msg, idx) => {
+                                                        let content = msg.content ||
+                                                                     (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
+                                                                     (msg.text) ||
+                                                                     '';
+
+                                                        // 如果消息包含向量文本，强制设置为 SYSTEM
+                                                        if (vectorText && content.includes(vectorText)) {
+                                                            // 强制覆盖角色属性
+                                                            msg.role = 'system';
+                                                            msg.isGaigaiVector = true;
+                                                            msg.name = '向量化';
+
+                                                            // 确保没有其他角色标记
+                                                            delete msg.is_user;
+
+                                                            markedCount++;
+                                                            console.log(`🏷️ [探针] 消息 #${idx} 已强制标记为 SYSTEM (向量化)`);
+                                                        }
+                                                    });
+
+                                                    // 保存到全局探针（覆盖 opmt 中的设置）
+                                                    window.Gaigai.lastRequestData = {
+                                                        chat: debugChat,
+                                                        timestamp: Date.now(),
+                                                        model: API_CONFIG.model || 'Unknown'
+                                                    };
+                                                    console.log(`✅ [探针] 已更新 lastRequestData (标记了 ${markedCount} 条向量消息)`);
+
+                                                } catch (probeError) {
+                                                    console.error('❌ [探针] 更新失败:', probeError);
+                                                }
+
+                                            } else if (vectorText) {
+                                                console.warn('⚠️ [Fetch Hijack] 未找到注入点，向量内容未被使用');
+                                            }
+
+                                        } catch (parseError) {
+                                            console.error('❌ [Fetch Hijack] 解析请求体失败:', parseError);
+                                            console.error('请求体内容:', args[1].body.substring(0, 500));
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('❌ [Fetch Hijack] 向量检索过程出错:', e);
+                            }
+
+                            console.log('▶️ [Fetch Hijack] 向量检索完成，恢复请求发送');
+                        }
+
+                        // 继续执行原始请求（使用原始或修改后的参数）
+                        return originalFetch.apply(this, args);
+                    };
+
+                    console.log('✅ [Fetch Hijack] window.fetch 已成功劫持');
+                }
 
                 // 监听 Swipe 事件 (切换回复)
                 x.eventSource.on(x.event_types.MESSAGE_SWIPED, function (id) {
@@ -9722,7 +9848,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     // ===== 初始化重试机制 =====
     let initRetryCount = 0;
-    const maxRetries = 20; // 最多重试20次（10秒）
+    const maxRetries = 50; // 最多重试50次（25秒）- 确保 window.hooks 加载完成
 
     /**
      * 初始化重试函数
@@ -9743,13 +9869,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     // 🔧 自动获取 index.js 所在的目录路径（终极动态版）
     function getExtensionPath() {
-        // 方案 A: 使用 currentScript (最准确，直接获取当前正在运行脚本的 URL)
-        if (document.currentScript && document.currentScript.src) {
-            // 无论 URL 是什么，去掉末尾的文件名就是目录路径
-            return document.currentScript.src.replace(/\/index\.js$/i, '').replace(/\\index\.js$/i, '');
-        }
-
-        // 方案 B: 遍历脚本标签 (兼容性兜底，防止 currentScript 失效)
+        // 遍历脚本标签定位插件路径
         const scripts = document.getElementsByTagName('script');
         for (let i = 0; i < scripts.length; i++) {
             const src = scripts[i].getAttribute('src');
@@ -10031,8 +10151,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化群聊 ：</strong>修复群聊下表格不保存的bug</li>
-                        <li><strong>优化向量化 ：</strong>向量化功能增加重排模式</li>
+                        <li><strong>新增向量化重排 ：</strong>向量化功能增加重排模式</li>
+                        <li><strong>修复群聊 ：</strong>修复群聊下表格不保存的bug</li>
+                        <li><strong>修复向量化 ：</strong>修复向量化注入失败问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
