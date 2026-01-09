@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.5.9
+ * @version 1.6.1
  * @author Gaigai Team
  */
 
@@ -411,7 +411,11 @@
                 threshold: (C.vectorThreshold !== undefined && C.vectorThreshold !== null && C.vectorThreshold !== '') ? parseFloat(C.vectorThreshold) : 0.3,
                 maxCount: parseInt(C.vectorMaxCount) || 10,
                 contextDepth: parseInt(C.vectorContextDepth) || 2,
-                separator: C.vectorSeparator || '==='
+                separator: C.vectorSeparator || '===',
+                rerankEnabled: C.rerankEnabled || false,
+                rerankUrl: C.rerankUrl || 'https://api.siliconflow.cn/v1/rerank',
+                rerankKey: C.rerankKey || '',
+                rerankModel: C.rerankModel || 'BAAI/bge-reranker-v2-m3'
             };
         }
 
@@ -572,6 +576,96 @@
             } catch (error) {
                 console.error('❌ [VectorManager] Embedding API 错误:', error);
                 throw error;
+            }
+        }
+
+        /**
+         * 🎯 调用 Rerank API 对候选文档进行重排序
+         * @private
+         * @param {string} query - 查询文本
+         * @param {string[]} documents - 候选文档数组
+         * @param {Object} config - 配置对象
+         * @returns {Promise<number[]>} - 返回每个文档的新分数数组
+         */
+        async _fetchRerank(query, documents, config) {
+            if (!documents || documents.length === 0) {
+                return [];
+            }
+
+            const url = config.rerankUrl;
+
+            // 修正 top_n 参数：防止超过 API 允许的上限
+            const topN = Math.min(documents.length, config.maxCount || 10);
+
+            const payload = {
+                model: config.rerankModel,
+                query: query,
+                documents: documents,
+                top_n: topN,
+                return_documents: false
+            };
+
+            console.log(`🎯 [VectorManager] 调用 Rerank API: ${url} (文档数: ${documents.length}, top_n: ${topN})`);
+
+            // 创建 AbortController 用于超时控制
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+            }, 3000); // 3秒超时
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${config.rerankKey}`
+                    },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal // 绑定超时信号
+                });
+
+                // 清除超时定时器
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`❌ [VectorManager] Rerank API 请求失败 (${response.status}): ${errorText}`);
+                    return []; // 返回空数组，触发降级
+                }
+
+                const data = await response.json();
+
+                // 解析 Rerank API 返回的结果
+                // 标准格式: { results: [{ index: 0, relevance_score: 0.95 }, ...] }
+                if (data.results && Array.isArray(data.results)) {
+                    // 创建一个数组来存储每个文档的分数（按原始索引）
+                    const scores = new Array(documents.length).fill(0);
+
+                    for (const result of data.results) {
+                        const index = result.index;
+                        const score = result.relevance_score || 0;
+                        scores[index] = score;
+                    }
+
+                    console.log(`✅ [VectorManager] Rerank 完成，返回 ${data.results.length} 个分数`);
+                    return scores;
+                }
+
+                console.error('❌ [VectorManager] Rerank API 返回格式不正确');
+                return []; // 返回空数组，触发降级
+            } catch (error) {
+                // 清除超时定时器
+                clearTimeout(timeoutId);
+
+                // 判断是否为超时错误
+                if (error.name === 'AbortError') {
+                    console.warn('⚠️ [VectorManager] Rerank API 请求超时 (3秒)，已自动中止');
+                } else {
+                    console.error('❌ [VectorManager] Rerank API 错误:', error);
+                }
+
+                // 无论何种错误，都返回空数组，让调用方使用原始分数
+                return [];
             }
         }
 
@@ -848,10 +942,11 @@
                                 hitReason = '短语精确匹配';
                             }
 
-                            // 💥 强制加分：直接加 0.5 分，确保它绝对排在前面且超过阈值
+                            // ✅ 优化加分：降低权重（0.15），避免挤占语义相关片段
                             if (isKeywordHit) {
-                                finalScore += 0.5;
-                                // console.log(`🎯 [强制召回] 命中关键词: "${hitReason}" -> 提分至 ${finalScore.toFixed(2)}`);
+                                const originalScore = score;
+                                finalScore += 0.15;
+                                console.log(`🎯 [关键词加权] 命中关键词: "${hitReason}" -> 加分: ${originalScore.toFixed(4)} -> ${finalScore.toFixed(4)}`);
                             }
 
                             // ✅ 修复：内容去重
@@ -870,11 +965,80 @@
                     }
                 }
 
-                // 筛选并排序
-                const filtered = results
+                // Step 1: 粗排 - 筛选超过阈值的结果并排序
+                let candidates = results
                     .filter(r => r.score >= config.threshold)
-                    .sort((a, b) => b.score - a.score)
+                    .sort((a, b) => b.score - a.score);
+
+                // Step 2: 扩展候选集 - 如果启用了 Rerank，取更多候选项
+                const candidateCount = config.rerankEnabled ? Math.max(config.maxCount * 3, 20) : config.maxCount;
+                candidates = candidates.slice(0, candidateCount);
+
+                console.log(`📊 [VectorManager] 粗排完成: ${candidates.length} 条候选结果 (阈值: ${config.threshold})`);
+
+                // Step 3: Rerank - 如果启用且有候选项
+                if (config.rerankEnabled && candidates.length > 0 && config.rerankKey) {
+                    try {
+                        console.log(`🎯 [VectorManager] 开始 Rerank (候选数: ${candidates.length})...`);
+                        console.log(`🔧 [Rerank 配置] 模型: ${config.rerankModel}, URL: ${config.rerankUrl}`);
+                        console.log('📋 [Before Rerank] 分数:', candidates.map((c, i) => `[${i}] ${c.score.toFixed(3)}`).join(', '));
+
+                        // 提取候选文档的文本
+                        const documents = candidates.map(c => c.text);
+
+                        // 调用 Rerank API
+                        const rerankScores = await this._fetchRerank(query, documents, config);
+
+                        // 如果 Rerank 成功返回了分数
+                        if (rerankScores && rerankScores.length === candidates.length) {
+                            // 检查 Rerank 分数是否普遍极低（top1 < 0.1）
+                            const maxRerankScore = Math.max(...rerankScores);
+                            console.log(`📊 [Rerank 分数范围] 最高: ${maxRerankScore.toFixed(4)}, 最低: ${Math.min(...rerankScores).toFixed(4)}`);
+
+                            if (maxRerankScore < 0.1) {
+                                // 自动回退：Rerank 分数普遍极低，使用原始向量分数
+                                console.warn(`⚠️ [VectorManager] Rerank 分数普遍极低 (top1=${maxRerankScore.toFixed(4)} < 0.1)，已回退使用原始向量分数`);
+                                console.warn(`💡 提示: 请检查 Rerank 模型是否正确 (当前: ${config.rerankModel})，确保使用的是 Rerank 模型而非 Embedding 模型`);
+                                // candidates 保持原有的 score（向量相似度），无需额外操作
+                            } else {
+                                // 混合分数策略：originalScore * 0.3 + rerankScore * 0.7
+                                for (let i = 0; i < candidates.length; i++) {
+                                    candidates[i].originalScore = candidates[i].score; // 保存原始分数
+                                    candidates[i].rerankScore = rerankScores[i]; // 保存 Rerank 分数
+                                    // 混合分数：30% 向量相似度 + 70% Rerank 分数
+                                    candidates[i].score = (candidates[i].originalScore * 0.3) + (rerankScores[i] * 0.7);
+                                }
+
+                                // 重新排序
+                                candidates.sort((a, b) => b.score - a.score);
+
+                                console.log('📋 [After Rerank] 混合分数:', candidates.map((c, i) =>
+                                    `[${i}] ${c.score.toFixed(3)} (向量:${c.originalScore.toFixed(3)} + Rerank:${c.rerankScore.toFixed(3)})`
+                                ).join(', '));
+                                console.log('✅ [VectorManager] Rerank 完成，使用混合分数重排序 (向量30% + Rerank70%)');
+                            }
+                        } else {
+                            // 降级逻辑：Rerank 失败或超时，使用原始向量排序
+                            console.warn('⚠️ [VectorManager] Rerank 失败或超时，已降级为原始向量排序');
+                            // candidates 保持原有的 score（向量相似度），无需额外操作
+                        }
+                    } catch (error) {
+                        // 降级逻辑：捕获任何异常，使用原始向量排序
+                        console.warn('⚠️ [VectorManager] Rerank 失败或超时，已降级为原始向量排序:', error.message || error);
+                        // candidates 保持原有的 score（向量相似度），无需额外操作
+                    }
+                }
+
+                // Step 4: 自适应阈值过滤 + 最终切片
+                // 如果启用了 Rerank，使用更低的阈值（0.01），因为混合分数范围可能不同
+                const finalThreshold = config.rerankEnabled ? 0.01 : config.threshold;
+                const filtered = candidates
+                    .filter(r => r.score >= finalThreshold)
                     .slice(0, config.maxCount);
+
+                if (config.rerankEnabled && finalThreshold !== config.threshold) {
+                    console.log(`🔧 [自适应阈值] Rerank 模式使用较低阈值: ${finalThreshold} (原阈值: ${config.threshold})`);
+                }
 
                 console.log(`🔍 [VectorManager] 检索到 ${filtered.length} 条相关记忆 (知识库:${knowledgeCount})`);
 
@@ -1388,7 +1552,10 @@
 
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">API 密钥</label>
-                                <input type="password" id="gg_vm_key" value="${config.key || ''}" placeholder="sk-xxx" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <div style="position: relative;">
+                                    <input type="password" id="gg_vm_key" value="${config.key || ''}" placeholder="sk-xxx" style="width: 100%; padding: 5px 30px 5px 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                    <i class="gg-vm-toggle-key fa-solid fa-eye" data-target="gg_vm_key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6; color: ${UI.tc}; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"></i>
+                                </div>
                             </div>
 
                             <div style="margin-bottom: 6px;">
@@ -1427,6 +1594,36 @@
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">文本切分符</label>
                                 <input type="text" id="gg_vm_separator" value="${config.separator || '==='}" placeholder="===" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">导入 TXT 时按此分隔符切分文本</div>
+                            </div>
+
+                            <!-- 分隔线 -->
+                            <div style="border-top: 1px dashed rgba(255,255,255,0.15); margin: 10px 0;"></div>
+
+                            <!-- Rerank 配置 -->
+                            <div style="margin-bottom: 8px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px;">
+                                    <input type="checkbox" id="gg_vm_rerank_enabled" ${config.rerankEnabled ? 'checked' : ''} style="transform: scale(1.2); cursor: pointer;" />
+                                    <span style="font-size: 11px; font-weight: bold; color: ${UI.tc};">🎯 启用 Rerank (重排序)</span>
+                                </label>
+                                <div style="font-size: 9px; opacity: 0.5; margin-bottom: 8px; color: ${UI.tc};">使用 Rerank API 对初步检索结果进行精确重排序，提高召回准确度</div>
+
+                                <div style="margin-bottom: 6px;">
+                                    <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank API URL</label>
+                                    <input type="text" id="gg_vm_rerank_url" value="${config.rerankUrl || 'https://api.siliconflow.cn/v1/rerank'}" placeholder="https://api.siliconflow.cn/v1/rerank" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                </div>
+
+                                <div style="margin-bottom: 6px;">
+                                    <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank API Key</label>
+                                    <div style="position: relative;">
+                                        <input type="password" id="gg_vm_rerank_key" value="${config.rerankKey || ''}" placeholder="sk-..." style="width: 100%; padding: 5px 30px 5px 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                        <i class="gg-vm-toggle-key fa-solid fa-eye" data-target="gg_vm_rerank_key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6; color: ${UI.tc}; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"></i>
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom: 6px;">
+                                    <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank Model</label>
+                                    <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                </div>
                             </div>
 
                             <!-- 插入变量提示 -->
@@ -1995,6 +2192,21 @@
                 $('#gg_vm_threshold_val').text(val.toFixed(2));
             });
 
+            // 密码显示/隐藏切换
+            $('.gg-vm-toggle-key').off('click').on('click', function () {
+                const targetId = $(this).data('target');
+                const $input = $(`#${targetId}`);
+                const currentType = $input.attr('type');
+
+                if (currentType === 'password') {
+                    $input.attr('type', 'text');
+                    $(this).removeClass('fa-eye').addClass('fa-eye-slash');
+                } else {
+                    $input.attr('type', 'password');
+                    $(this).removeClass('fa-eye-slash').addClass('fa-eye');
+                }
+            });
+
             // 保存配置
             $('#gg_vm_save').off('click').on('click', async () => {
                 try {
@@ -2011,6 +2223,12 @@
                     C.vectorMaxCount = parseInt($('#gg_vm_max_count').val()) || 3;
                     C.vectorContextDepth = parseInt($('#gg_vm_context_depth').val()) || 1;
                     C.vectorSeparator = $('#gg_vm_separator').val().trim() || '===';
+
+                    // Rerank 配置
+                    C.rerankEnabled = $('#gg_vm_rerank_enabled').is(':checked');
+                    C.rerankUrl = $('#gg_vm_rerank_url').val().trim() || 'https://api.siliconflow.cn/v1/rerank';
+                    C.rerankKey = $('#gg_vm_rerank_key').val().trim();
+                    C.rerankModel = $('#gg_vm_rerank_model').val().trim() || 'BAAI/bge-reranker-v2-m3';
 
                     // 保存到 localStorage
                     try {
