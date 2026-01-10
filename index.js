@@ -9169,6 +9169,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
         }, 650);
 
+        // ============================================================
+        // 🚑 [开场白修复补丁]
+        // 检查并强制处理未被快照的开场白消息
+        // ============================================================
+        if (currentLen > 0) {
+            const firstMsg = ctx.chat[0];
+            // 条件：第一条消息存在，是AI发的（is_user为false），并且没有为它创建过快照
+            if (firstMsg && firstMsg.is_user === false && !snapshotHistory['0']) {
+                console.log('🚑 [开场白补丁] 检测到未处理的开场白，正在强制生成快照...');
+                // 立即调用omsg处理第0条消息，强制生成 snapshotHistory['0']
+                omsg(0);
+            }
+        }
+
         // 解锁
         setTimeout(() => {
             isChatSwitching = false;
@@ -10151,9 +10165,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增向量化重排 ：</strong>向量化功能增加重排模式</li>
-                        <li><strong>修复群聊 ：</strong>修复群聊下表格不保存的bug</li>
-                        <li><strong>修复向量化 ：</strong>修复向量化注入失败问题</li>
+                        <li><strong>修复bug ：</strong>修复角色卡开场白d丢失在上下文的问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
