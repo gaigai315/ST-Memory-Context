@@ -6652,7 +6652,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         images: [],
                         quiet: true,
                         dryRun: false,
-                        skip_save: false,
+                        skip_save: true,
 
                         // 🛡️ 纯净模式：关闭所有干扰项
                         include_world_info: false,
@@ -6660,9 +6660,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         include_character_card: false,
                         include_names: false,
 
-                        // ✅ 强制指定最大输出长度 ( 65536 token 足够写出极长的总结)
-                        max_tokens: 65536,
-                        length: 65536,
+                        // ✅ 使用用户配置的 max_tokens，避免挤爆上下文窗口
+                        max_tokens: API_CONFIG.maxTokens || 8192,
+                        length: API_CONFIG.maxTokens || 8192,
 
                         // ✅✅✅ 清空停止符，防止遇到人名就截断
                         stop: [],
