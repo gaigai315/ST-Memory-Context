@@ -965,20 +965,16 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     function showPromptManager() {
         const profilesData = getProfilesData() || initProfiles();
 
-        // 🔥 修复：优先使用角色绑定的预设ID
+        // 获取当前角色名用于绑定功能
         const charName = getCurrentCharacterName();
-        let currentProfileId = profilesData.currentProfileId || 'default';
 
-        // 如果当前角色有绑定预设，强制使用绑定的预设ID
-        if (charName && profilesData.charBindings && profilesData.charBindings[charName]) {
-            currentProfileId = profilesData.charBindings[charName];
-            console.log(`[PromptManager] 检测到角色绑定: "${charName}" -> "${currentProfileId}"`);
-        }
+        // ✅ 始终使用 profilesData.currentProfileId，允许用户自由切换编辑
+        let currentProfileId = profilesData.currentProfileId || 'default';
 
         const currentProfile = profilesData.profiles[currentProfileId];
         const currentData = currentProfile.data;
 
-        // 获取当前角色名用于绑定功能
+        // 检查当前预设是否绑定到当前角色
         const isCharBound = charName && profilesData.charBindings[charName] === currentProfileId;
 
         // 构建预设下拉列表
@@ -1146,6 +1142,9 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 profilesData.currentProfileId = newId;
                 saveProfilesData(profilesData);
 
+                // ✅ 更新时间戳，防止被后台同步覆盖
+                localStorage.setItem('gg_timestamp', Date.now().toString());
+
                 // 🔄 同步到云端
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
                     await window.Gaigai.saveAllSettingsToCloud();
@@ -1162,6 +1161,9 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
                 currentProfile.name = newName;
                 saveProfilesData(profilesData);
+
+                // ✅ 更新时间戳，防止被后台同步覆盖
+                localStorage.setItem('gg_timestamp', Date.now().toString());
 
                 // 🔄 同步到云端
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
@@ -1193,6 +1195,9 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
                 profilesData.currentProfileId = 'default';
                 saveProfilesData(profilesData);
+
+                // ✅ 更新时间戳，防止被后台同步覆盖
+                localStorage.setItem('gg_timestamp', Date.now().toString());
 
                 // 🔄 同步到云端
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
@@ -1287,6 +1292,9 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
                 // 保存到 localStorage
                 saveProfilesData(profilesData);
+
+                // ✅ 更新时间戳，防止被后台同步覆盖
+                localStorage.setItem('gg_timestamp', Date.now().toString());
 
                 // ✅ 显式更新全局配置对象
                 window.Gaigai.config_obj.profiles = profilesData;
