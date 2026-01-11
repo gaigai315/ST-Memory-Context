@@ -9493,6 +9493,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     data.chat.splice(0, data.chat.length, ...limitedChat);
                     console.log(`✂️ 隐藏楼层已执行`);
                 }
+
+                // ✅ 新增：清洗历史记录中的图片，防止包体过大
+                // 遍历所有历史消息，移除图片字段，避免 Base64 数据导致 JSON 超过 20MB
+                currentChat.forEach(msg => {
+                    if (msg.image) delete msg.image;
+                    if (msg.imageUrl) delete msg.imageUrl;
+                    if (msg.images) delete msg.images;
+                    // 兼容其他可能的图片字段
+                    if (msg.extra && msg.extra.image) delete msg.extra.image;
+                    if (msg.extra && msg.extra.images) delete msg.extra.images;
+                });
+                console.log(`🖼️ 已清洗历史消息中的图片数据，防止请求体过大`);
             }
 
             // 注意：向量检索已移至 Fetch Hijack 中处理，确保在发送请求前完成
