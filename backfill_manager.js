@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.5.9
+ * @version 1.6.3
  * @author Gaigai Team
  */
 
@@ -37,6 +37,15 @@
 
             // ✅ 读取保存的批次步长
             const savedStep = window.Gaigai.config_obj.batchBackfillStep || 40;
+
+            // ✅ 读取手动界面的静默选项记忆（独立存储，不影响全局配置）
+            let manualSilentMode;
+            try {
+                const stored = localStorage.getItem('gg_manual_bf_silent');
+                manualSilentMode = stored !== null ? (stored === 'true') : window.Gaigai.config_obj.autoBackfillSilent;
+            } catch (e) {
+                manualSilentMode = window.Gaigai.config_obj.autoBackfillSilent;
+            }
 
             // 🆕 构建表格下拉选项（动态获取所有数据表，不包含总结表）
             let tableOptions = '<option value="-1">全部表格</option>';
@@ -155,7 +164,7 @@
                     </div>
                     <!-- 静默执行选项（两种模式都显示） -->
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-top: 8px;">
-                        <input type="checkbox" id="gg_bf_silent-mode" ${window.Gaigai.config_obj.autoBackfillSilent ? 'checked' : ''} style="transform: scale(1.2);">
+                        <input type="checkbox" id="gg_bf_silent-mode" ${manualSilentMode ? 'checked' : ''} style="transform: scale(1.2);">
                         <span style="color:${UI.tc};">🤫 静默执行 (不弹窗确认，直接写入)</span>
                     </label>
                 </div>
@@ -265,20 +274,16 @@
                     console.log(`✅ [手动修正] 追溯进度已更新: ${newValue}`);
                 });
 
-                // ✅ 静默执行复选框 - 保存状态到配置
+                // ✅ 静默执行复选框 - 独立记忆（不影响全局配置）
                 $('#gg_bf_silent-mode').on('change', function () {
                     const isChecked = $(this).is(':checked');
-                    window.Gaigai.config_obj.autoBackfillSilent = isChecked;
-                    localStorage.setItem('gg_config', JSON.stringify(window.Gaigai.config_obj));
-
-                    // 同步到云端
-                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                        window.Gaigai.saveAllSettingsToCloud().catch(err => {
-                            console.warn('⚠️ [静默执行配置] 云端同步失败:', err);
-                        });
+                    // 只保存到独立的本地存储键，不修改全局配置
+                    try {
+                        localStorage.setItem('gg_manual_bf_silent', isChecked.toString());
+                        console.log(`💾 [手动界面静默选项] 已保存: ${isChecked}`);
+                    } catch (e) {
+                        console.warn('⚠️ [静默选项] 保存失败:', e);
                     }
-
-                    console.log(`💾 [静默执行配置] 已保存: ${isChecked}`);
                 });
 
                 // ✅ 分批模式复选框切换

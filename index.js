@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.6.2
+// 记忆表格 v1.6.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.6.2 启动');
+    console.log('🚀 记忆表格 v1.6.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.6.2';
+    const V = 'v1.6.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -10177,7 +10177,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复bug ：</strong>修复角色卡开场白d丢失在上下文的问题</li>
+                        <li><strong>修复bug ：</strong>修复修改提示词后，提示词无法被保存发送的问题</li>
+                        <li><strong>优化隐藏楼层 ：</strong>隐藏楼层自动清除上下文图片，避免图片太大导致报错的问题。</li>
+                        <li><strong>修复bug ：</strong>修复静默模式下手动填表和批量填表保存设置冲突的问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
