@@ -971,6 +971,12 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         // ✅ 始终使用 profilesData.currentProfileId，允许用户自由切换编辑
         let currentProfileId = profilesData.currentProfileId || 'default';
 
+        // ✅ 如果当前角色有绑定预设，自动选中绑定的预设（仅影响本次渲染，不保存）
+        if (charName && profilesData.charBindings && profilesData.charBindings[charName]) {
+            currentProfileId = profilesData.charBindings[charName];
+            console.log(`[PromptManager] 角色 "${charName}" 已绑定预设 "${currentProfileId}"，自动选中`);
+        }
+
         const currentProfile = profilesData.profiles[currentProfileId];
         const currentData = currentProfile.data;
 
