@@ -2224,9 +2224,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     re = new RegExp('<' + t + '[\\s\\S]*?-->', 'gi');
                 } else {
                     // 匹配成对标签 <tag>...</tag>
-                    re = new RegExp(`<${t}(?:\\s+[^>]*)?>[\\s\\S]*?<\\/${t}>`, 'gi');
+                    // 允许闭合标签中有空格 (e.g., </ details>)
+                    re = new RegExp('<' + t + '(?:\\s+[^>]*)?>[\\s\\S]*?<\\/' + t + '\\s*>', 'gi');
                 }
-                result = result.replace(re, '');
+
+                // 使用循环重复替换,直到没有更多匹配(处理嵌套标签)
+                let prevResult;
+                let loopCount = 0;
+                const maxLoops = 50; // 安全计数器,防止无限循环
+
+                do {
+                    prevResult = result;
+                    result = result.replace(re, '');
+                    loopCount++;
+                } while (result !== prevResult && loopCount < maxLoops);
             });
         }
 
