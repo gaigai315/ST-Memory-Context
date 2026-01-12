@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.6.3
+// 记忆表格 v1.6.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.6.3 启动');
+    console.log('🚀 记忆表格 v1.6.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.6.3';
+    const V = 'v1.6.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -485,7 +485,7 @@
         }
 
         try {
-            const response = await fetch('/csrf-token');
+            const response = await fetch('/csrf-token', { credentials: 'include' });
             if (!response.ok) throw new Error('CSRF fetch failed');
             const data = await response.json();
             cachedCsrfToken = data.token;
@@ -5947,7 +5947,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify(proxyPayload)
+                        body: JSON.stringify(proxyPayload),
+                        credentials: 'include'
                     });
 
                     if (proxyResponse.ok) {
@@ -6013,7 +6014,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify(proxyPayload)
+                        body: JSON.stringify(proxyPayload),
+                        credentials: 'include'
                     });
 
                     if (proxyResponse.ok) {
@@ -6121,7 +6123,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': csrfToken
                         },
-                        body: JSON.stringify(proxyPayload)
+                        body: JSON.stringify(proxyPayload),
+                        credentials: 'include'
                     });
 
                     // 1. 检查成功状态
@@ -7206,7 +7209,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const response = await fetch('/api/backends/chat-completions/status', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify(proxyPayload)
+                        body: JSON.stringify(proxyPayload),
+                        credentials: 'include'
                     });
 
                     if (response.ok) {
@@ -7518,7 +7522,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const res = await fetch('/api/settings/get?t=' + Date.now(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-                body: JSON.stringify({})
+                body: JSON.stringify({}),
+                credentials: 'include'
             });
 
             if (res.ok) {
@@ -7688,7 +7693,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const getResponse = await fetch('/api/settings/get', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify({})
+                body: JSON.stringify({}),
+                credentials: 'include'
             });
 
             if (!getResponse.ok) throw new Error('无法读取服务器配置');
@@ -7705,7 +7711,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const saveResponse = await fetch('/api/settings/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify(currentSettings)
+                body: JSON.stringify(currentSettings),
+                credentials: 'include'
             });
 
             if (!saveResponse.ok) throw new Error('无法写入服务器配置');
@@ -7930,6 +7937,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <div style="margin-bottom: 8px;">
                 <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">🚫 黑名单标签 (去除)</label>
                 <input type="text" id="gg_c_filter_tags" value="${esc(C.filterTags || '')}" placeholder="例: thinking, system" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
+
+                <!-- 快速添加区域 -->
+                <div style="margin-top: 6px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                    <span style="font-size:10px; font-weight:bold; color:var(--g-tc); opacity:0.8;">🔥 常用标签：</span>
+                    <span class="gg-quick-tag" data-tag="think" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">think</span>
+                    <span class="gg-quick-tag" data-tag="thinking" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">thinking</span>
+                    <span class="gg-quick-tag" data-tag="details" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">details</span>
+                    <span class="gg-quick-tag" data-tag="!--" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">!--</span>
+                    <span id="gg_clear_filter_tags" style="background: rgba(211,47,47,0.1); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; color:#d32f2f; transition: background 0.2s;" onmouseover="this.style.background='rgba(211,47,47,0.2)'" onmouseout="this.style.background='rgba(211,47,47,0.1)'" title="清空">🗑️</span>
+                </div>
+
                 <div style="font-size:9px; color:#d63031; margin-top:2px;">删除这些标签及其内部的所有文字</div>
             </div>
 
@@ -8212,7 +8230,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const response = await fetch('/api/settings/get?t=' + Date.now(), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({})
+                        body: JSON.stringify({}),
+                        credentials: 'include'
                     });
 
                     if (!response.ok) throw new Error(`配置同步失败: ${response.status}`);
@@ -8681,6 +8700,40 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 } else {
                     customAlert('向量管理器未加载，请刷新页面后重试', '错误');
                 }
+            });
+
+            // ==================== 快速添加标签功能 ====================
+            // 点击标签快速添加到输入框
+            $('.gg-quick-tag').off('click').on('click', function() {
+                const tag = $(this).data('tag');
+                const $input = $('#gg_c_filter_tags');
+                let currentValue = $input.val().trim();
+
+                // 如果已有内容,追加逗号和空格
+                if (currentValue) {
+                    currentValue += ', ';
+                }
+
+                // 追加标签
+                currentValue += tag;
+                $input.val(currentValue);
+
+                // 视觉反馈
+                $(this).css('background', 'rgba(76,175,80,0.3)');
+                setTimeout(() => {
+                    $(this).css('background', 'rgba(0,0,0,0.08)');
+                }, 200);
+            });
+
+            // 清空按钮
+            $('#gg_clear_filter_tags').off('click').on('click', function() {
+                $('#gg_c_filter_tags').val('');
+
+                // 视觉反馈
+                $(this).css('background', 'rgba(211,47,47,0.4)');
+                setTimeout(() => {
+                    $(this).css('background', 'rgba(211,47,47,0.1)');
+                }, 200);
             });
 
             // 🔓 释放恢复标志，允许保存操作
@@ -10189,7 +10242,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复bug ：</strong>优化黑名单过滤标签正则</li>  
+                        <li><strong>优化黑名单正则 ：</strong>优化黑名单过滤标签正则，新增常用标签</li>  
+                        <li><strong>优化向量化 ：</strong>新增向量化模型拉取及测试</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

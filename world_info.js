@@ -4,7 +4,7 @@
  * 功能：处理记忆总结与 SillyTavern 世界书的同步和绑定
  * 包含：防抖同步、智能创建/更新、自动绑定角色卡
  *
- * @version 1.5.6
+ * @version 1.6.4
  * @author Gaigai Team
  */
 
@@ -68,7 +68,8 @@
                         const getRes = await fetch('/api/worldinfo/get', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                            body: JSON.stringify({})
+                            body: JSON.stringify({}),
+                            credentials: 'include'
                         });
                         if (getRes.ok) {
                             const allWorldBooks = await getRes.json();
@@ -96,7 +97,8 @@
                     const saveRes = await fetch('/api/worldinfo/edit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({ name: worldBookName, data: finalJson })
+                        body: JSON.stringify({ name: worldBookName, data: finalJson }),
+                        credentials: 'include'
                     });
 
                     if (saveRes.ok) {
@@ -258,7 +260,8 @@
                     const getRes = await fetch('/api/worldinfo/get', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({})
+                        body: JSON.stringify({}),
+                        credentials: 'include'
                     });
 
                     if (getRes.ok) {
@@ -287,7 +290,8 @@
                                     const delRes = await fetch('/api/worldinfo/delete', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                                        body: JSON.stringify({ name: oldBookName })
+                                        body: JSON.stringify({ name: oldBookName }),
+                                        credentials: 'include'
                                     });
 
                                     if (delRes.ok) {
@@ -390,7 +394,8 @@
                     const getRes = await fetch('/api/worldinfo/get', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify({ name: worldBookName })
+                        body: JSON.stringify({ name: worldBookName }),
+                        credentials: 'include'
                     });
 
                     if (getRes.ok) {

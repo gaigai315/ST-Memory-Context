@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.6.2
+ * @version 1.6.4
  * @author Gaigai Team
  */
 
@@ -226,7 +226,8 @@
                         'Content-Type': 'application/json',
                         'X-CSRF-Token': csrfToken
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    credentials: 'include'
                 });
 
                 if (!response.ok) {
@@ -280,7 +281,8 @@
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': csrfToken
                         },
-                        body: JSON.stringify({ name: STORAGE_BOOK_NAME })
+                        body: JSON.stringify({ name: STORAGE_BOOK_NAME }),
+                        credentials: 'include'
                     });
 
                     if (response.ok) {
@@ -1559,7 +1561,11 @@
 
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">模型名称</label>
-                                <input type="text" id="gg_vm_model" value="${config.model || 'BAAI/bge-m3'}" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <div style="display: flex; gap: 4px; align-items: center;">
+                                    <input type="text" id="gg_vm_model" value="${config.model || 'BAAI/bge-m3'}" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                    <button id="gg_vm_fetch_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
+                                    <button id="gg_vm_test_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+                                </div>
                             </div>
 
                             <!-- 分隔线 -->
@@ -1585,7 +1591,7 @@
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">检索上下文深度</label>
                                 <input type="number" id="gg_vm_context_depth" value="${config.contextDepth || 1}" min="1" max="5" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
-                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">检索时向前回溯的消息数量 (User+AI)，解决短回复无法检索的问题</div>
+                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">引用最后多少条上下文进行检索，解决短回复无法检索的问题</div>
                             </div>
 
                             <!-- 文本切分符 -->
@@ -2203,6 +2209,180 @@
                 } else {
                     $input.attr('type', 'password');
                     $(this).removeClass('fa-eye-slash').addClass('fa-eye');
+                }
+            });
+
+            // 🔄 拉取模型列表
+            $('#gg_vm_fetch_models').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 拉取中...').prop('disabled', true);
+
+                try {
+                    const apiUrl = $('#gg_vm_url').val().trim();
+                    const apiKey = $('#gg_vm_key').val().trim();
+
+                    if (!apiUrl) {
+                        await customAlert('⚠️ 请先填写 API 地址', '提示');
+                        return;
+                    }
+
+                    // 智能处理 API URL (确保以 /v1 结尾)
+                    let baseUrl = apiUrl.replace(/\/+$/, ''); // 移除尾部斜杠
+                    if (!baseUrl.endsWith('/v1')) {
+                        baseUrl += '/v1';
+                    }
+                    const modelsUrl = `${baseUrl}/models`;
+
+                    // 发送请求
+                    const response = await fetch(modelsUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+
+                    // 解析模型列表 (兼容 OpenAI 格式)
+                    let models = [];
+                    if (data.data && Array.isArray(data.data)) {
+                        models = data.data.map(m => m.id || m.name || m).filter(Boolean);
+                    } else if (Array.isArray(data)) {
+                        models = data.map(m => m.id || m.name || m).filter(Boolean);
+                    }
+
+                    if (models.length === 0) {
+                        await customAlert('⚠️ 未找到可用模型', '提示');
+                        return;
+                    }
+
+                    // 将输入框替换为下拉框
+                    const $modelInput = $('#gg_vm_model');
+                    const currentValue = $modelInput.val();
+                    const $select = $('<select>', {
+                        id: 'gg_vm_model',
+                        style: $modelInput.attr('style')
+                    });
+
+                    // 1. 添加"手动输入"选项
+                    $select.append($('<option>', {
+                        value: '__manual__',
+                        text: '-- 手动输入 --'
+                    }));
+
+                    // 2. 添加模型选项
+                    models.forEach(modelId => {
+                        $select.append($('<option>', {
+                            value: modelId,
+                            text: modelId,
+                            selected: modelId === currentValue
+                        }));
+                    });
+
+                    // 3. 添加切换回输入框的逻辑
+                    $select.on('change', function() {
+                        if ($(this).val() === '__manual__') {
+                            // 重新创建文本输入框
+                            const $newInput = $('<input>', {
+                                type: 'text',
+                                id: 'gg_vm_model',
+                                value: '',
+                                style: $(this).attr('style'),
+                                placeholder: '请输入模型名称...'
+                            });
+
+                            // 替换下拉框为输入框
+                            $(this).replaceWith($newInput);
+                            $newInput.focus();
+                        }
+                    });
+
+                    // 替换输入框
+                    $modelInput.replaceWith($select);
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已加载 ${models.length} 个模型`, '拉取成功');
+                    } else {
+                        await customAlert(`✅ 已加载 ${models.length} 个模型`, '拉取成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 拉取模型失败:', e);
+                    await customAlert(`❌ 拉取模型失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
+            // 🧪 测试连接
+            $('#gg_vm_test_connection').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 测试中...').prop('disabled', true);
+
+                try {
+                    const apiUrl = $('#gg_vm_url').val().trim();
+                    const apiKey = $('#gg_vm_key').val().trim();
+                    const model = $('#gg_vm_model').val().trim();
+
+                    if (!apiUrl) {
+                        await customAlert('⚠️ 请先填写 API 地址', '提示');
+                        return;
+                    }
+
+                    if (!model) {
+                        await customAlert('⚠️ 请先填写模型名称', '提示');
+                        return;
+                    }
+
+                    // 智能处理 API URL
+                    let baseUrl = apiUrl.replace(/\/+$/, '');
+                    if (!baseUrl.endsWith('/v1')) {
+                        baseUrl += '/v1';
+                    }
+                    const embeddingsUrl = `${baseUrl}/embeddings`;
+
+                    // 发送测试请求
+                    const response = await fetch(embeddingsUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: model,
+                            input: 'test'
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+
+                    const data = await response.json();
+
+                    // 验证返回的数据格式
+                    if (data.data && Array.isArray(data.data) && data.data[0]?.embedding) {
+                        const vectorDim = data.data[0].embedding.length;
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`向量维度: ${vectorDim}`, '✅ 连接成功');
+                        } else {
+                            await customAlert(`✅ 连接成功\n\n向量维度: ${vectorDim}`, '测试成功');
+                        }
+                    } else {
+                        throw new Error('返回数据格式不正确');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 测试连接失败:', e);
+                    await customAlert(`❌ 测试连接失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
                 }
             });
 
