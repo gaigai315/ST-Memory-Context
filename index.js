@@ -5886,12 +5886,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const cleanMessages = rawMessages.map(m => {
             // 如果允许保留 system 且当前是 system，直接返回原样
             if (preserveSystem && m.role === 'system') {
-                return { role: 'system', content: m.content };
+                return { role: 'system', content: m.content || '' };
             }
             // 否则才转为 User（针对老旧本地模型）
             return {
                 role: m.role === 'system' ? 'user' : m.role,
-                content: m.role === 'system' ? ('[System]: ' + m.content) : m.content
+                content: m.role === 'system' ? ('[System]: ' + (m.content || '')) : (m.content || '')
             };
         });
 

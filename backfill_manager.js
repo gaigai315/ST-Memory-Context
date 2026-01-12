@@ -1057,6 +1057,9 @@ ${lastError.message}
                 console.log(`✅ [智能触发器] 创建新的 user 消息`);
             }
 
+            // 🛡️ 过滤空消息，防止 API 错误
+            messages = messages.filter(m => m.content && m.content.trim());
+
             window.Gaigai.lastRequestData = {
                 chat: JSON.parse(JSON.stringify(messages)),
                 timestamp: Date.now(),
@@ -2125,10 +2128,13 @@ ${lastError.message}
 
             // ✨✨✨ 核心修复：强制独立发送指令，防止与聊天记录打架 ✨✨✨
             // 不再追加到上一条，而是直接 push 一条新的
-            messages.push({ 
-                role: 'user', 
-                content: `🛑 以上是历史剧情记录。\n\n${finalInstruction}` 
+            messages.push({
+                role: 'user',
+                content: `🛑 以上是历史剧情记录。\n\n${finalInstruction}`
             });
+
+            // 🛡️ 过滤空消息，防止 API 错误
+            messages = messages.filter(m => m.content && m.content.trim());
 
             window.Gaigai.lastRequestData = {
                 chat: JSON.parse(JSON.stringify(messages)),
