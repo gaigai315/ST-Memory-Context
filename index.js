@@ -2053,7 +2053,7 @@
             text: '📏 重置行高',
             css: Object.assign({}, btnStyle, {
                 background: themeColor,
-                color: '#fff'
+                color: 'var(--g-tc)'
             })
         });
 
@@ -4964,7 +4964,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const $btn = $(this);
             const ti = parseInt($btn.data('ti'));
             const ri = parseInt($btn.data('r'));
-            const direction = $btn.hasClass('up') ? -1 : 1;
+
+            // ✨✨✨ 修复开始：根据倒序视图调整移动方向 ✨✨✨
+            let direction = $btn.hasClass('up') ? -1 : 1;
+
+            // 如果开启了倒序显示,视觉上的"上"其实是索引增加的方向,"下"是索引减小的方向
+            // 所以需要反转方向
+            if (C.reverseView) {
+                direction = -direction;
+            }
+            // ✨✨✨ 修复结束 ✨✨✨
 
             const sh = m.get(ti);
             if (!sh) return;
@@ -10244,6 +10253,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>优化黑名单正则 ：</strong>优化黑名单过滤标签正则，新增常用标签</li>  
                         <li><strong>优化向量化 ：</strong>新增向量化模型拉取及测试</li>
+                        <li><strong>修复视图 ：</strong>表格倒序时，上下移动错误的bug</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
