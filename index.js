@@ -5979,13 +5979,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     throw new Error(`酒馆后端报错: ${errText.substring(0, 100)}`);
                 }
 
-                // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路
+                // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路径
                 // ✨ 修复：排除本地地址 (127.0.0.1/localhost)。
                 // 如果用户用 gcli 等本地转接工具，应该走下面的通用 OpenAI/Custom 协议，那里有完善的安全注入。
+                // ✨✨ 修复：排除包含 /v1 的 URL，这些是标准 OpenAI 兼容端点，不应该走 MakerSuite 协议
                 const isProxyGemini = (provider === 'proxy_only') &&
                     model.toLowerCase().includes('gemini') &&
                     !apiUrl.includes('127.0.0.1') &&
-                    !apiUrl.includes('localhost');
+                    !apiUrl.includes('localhost') &&
+                    !apiUrl.includes('/v1');
 
                 if (isProxyGemini) {
                     // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 修复逻辑) ===
@@ -9749,6 +9751,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const originalFetch = window.fetch;
                     window.fetch = async function(...args) {
                         const url = args[0] ? args[0].toString() : '';
+
+                        // Skip vector search for API connection tests
+                        if (args[1] && args[1].body && args[1].body.includes("API连接测试是否成功")) {
+                            console.log('🧪 [Fetch Hijack] Detected API connection test, skipping vector search.');
+                            return originalFetch.apply(this, args);
+                        }
 
                         // 检查是否是生成请求
                         if ((url.includes('/api/backends/chat-completions/generate') ||
