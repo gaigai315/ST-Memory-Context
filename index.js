@@ -9683,9 +9683,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const url = args[0] ? args[0].toString() : '';
 
                         // 检查是否是生成请求
-                        if (url.includes('/api/backends/chat-completions/generate') ||
+                        if ((url.includes('/api/backends/chat-completions/generate') ||
                             url.includes('/generate') ||
-                            url.includes('/v1/chat/completions')) {
+                            url.includes('/v1/chat/completions')) &&
+                            !window.isSummarizing) {
                             console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
 
                             try {
@@ -10188,9 +10189,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复bug ：</strong>修复修改提示词后，提示词无法被保存发送的问题</li>
-                        <li><strong>优化隐藏楼层 ：</strong>隐藏楼层自动清除上下文图片，避免图片太大导致报错的问题。</li>
-                        <li><strong>修复bug ：</strong>修复静默模式下手动填表和批量填表保存设置冲突的问题</li>
+                        <li><strong>修复bug ：</strong>优化黑名单过滤标签正则</li>  
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
