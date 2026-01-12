@@ -874,7 +874,7 @@ ${lastError.message}
             // ========================================
             // 📋 消息构建（智能追加顺序）
             // ========================================
-            const messages = [];
+            let messages = [];
 
             // 1️⃣ Msg 1 (System): nsfwPrompt (越狱提示)
             messages.push({
@@ -1982,7 +1982,7 @@ ${lastError.message}
                 charName = ctx.name2;
             }
 
-            const messages = [{
+            let messages = [{
                 role: 'system',
                 content: window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('nsfwPrompt'), ctx)
             }];
