@@ -1207,6 +1207,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 // 🔄 同步到云端
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
                     await window.Gaigai.saveAllSettingsToCloud();
+                    console.log('[PromptManager] Deletion synced to cloud');
                 }
 
                 await window.Gaigai.customAlert('✅ 预设已删除！', '成功');
