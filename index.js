@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.6.4
+// 记忆表格 v1.6.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.6.4 启动');
+    console.log('🚀 记忆表格 v1.6.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.6.4';
+    const V = 'v1.6.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1226,9 +1226,9 @@
                         // 计算本地存档的行数
                         const localRows = localData.d ? localData.d.reduce((sum, sheet) => sum + (sheet.r ? sheet.r.length : 0), 0) : 0;
 
-                        // ⚡️ 判定：如果本地有大量数据(>5行)，而当前内存几乎为空(<2行)
-                        // 判定为“加载失败”，禁止覆盖保存！
-                        if (localRows > 5 && totalRows < 2) {
+                        // ⚡️ 判定：如果本地有任何数据，而当前内存完全为空
+                        // 判定为"加载失败"，禁止覆盖保存！
+                        if (localRows > 0 && totalRows === 0) {
                             console.error(`🛑 [严重熔断] 拦截了一次毁灭性保存！`);
                             console.error(`   原因：内存数据(${totalRows}行) 远少于 本地存档(${localRows}行)。可能因加载失败导致。`);
 
@@ -9606,9 +9606,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
      * 等待依赖加载完成后，创建UI按钮，注册事件监听，启动插件
      */
     async function ini() {
-        // 1. 基础依赖检查
+        // 1. Basic Dependency Check
         if (typeof $ === 'undefined' || typeof SillyTavern === 'undefined') {
-            console.log('⏳ 等待依赖加载... (jQuery, SillyTavern)');
+            console.log('⏳ [Gaigai] Waiting for dependencies...');
             setTimeout(ini, 500);
             return;
         }
@@ -9657,7 +9657,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // loadColWidths(); // ❌ 已废弃：不再从全局加载，列宽/行高通过 m.load() 从会话存档加载
         // loadSummarizedRows(); // ❌ 已废弃：不再从全局加载，改为通过 m.load() 从角色专属存档加载
-        m.load();
+
+        // Only attempt to load data if a chat is actually open
+        const ctx = SillyTavern.getContext();
+        if (ctx && ctx.chatId) {
+            m.load();
+        }
+
         thm();
 
         // ✨✨✨ 核心修复：创建"创世快照"(-1号)，代表对话开始前的空状态 ✨✨✨
@@ -10251,9 +10257,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化黑名单正则 ：</strong>优化黑名单过滤标签正则，新增常用标签</li>  
-                        <li><strong>优化向量化 ：</strong>新增向量化模型拉取及测试</li>
-                        <li><strong>修复视图 ：</strong>表格倒序时，上下移动错误的bug</li>
+                        <li><strong>优化加载问题 ：</strong>修复浏览器加载过快，酒馆内存未被记忆插件读取到内存下，错误覆盖已有内容的bug。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
