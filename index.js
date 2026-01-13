@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.6.5
+// 记忆表格 v1.6.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.6.5 启动');
+    console.log('🚀 记忆表格 v1.6.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.6.5';
+    const V = 'v1.6.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -9752,8 +9752,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     window.fetch = async function(...args) {
                         const url = args[0] ? args[0].toString() : '';
 
-                        // Skip vector search for API connection tests
-                        if (args[1] && args[1].body && args[1].body.includes("API连接测试是否成功")) {
+                        // Safe check: Ensure body is a string before calling includes (skips FormData/File uploads)
+                        if (args[1] && typeof args[1].body === 'string' && args[1].body.includes("API连接测试是否成功")) {
                             console.log('🧪 [Fetch Hijack] Detected API connection test, skipping vector search.');
                             return originalFetch.apply(this, args);
                         }
@@ -10265,7 +10265,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化加载问题 ：</strong>修复浏览器加载过快，酒馆内存未被记忆插件读取到内存下，错误覆盖已有内容的bug。</li>
+                        <li><strong>修复竞态bug ：</strong>修复插件与上传角色卡冲突的bug</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
