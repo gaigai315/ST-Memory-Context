@@ -72,7 +72,18 @@
                             credentials: 'include'
                         });
                         if (getRes.ok) {
-                            const allWorldBooks = await getRes.json();
+                            // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                            const text = await getRes.text();
+
+                            let allWorldBooks;
+                            try {
+                                allWorldBooks = JSON.parse(text);
+                            } catch (e) {
+                                console.error('❌ [世界书列表] JSON 解析失败:', e.message);
+                                console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                                throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                            }
+
                             bookExists = Array.isArray(allWorldBooks) && allWorldBooks.includes(worldBookName);
                             console.log(`✅ [智能同步] API检测: 书${bookExists ? '已存在' : '不存在'}`);
                         }
@@ -265,7 +276,17 @@
                     });
 
                     if (getRes.ok) {
-                        const allWorldBooks = await getRes.json();
+                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                        const text = await getRes.text();
+
+                        let allWorldBooks;
+                        try {
+                            allWorldBooks = JSON.parse(text);
+                        } catch (e) {
+                            console.error('❌ [世界书列表-覆盖] JSON 解析失败:', e.message);
+                            console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                            throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                        }
 
                         // 4.2 严格筛选：只删除当前会话的旧版本文件
                         const filesToDelete = [];
@@ -399,7 +420,17 @@
                     });
 
                     if (getRes.ok) {
-                        const bookData = await getRes.json();
+                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                        const text = await getRes.text();
+
+                        let bookData;
+                        try {
+                            bookData = JSON.parse(text);
+                        } catch (e) {
+                            console.error('❌ [世界书数据-追加] JSON 解析失败:', e.message);
+                            console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                            throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                        }
 
                         // 解析现有条目
                         if (bookData && bookData.entries && typeof bookData.entries === 'object') {

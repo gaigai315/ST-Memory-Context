@@ -286,7 +286,17 @@
                     });
 
                     if (response.ok) {
-                        const bookData = await response.json();
+                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                        const text = await response.text();
+
+                        let bookData;
+                        try {
+                            bookData = JSON.parse(text);
+                        } catch (e) {
+                            console.error('❌ [向量库加载] JSON 解析失败:', e.message);
+                            console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                            throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                        }
 
                         // 解析世界书中的数据
                         if (bookData && bookData.entries && bookData.entries["0"] && bookData.entries["0"].content) {
@@ -556,7 +566,17 @@
                     throw new Error(`API 请求失败 (${response.status}): ${errorText}`);
                 }
 
-                const data = await response.json();
+                // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                const text = await response.text();
+
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error('❌ [Embedding API] JSON 解析失败:', e.message);
+                    console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                    throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                }
 
                 // ✅ 标准 OpenAI 格式: { data: [{ embedding: [...] }, ...] }
                 if (data.data && Array.isArray(data.data)) {
@@ -635,7 +655,17 @@
                     return []; // 返回空数组，触发降级
                 }
 
-                const data = await response.json();
+                // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                const text = await response.text();
+
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error('❌ [Rerank API] JSON 解析失败:', e.message);
+                    console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                    return []; // 返回空数组，触发降级
+                }
 
                 // 解析 Rerank API 返回的结果
                 // 标准格式: { results: [{ index: 0, relevance_score: 0.95 }, ...] }
@@ -2270,7 +2300,17 @@
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
-                    const data = await response.json();
+                    // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [模型列表] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
 
                     // 解析模型列表 (兼容 OpenAI 格式)
                     let models = [];
@@ -2388,7 +2428,17 @@
                         throw new Error(`HTTP ${response.status}: ${errorText}`);
                     }
 
-                    const data = await response.json();
+                    // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [连接测试] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
 
                     // 验证返回的数据格式
                     if (data.data && Array.isArray(data.data) && data.data[0]?.embedding) {

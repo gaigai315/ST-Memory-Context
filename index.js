@@ -6422,7 +6422,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 1. 检查成功状态
                     if (proxyResponse.ok) {
-                        const data = await proxyResponse.json();
+                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                        const text = await proxyResponse.text();
+
+                        let data;
+                        try {
+                            data = JSON.parse(text);
+                        } catch (e) {
+                            console.error('❌ [后端代理] JSON 解析失败:', e.message);
+                            console.error('   原始响应 (前300字符):', text.substring(0, 300));
+                            throw new Error(`后端代理返回非JSON格式\n\n原始响应: ${text.substring(0, 150)}\n\n可能原因：中转API超时或返回了HTML错误页`);
+                        }
+
                         const result = parseApiResponse(data);
                         if (result.success) {
                             // ✨✨✨ Fallback 保护：如果清洗后内容为空，检查原始数据
@@ -6747,6 +6758,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         console.log(`✅ [流式模式] 累积文本长度: ${fullText.length} 字符`);
                         console.log(`💠 [流式模式] 累积思考长度: ${fullReasoning.length} 字符`);
 
+                        // 🔍 [调试] 如果内容为空，输出原始数据用于诊断
+                        if (fullText.length === 0 && fullReasoning.length === 0) {
+                            console.error('❌ [流式调试] 未接收到任何有效内容！');
+                            console.error('   Content-Type:', contentType);
+                            console.error('   Buffer 最终状态 (前500字符):', buffer.substring(0, 500));
+                        }
+
                         // ========================================
                         // 循环结束后处理：检测异常 + 清洗
                         // ========================================
@@ -6801,7 +6819,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 } else {
                     // 降级：非流式响应，使用传统方式
                     console.log('📄 [非流式模式] 使用传统 JSON 解析...');
-                    const data = await directResponse.json();
+
+                    // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                    const text = await directResponse.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [浏览器直连] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前300字符):', text.substring(0, 300));
+                        throw new Error(`浏览器直连返回非JSON格式\n\n原始响应: ${text.substring(0, 150)}\n\n可能原因：API超时或返回了HTML错误页`);
+                    }
+
                     const result = parseApiResponse(data);
 
                     if (result.success) {
@@ -6837,7 +6867,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 // 3. 💀 真·空回 (抛出原始错误供弹窗显示)
                 console.error('❌ [流式失败] 接收到的完整包体:', fullText);
-                throw new Error(`Error: Stream response content is empty.\n\nContent Length: ${fullText.length}\nReasoning Length: ${typeof fullReasoning !== 'undefined' ? fullReasoning.length : 0}`);
+                console.error('💡 [诊断提示] 可能的原因：');
+                console.error('   1. API 返回的流式格式不符合 OpenAI 标准');
+                console.error('   2. 所有 SSE 数据行都被跳过或解析失败');
+                console.error('   3. API 服务器返回了空响应');
+                console.error('   4. 请检查浏览器控制台中的 [流式调试] 日志');
+                throw new Error(`Error: Stream response content is empty.\n\nContent Length: ${fullText.length}\nReasoning Length: ${typeof fullReasoning !== 'undefined' ? fullReasoning.length : 0}\n\n💡 可能的原因：\n1. API 返回的流式格式不符合 OpenAI 标准\n2. 网络问题导致响应不完整\n3. API 服务器配置问题\n\n请检查浏览器控制台中的详细日志`);
 
 
             } catch (e) {
@@ -7516,7 +7551,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     });
 
                     if (response.ok) {
-                        const rawData = await response.json();
+                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                        const text = await response.text();
+
+                        let rawData;
+                        try {
+                            rawData = JSON.parse(text);
+                        } catch (e) {
+                            console.error('❌ [模型列表] JSON 解析失败:', e.message);
+                            console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                            throw new Error(`后端返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                        }
+
                         // 尝试解析
                         try { models = parseOpenAIModelsResponse(rawData); } catch (e) { }
 
@@ -7583,7 +7629,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 如果直连也失败，抛出错误进入 catch
                     if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
 
-                    const data = await resp.json();
+                    // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                    const text = await resp.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [模型列表-直连] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
 
                     if (provider === 'gemini' && data.models) {
                         models = data.models.map(m => ({ id: m.name.replace('models/', ''), name: m.displayName || m.name }));
@@ -8011,7 +8067,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             if (!getResponse.ok) throw new Error('无法读取服务器配置');
-            const rawResponse = await getResponse.json();
+
+            // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+            const text = await getResponse.text();
+
+            let rawResponse;
+            try {
+                rawResponse = JSON.parse(text);
+            } catch (e) {
+                console.error('❌ [配置读取] JSON 解析失败:', e.message);
+                console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+            }
+
             const currentSettings = parseServerSettings(rawResponse);
 
             // 4. MODIFY: Inject plugin data safely
@@ -8673,7 +8741,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     if (!response.ok) throw new Error(`配置同步失败: ${response.status}`);
 
-                    const data = await response.json();
+                    // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [配置加载] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
+
                     const parsedData = parseServerSettings(data);
                     const serverConfig = parsedData?.extension_settings?.st_memory_table;
 
