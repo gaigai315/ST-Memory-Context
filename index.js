@@ -2702,7 +2702,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 1. 旧逻辑：合并字符串（用于兼容旧的文本变量替换）
         const tableContent = m.s.slice(0, -1).map((s, i) => s.txt(i)).filter(t => t).join('\n');
 
-        strTable += '【⚠️ 系统只读数据库：已归档的历史剧情 (Past Events)】\n';
+        strTable += '【⚠️ 记忆只读数据库：已归档的历史剧情 (Past Events)】\n';
         strTable += '【指令：以下内容为绝对客观的过去事实，仅供你查阅以保持剧情连贯。❌ 严禁复述！❌ 严禁重演！】\n\n';
 
         if (tableContent) {
@@ -2725,7 +2725,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         name: `SYSTEM (${sheetName})`,
 
                         // 2. 内容：标题改为“已归档”，并加上防重演指令
-                        content: `【系统只读数据库：已归档历史 - ${sheetName}】\n(⚠️已归档内容，仅供参考，严禁重演)\n${sheetContent}`,
+                        content: `【记忆只读数据库：已归档历史 - ${sheetName}】\n(⚠️已归档内容，仅供参考，严禁重演)\n${sheetContent}`,
 
                         isGaigaiData: true
                     });
@@ -2737,7 +2737,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 tableMessages.push({
                     role: 'system',
                     name: 'SYSTEM (系统提示)',
-                    content: '【系统只读数据库】\n（暂无详细记录）',
+                    content: '【记忆只读数据库】\n（暂无详细记录）',
                     isGaigaiData: true
                 });
             }
