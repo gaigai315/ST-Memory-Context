@@ -10074,8 +10074,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 // ✅ 新增：清洗历史记录中的图片，防止包体过大
                 // ⚠️ 关键修复：深拷贝 chat 数组，避免修改原始数据影响界面显示
+                // ⚠️ 重要：使用 splice 替换内容而不是替换引用，确保酒馆后端能看到后续的修改
                 try {
-                    data.chat = JSON.parse(JSON.stringify(data.chat));
+                    const copiedChat = JSON.parse(JSON.stringify(data.chat));
+                    data.chat.splice(0, data.chat.length, ...copiedChat);
                 } catch (e) {
                     console.warn('⚠️ [图片清洗] 深拷贝失败，将直接修改原始数据:', e);
                     // 如果深拷贝失败（如循环引用），继续使用原始数据
