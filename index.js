@@ -7942,11 +7942,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     // ✅✅✅ [新增] 统一的全量配置保存函数（使用 SillyTavern 原生方式）
     async function saveAllSettingsToCloud() {
+        // ✅ 并发保护：防止多次同时调用导致冲突
+        if (window.isSavingToCloud) {
+            console.log('⏸️ [云端同步] 已有保存任务进行中，跳过本次调用');
+            return;
+        }
+
         if (!C || Object.keys(C).length < 5) { // 简单校验 C 对象是否包含足够多的键
             console.error('🛑 [严重拦截] 检测到本地配置异常(为空或不完整)，已阻止上传，防止覆盖云端存档！');
             if (typeof toastr !== 'undefined') toastr.error('本地配置异常，已阻止云端同步以保护存档', '安全拦截');
             return;
         }
+
+        // 🔒 设置锁
+        window.isSavingToCloud = true;
+        console.log('🔒 [云端同步] 已锁定');
+
         try {
             console.log('💾 [API] 开始保存配置到服务器...');
 
@@ -8026,6 +8037,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         } catch (error) {
             console.error('❌ [API] 保存失败:', error);
             if (typeof toastr !== 'undefined') toastr.error(`保存失败: ${error.message}`, '错误');
+        } finally {
+            // 🔓 释放锁
+            window.isSavingToCloud = false;
+            console.log('🔓 [云端同步] 已解锁');
         }
     }
 
@@ -10070,15 +10085,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (msg.extra && msg.extra.image) delete msg.extra.image;
                     if (msg.extra && msg.extra.images) delete msg.extra.images;
 
-                    // ✅ 增强清洗：移除正文中的 HTML 图片标签 (防止 Base64 爆破 Token 或导致 API 报错)
-                    // 同时也移除 st-image-auto-generation 可能产生的特殊标签
-                    const imageTagRegex = /<img[^>]*>|!\[.*?\]\(.*?\)/gi; // 匹配 HTML img 标签和 Markdown 图片
+                    // ✅ 增强清洗：只移除包含 Base64 数据的图片标签 (防止 Base64 爆破 Token 或导致 API 报错)
+                    // ⚠️ 关键优化：保留 URL 类型的图片（如分割线等格式图片），因为 URL 本身数据量很小
+                    // 只匹配包含 Base64 数据的 img 标签（数据量大，必须处理）
+                    const base64ImageRegex = /<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi;
+                    // 只匹配包含 Base64 数据的 Markdown 图片（虽然很少见）
+                    const base64MarkdownRegex = /!\[[^\]]*\]\(data:image[^)]*\)/gi;
 
                     if (typeof msg.content === 'string') {
-                        msg.content = msg.content.replace(imageTagRegex, '[图片]');
+                        msg.content = msg.content.replace(base64ImageRegex, '[图片]');
+                        msg.content = msg.content.replace(base64MarkdownRegex, '[图片]');
                     }
                     if (typeof msg.mes === 'string') {
-                        msg.mes = msg.mes.replace(imageTagRegex, '[图片]');
+                        msg.mes = msg.mes.replace(base64ImageRegex, '[图片]');
+                        msg.mes = msg.mes.replace(base64MarkdownRegex, '[图片]');
                     }
                 });
                 console.log(`🖼️ 已清洗历史消息中的图片数据（包括文本中的图片标签），防止请求体过大`);
