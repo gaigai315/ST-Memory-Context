@@ -4,7 +4,7 @@
  * 功能：处理记忆总结与 SillyTavern 世界书的同步和绑定
  * 包含：防抖同步、智能创建/更新、自动绑定角色卡
  *
- * @version 1.6.4
+ * @version 1.6.8
  * @author Gaigai Team
  */
 

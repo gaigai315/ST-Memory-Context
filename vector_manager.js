@@ -1642,28 +1642,44 @@
                         </div>
 
                         <!-- 全局操作 -->
+                        <!-- 全局操作 -->
                         <div class="gg-vm-global-section" style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; border: 1px solid rgba(255,255,255,0.1);">
                             <div style="font-size: 11px; font-weight: bold; color: ${UI.tc}; margin-bottom: 8px;">
                                 🛠️ 全局操作
                             </div>
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                <button id="gg_vm_create_book" style="width: 100%; padding: 7px; background: #9C27B0; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+
+                            <!-- 改为 Grid 布局：双排显示，按钮增高 -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+
+                                <!-- 第一排：新建 & 导入 -->
+                                <button id="gg_vm_create_book" style="width: 100%; padding: 10px; background: #9C27B0; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;">
                                     📝 新建空白书
                                 </button>
-                                <button id="gg_vm_import_book" style="width: 100%; padding: 7px; background: #4CAF50; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                <button id="gg_vm_import_book" style="width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;">
                                     📂 导入新书 (TXT)
                                 </button>
-                                <button id="gg_vm_rebuild_table" style="width: 100%; padding: 7px; background: #2196F3; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
-                                    📚 同步总结到书架
-                                </button>
-                                <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">
-                                    💡 将最新的记忆总结表转换为书籍，以便进行向量化检索
+
+                                <!-- 第二排：同步 (独占一行，因为有提示语) -->
+                                <div style="grid-column: 1 / -1;">
+                                    <button id="gg_vm_rebuild_table" style="width: 100%; padding: 10px; background: #2196F3; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;">
+                                        📚 同步总结到书架
+                                    </button>
+                                    <div style="font-size: 10px; opacity: 0.6; margin-top: 4px; color: ${UI.tc}; text-align: center;">
+                                        💡 将最新的记忆总结表转换为书籍，以便进行向量化检索
+                                    </div>
                                 </div>
-                                <button id="gg_vm_import_all" style="width: 100%; padding: 7px; background: #009688; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+
+                                <!-- 第三排：备份操作 -->
+                                <button id="gg_vm_import_all" style="width: 100%; padding: 10px; background: #009688; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;">
                                     📥 导入图书馆备份
                                 </button>
-                                <button id="gg_vm_export_all" style="width: 100%; padding: 7px; background: #607D8B; color: white; border: none; border-radius: 3px; font-size: 10px; cursor: pointer; font-weight: 500;">
+                                <button id="gg_vm_export_all" style="width: 100%; padding: 10px; background: #607D8B; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;">
                                     📤 导出图书馆备份
+                                </button>
+
+                                <!-- 第四排：清空 (独占一行，防止误触) -->
+                                <button id="gg_vm_clear_all" style="grid-column: 1 / -1; width: 100%; padding: 10px; background: #f44336; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;">
+                                    🧹 清空所有书籍 (重置)
                                 </button>
                             </div>
                         </div>
@@ -2624,6 +2640,20 @@
                 } catch (e) {
                     console.error('❌ [VectorManager] 导出失败:', e);
                     await customAlert(`❌ 导出失败\n\n${e.message}`, '错误');
+                }
+            });
+
+            // 清空所有书籍
+            $('#gg_vm_clear_all').off('click').on('click', async () => {
+                const confirmed = await self._customConfirm(
+                    '⚠️ 危险操作：确定要清空整个图书馆吗？\n\n所有书籍、片段和向量数据都将永久删除！\n建议先导出备份。',
+                    '💥 核弹级清空'
+                );
+
+                if (confirmed) {
+                    self.clearAllBooks();
+                    self.showUI(); // Refresh UI
+                    if (typeof toastr !== 'undefined') toastr.success('图书馆已重置为空', '已清空');
                 }
             });
 

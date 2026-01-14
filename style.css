@@ -1,4 +1,4 @@
-/* Gaigai v1.6.1 */
+/* Gaigai v1.6.7 */
 
 :root {
     --g-c: #888888;
@@ -15,7 +15,7 @@
     width: 100vw !important;
     height: 100vh !important;
     background: rgba(0, 0, 0, 0.6) !important;
-    z-index: 999999 !important;
+    z-index: 999999 !important; /* ✅ 恢复原值，不影响其他弹窗 */
     overflow: hidden !important;
     display: flex !important;
     align-items: center !important;
@@ -1335,7 +1335,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 8px;
-    max-height: 160px;
+    max-height: min(400px, 50vh); /* ✅ 修复：使用响应式高度，适配小屏幕 */
     overflow-y: auto;
     padding: 2px;
     margin-top: 8px;
@@ -1364,7 +1364,7 @@
 }
 .gg-choice-card input[type="checkbox"]:checked { background: var(--g-c); border-color: var(--g-c); opacity: 1; }
 .gg-choice-card input[type="checkbox"]:checked::after {
-    content: '✓'; position: absolute; color: #fff; font-size: 10px; font-weight: 900;
+    content: '✓'; position: absolute; color: var(--g-tc); font-size: 10px; font-weight: 900;
     top: 50%; left: 50%; transform: translate(-50%, -50%); line-height: 1;
 }
 
@@ -1458,4 +1458,145 @@ th.g-col-ops {
     opacity: 1;
     transform: scale(1.2); /* Slight zoom on hover */
     background: transparent !important; /* Still no background */
+}
+
+/* ========== 📱 手机端表格选择按钮修复 (Nuclear Fix) ========== */
+/* 强制显示手指光标 + 移除300ms延迟 + 确保层级 + 强制可点击 */
+#gg_open_table_selector,
+#gg_sum_open_table_selector {
+    /* ✅ NUCLEAR FIX: Force these buttons to accept clicks on mobile */
+    position: relative !important;  /* Crucial for z-index to work */
+    z-index: 2147483647 !important; /* Max safe integer to force on top */
+    pointer-events: auto !important; /* Force clickable */
+    cursor: pointer !important;
+    min-height: 44px !important;    /* Standard mobile touch target size */
+    touch-action: manipulation !important; /* Disables double-tap zoom delay */
+
+    /* Additional mobile optimizations */
+    user-select: none !important; /* Prevent long-press text selection */
+    -webkit-tap-highlight-color: rgba(0,0,0,0.1) !important; /* Touch feedback */
+
+    /* ✅ 关键修复：确保按钮本身可以接收点击 */
+    display: block !important;
+    width: 100% !important;
+}
+
+/* ✅ 修复后的子元素策略：让子元素不阻止事件，但不能设置 pointer-events: none */
+/* 因为 pointer-events: none 会导致移动端点击穿透 */
+#gg_open_table_selector *,
+#gg_sum_open_table_selector * {
+    /* 不设置 pointer-events，让事件正常冒泡到按钮 */
+    user-select: none !important; /* 防止选中文字 */
+    cursor: pointer !important; /* 继承父元素的指针样式 */
+}
+
+/* ========== 📋 表格选择弹窗模态框样式 (Modal Styles) ========== */
+/* 🔥 强制 overlay 显示在最上层，覆盖所有可能的父容器层叠上下文 */
+#gg-table-selector-overlay,
+#gg-sum-table-selector-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 2147483647 !important; /* 最大安全整数 */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: rgba(0,0,0,0.5) !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    overflow-y: auto !important;
+
+    /* 🔥 关键：打破父容器的层叠上下文限制 */
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    will-change: auto !important;
+    contain: none !important;
+    isolation: auto !important;
+}
+
+/* ✅ 关键修复：添加缺失的modal样式，确保弹窗显示在最上层 */
+.gg-custom-modal {
+    position: relative !important; /* 相对于fixed的overlay定位 */
+    z-index: 2147483647 !important; /* 最大安全整数，确保在最上层 */
+    background: var(--g-c) !important; /* 使用主题背景色 */
+    color: var(--g-tc) !important; /* 使用主题文字色 */
+    border-radius: 12px !important;
+    padding: 25px !important;
+    width: 90% !important;
+    max-width: 500px !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important; /* 磨砂玻璃效果 */
+    border: 1px solid rgba(255,255,255,0.1) !important;
+
+    /* 动画效果 */
+    animation: gg-modal-fadein 0.2s ease-out !important;
+}
+
+@keyframes gg-modal-fadein {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* 📱 移动端优化 */
+@media (max-width: 600px) {
+    .gg-custom-modal {
+        width: 95% !important;
+        max-width: none !important;
+        padding: 15px !important; /* 稍微减小内边距，留出更多空间 */
+
+        /* 🔥 关键：使用 vh 单位而不是百分比，防止被键盘挤压变形 */
+        max-height: 80vh !important;
+
+        /* 🔥 确保内容过多时可以滚动（Flexbox布局） */
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    /* 🔥 确保选择网格区域可以滚动 */
+    .gg-choice-grid {
+        overflow-y: auto !important;
+        flex: 1 !important; /* 占满剩余空间 */
+        min-height: 0 !important; /* Flexbox 滚动修复 - 关键！ */
+        -webkit-overflow-scrolling: touch !important; /* iOS 平滑滚动 */
+    }
+}
+
+/* ✅ 确保modal内的按钮样式正确 */
+.gg-custom-modal button {
+    touch-action: manipulation !important;
+    min-height: 44px !important; /* 移动端触摸目标最小高度 */
+    cursor: pointer !important;
+}
+
+.gg-custom-modal h3 {
+    color: var(--g-tc) !important;
+    margin: 0 0 15px 0 !important;
+    font-size: 18px !important;
+}
+
+/* ✅ 滚动条样式 */
+.gg-custom-modal::-webkit-scrollbar {
+    width: 8px !important;
+}
+
+.gg-custom-modal::-webkit-scrollbar-thumb {
+    background: rgba(127, 127, 127, 0.3) !important;
+    border-radius: 4px !important;
+}
+
+.gg-custom-modal::-webkit-scrollbar-thumb:hover {
+    background: rgba(127, 127, 127, 0.5) !important;
 }

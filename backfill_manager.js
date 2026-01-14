@@ -943,6 +943,17 @@ ${lastError.message}
 
             // 3️⃣ Msg 3 (System): backfillPrompt (填表规则 - 在聊天历史之前)
             let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
+
+            // 🛡️ [Bug Fix] Loud Fallback for Missing Prompts
+            if (!rulesContent || !rulesContent.trim()) {
+                console.error('❌ [Backfill] Prompt is empty/undefined! This usually means profile data was lost.');
+                if (typeof toastr !== 'undefined') {
+                    toastr.error('⚠️ 严重警告：填表提示词丢失！\n已自动使用【默认提示词】进行修复，请务必检查您的配置！', '配置异常', { timeOut: 8000 });
+                }
+                // Force use default to prevent AI hallucination
+                rulesContent = window.Gaigai.PromptManager.DEFAULT_BACKFILL_PROMPT;
+            }
+
             let backfillInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
 
             // 🎯 单表模式指令追加
@@ -1422,10 +1433,13 @@ ${lastError.message}
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '').trim();
 
-                // 移除思考过程 (带回退保护)
-                if (aiOutput.includes('<think>')) {
+                // 移除思考过程 (标准成对 + 残缺开头)
+                if (aiOutput.includes('</think>')) {
                     const raw = aiOutput;
-                    const cleaned = aiOutput.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                    const cleaned = aiOutput
+                        .replace(/<think>[\s\S]*?<\/think>/gi, '')  // 移除标准成对
+                        .replace(/^[\s\S]*?<\/think>/i, '')         // 移除残缺开头
+                        .trim();
                     // 如果清洗后为空，保留原文
                     aiOutput = cleaned || raw;
                 }
@@ -2117,6 +2131,17 @@ ${lastError.message}
 
             // User 指令
             let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
+
+            // 🛡️ [Bug Fix] Loud Fallback for Missing Prompts
+            if (!rulesContent || !rulesContent.trim()) {
+                console.error('❌ [Backfill] Prompt is empty/undefined! This usually means profile data was lost.');
+                if (typeof toastr !== 'undefined') {
+                    toastr.error('⚠️ 严重警告：填表提示词丢失！\n已自动使用【默认提示词】进行修复，请务必检查您的配置！', '配置异常', { timeOut: 8000 });
+                }
+                // Force use default to prevent AI hallucination
+                rulesContent = window.Gaigai.PromptManager.DEFAULT_BACKFILL_PROMPT;
+            }
+
             let finalInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
 
             // 🎯 [关键修复] 单表模式指令直接拼接到 finalInstruction 后面

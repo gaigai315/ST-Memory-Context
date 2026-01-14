@@ -4,12 +4,202 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.6.3
+ * @version 1.6.8
  * @author Gaigai Team
  */
 
 (function() {
     'use strict';
+
+    // 【全局单例】总结控制台表格选择按钮监听器（防止重复绑定）
+    (function() {
+        if (window._gg_sum_table_selector_bound) return;
+        window._gg_sum_table_selector_bound = true;
+
+        let isOpening = false; // 防抖标志
+        let lastClickTime = 0; // 记录上次点击时间
+
+        // 暴露到全局，供内联事件调用
+        window._gg_openSumTableSelector = function(event) {
+            // ✅ 修复1: 阻止事件冒泡和默认行为
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            // ✅ 修复2: 时间防抖(300ms内的重复点击直接忽略)
+            const now = Date.now();
+            if (now - lastClickTime < 300) {
+                console.log('⚠️ [总结控制台-表格选择] 时间防抖拦截: 300ms内重复点击');
+                return;
+            }
+            lastClickTime = now;
+
+            // 防抖：如果正在打开，直接返回
+            if (isOpening) {
+                console.log('⚠️ [总结控制台-表格选择] 防抖拦截：弹窗正在打开中');
+                return;
+            }
+            isOpening = true;
+
+            try {
+                const m = window.Gaigai.m;
+                const C = window.Gaigai.config_obj;
+
+                console.log('✅ [总结控制台-表格选择] 按钮被点击');
+
+                const dataTables = m.s.slice(0, -1);
+
+                // 🔥 关键修复：强制挂载到 body，避免被父容器的 transform/filter 影响
+                const overlay = $('<div>').attr('id', 'gg-sum-table-selector-overlay');
+
+                // ✅ 使用原生 DOM API 直接挂载到 body（不走 jQuery），确保最高层级
+                document.body.appendChild(overlay[0]);
+
+                // 🔥 使用 setAttribute 添加内联样式，!important 强制覆盖所有样式
+                overlay[0].setAttribute('style', `
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    bottom: 0 !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    background: rgba(0,0,0,0.5) !important;
+                    z-index: 2147483647 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    overflow-y: auto !important;
+                    padding: 10px !important;
+                    margin: 0 !important;
+                    border: none !important;
+                    transform: none !important;
+                `.replace(/\s+/g, ' ').trim());
+
+                const modal = $('<div>').addClass('gg-custom-modal');
+                let checkboxesHtml = '';
+                const savedSelection = C.manualSummaryTargetTables;
+
+                dataTables.forEach((sheet, i) => {
+                    const rowCount = sheet.r ? sheet.r.length : 0;
+                    const tableName = sheet.n || `表${i}`;
+                    const isChecked = (savedSelection === null || savedSelection === undefined) ? true : savedSelection.includes(i);
+                    const checkedAttr = isChecked ? 'checked' : '';
+
+                    checkboxesHtml += `
+                        <div class="gg-choice-card" title="${tableName}">
+                            <input type="checkbox" class="gg_sum_table_checkbox_modal" data-table-index="${i}" ${checkedAttr}>
+                            <span class="gg-choice-name">${tableName}</span>
+                            <span class="gg-choice-badge" style="opacity: 0.7;">${rowCount}行</span>
+                        </div>
+                    `;
+                });
+
+                const modalContent = `
+                    <span id="gg_sum_modal_close_btn" style="position: absolute; right: 20px; top: 20px; cursor: pointer; font-size: 24px; line-height: 1; opacity: 0.7;">&times;</span>
+                    <h3 style="margin: 0 0 15px 0;">🎯 选择表格</h3>
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                            <button type="button" id="gg_sum_modal_select_all" style="flex: 1; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">全选</button>
+                            <button type="button" id="gg_sum_modal_deselect_all" style="flex: 1; padding: 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">全不选</button>
+                        </div>
+                        <div class="gg-choice-grid" style="max-height: min(400px, 50vh); overflow-y: auto;">
+                            ${checkboxesHtml}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" id="gg_sum_modal_cancel" style="flex: 1; padding: 10px; border-radius: 4px; cursor: pointer; font-size: 12px;">取消</button>
+                        <button type="button" id="gg_sum_modal_save" style="flex: 1; padding: 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">确定保存</button>
+                    </div>
+                `;
+
+                modal.html(modalContent);
+                overlay.append(modal);
+
+                setTimeout(() => {
+                    $('#gg_sum_modal_close_btn').on('click', function () {
+                        overlay.remove();
+                        $(document).off('keydown.gg_sum_modal');
+                        $(document).off('click.gg_sum_card');
+                        isOpening = false;
+                    });
+
+                    $('#gg_sum_modal_select_all').on('click', function () {
+                        $('.gg_sum_table_checkbox_modal').prop('checked', true);
+                    });
+
+                    $('#gg_sum_modal_deselect_all').on('click', function () {
+                        $('.gg_sum_table_checkbox_modal').prop('checked', false);
+                    });
+
+                    $('#gg_sum_modal_cancel').on('click', function () {
+                        overlay.remove();
+                        $(document).off('keydown.gg_sum_modal');
+                        $(document).off('click.gg_sum_card');
+                        isOpening = false;
+                    });
+
+                    overlay.on('click', function (e) {
+                        if (e.target === overlay[0]) {
+                            overlay.remove();
+                            $(document).off('keydown.gg_sum_modal');
+                            $(document).off('click.gg_sum_card');
+                            isOpening = false;
+                        }
+                    });
+
+                    $(document).on('keydown.gg_sum_modal', function (e) {
+                        if (e.key === 'Escape') {
+                            overlay.remove();
+                            $(document).off('keydown.gg_sum_modal');
+                            $(document).off('click.gg_sum_card');
+                            isOpening = false;
+                        }
+                    });
+
+                    $(document).off('click.gg_sum_card').on('click.gg_sum_card', '.gg-choice-card', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const $cb = $(this).find('input');
+                        $cb.prop('checked', !$cb.prop('checked'));
+                    });
+
+                    $('#gg_sum_modal_save').on('click', function () {
+                        const selectedIndices = [];
+                        $('.gg_sum_table_checkbox_modal').each(function() {
+                            const tableIndex = $(this).data('table-index');
+                            const isChecked = $(this).is(':checked');
+                            $(`.gg_table_checkbox[data-table-index="${tableIndex}"]`).prop('checked', isChecked);
+                            if (isChecked) {
+                                selectedIndices.push(tableIndex);
+                            }
+                        });
+
+                        C.manualSummaryTargetTables = selectedIndices;
+                        console.log(`💾 [手动总结-表格选择] 已保存选择: ${selectedIndices.join(', ')}`);
+
+                        window.Gaigai.m.save();
+                        console.log(`💾 [手动总结-表格选择] 已持久化到聊天存档`);
+
+                        const selectedCount = selectedIndices.length;
+                        $('#gg_sum_table_selector_text').text(`🎯 已选择 ${selectedCount} 个表格 (点击修改)`);
+
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`已选择 ${selectedCount} 个表格`, '保存成功', { timeOut: 2000 });
+                        }
+
+                        overlay.remove();
+                        $(document).off('keydown.gg_sum_modal');
+                        $(document).off('click.gg_sum_card');
+                    });
+                }, 100);
+            } catch (error) {
+                alert("执行报错: " + error.message);
+                console.error("❌ [总结控制台-表格选择按钮] 错误详情:", error);
+            }
+        };
+    })();
 
     class SummaryManager {
         constructor() {
@@ -51,11 +241,11 @@
 
                 // ✨ 使用新的卡片结构
                 tableCheckboxes += `
-                    <label class="gg-choice-card" title="${tableName}">
+                    <div class="gg-choice-card" title="${tableName}">
                         <input type="checkbox" class="gg_table_checkbox" data-table-index="${i}" checked>
                         <span class="gg-choice-name">${tableName}</span>
                         <span class="gg-choice-badge">${rowCount}行</span>
-                    </label>
+                    </div>
                 `;
             });
 
@@ -92,17 +282,30 @@
                 <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <label style="font-size: 11px; font-weight: 600; color: ${UI.tc};">🎯 选择要总结的表格：</label>
-                        <div style="display: flex; gap: 6px;">
-                            <button id="gg_select_all_tables" style="padding: 2px 8px; background: rgba(76, 175, 80, 0.2); color: ${UI.tc}; border: 1px solid rgba(76, 175, 80, 0.5); border-radius: 3px; cursor: pointer; font-size: 10px;">全选</button>
-                            <button id="gg_deselect_all_tables" style="padding: 2px 8px; background: rgba(255, 255, 255, 0.1); color: ${UI.tc}; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 3px; cursor: pointer; font-size: 10px;">全不选</button>
-                        </div>
                     </div>
-                    <div class="gg-choice-grid">
-                        ${tableCheckboxes}
-                    </div>
+
+                    <!-- 🆕 表格选择按钮 -->
+                    <button type="button" id="gg_sum_open_table_selector" onclick="window._gg_openSumTableSelector(event)" style="width: 100%; padding: 12px; background: ${UI.c}; color: ${UI.tc}; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-align: center; transition: all 0.2s; touch-action: manipulation;">
+                        <span style="pointer-events: none;" id="gg_sum_table_selector_text">${(() => {
+                            const savedSelection = C.manualSummaryTargetTables;
+
+                            // ✅ 修正显示逻辑：undefined/null=默认全选, []=未选择, [1,2]=已选择X个
+                            if (savedSelection === undefined || savedSelection === null) {
+                                return `🎯 默认全选 ${dataTables.length} 个表格 (点击修改)`;
+                            } else if (Array.isArray(savedSelection) && savedSelection.length === 0) {
+                                return `⚠️ 未选择表格 (点击修改)`;
+                            } else {
+                                return `🎯 已选择 ${savedSelection.length} 个表格 (点击修改)`;
+                            }
+                        })()}</span>
+                    </button>
+
                     <div style="font-size: 9px; color: ${UI.tc}; opacity: 0.6; margin-top: 6px;">
                         💡 默认全选所有表格，可手动勾选需要参与总结的表格
                     </div>
+
+                    <!-- 🆕 隐藏的主UI复选框（用于状态跟踪） -->
+                    <div style="display:none;">${tableCheckboxes}</div>
                 </div>
 
                 <button id="gg_sum_table-snap" style="width:100%; padding:10px; background:#4caf50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
@@ -287,16 +490,6 @@
                     if (typeof window.Gaigai.navTo === 'function' && typeof window.Gaigai.shcf === 'function') {
                         window.Gaigai.navTo('配置', window.Gaigai.shcf);
                     }
-                });
-
-                // 🆕 表格选择 - 全选按钮
-                $('#gg_select_all_tables').on('click', function() {
-                    $('.gg_table_checkbox').prop('checked', true);
-                });
-
-                // 🆕 表格选择 - 全不选按钮
-                $('#gg_deselect_all_tables').on('click', function() {
-                    $('.gg_table_checkbox').prop('checked', false);
                 });
 
                 // 表格快照总结
@@ -760,10 +953,14 @@
 
                 let cleanSummary = result.summary;
                 // 移除思考过程 (带回退保护)
-                if (cleanSummary.includes('<think>')) {
+                // 移除思维链 (标准成对 + 残缺开头)
+                if (cleanSummary.includes('</think>')) {
                     const raw = cleanSummary;
-                    const cleaned = cleanSummary.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-                    // 如果清洗后为空，保留原文
+                    let cleaned = cleanSummary
+                        .replace(/<think>[\s\S]*?<\/think>/gi, '') // 移除标准成对
+                        .replace(/^[\s\S]*?<\/think>/i, '')        // 移除残缺开头
+                        .trim();
+                    // 如果清洗后为空，保留原文(防止报错)，否则使用清洗结果
                     cleanSummary = cleaned || raw;
                 }
 
@@ -1576,8 +1773,13 @@
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let rawText = unesc(result.summary || result.text || '').trim();
 
-                // 移除思考过程
-                if (rawText.includes('<think>')) rawText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+                // 移除思考过程 (标准成对 + 残缺开头)
+                if (rawText.includes('</think>')) {
+                    rawText = rawText
+                        .replace(/<think>[\s\S]*?<\/think>/gi, '')  // 移除标准成对
+                        .replace(/^[\s\S]*?<\/think>/i, '')         // 移除残缺开头
+                        .trim();
+                }
 
                 // 尝试拆分
                 let segments = [];
