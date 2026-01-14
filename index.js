@@ -2624,15 +2624,31 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ✅ Strict Sequential Execution: Respects AI's intended order
         // If AI outputs "insertRow → updateRow", it means "insert THEN update the new row"
         // If AI outputs "updateRow → insertRow", it means "update old row THEN insert new row"
+
+        // 收集被修改的表格索引
+        const modifiedTables = new Set();
+
         cs.forEach(cm => {
             const sh = m.get(cm.ti);
             if (!sh) return;
             if (cm.t === 'update' && cm.ri !== null) sh.upd(cm.ri, cm.d);
             if (cm.t === 'insert') sh.ins(cm.d);
             if (cm.t === 'delete' && cm.ri !== null) sh.del(cm.ri);
+
+            // 记录被修改的表格
+            modifiedTables.add(cm.ti);
         });
+
         // AI自动执行的指令,最后统一保存
         m.save();
+
+        // ✅ [修复] 刷新被修改的表格 UI，确保新增行立即显示
+        modifiedTables.forEach(ti => {
+            if (typeof refreshTable === 'function') {
+                refreshTable(ti);
+                console.log(`🔄 [exe] 已刷新表${ti}的UI`);
+            }
+        });
     }
 
     function inj(ev) {
