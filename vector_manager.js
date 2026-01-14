@@ -1315,9 +1315,17 @@
                     // 解析图书馆
                     if (currentSection === 'library') {
                         if (line === '=== 书籍信息 ===') {
+                            // 🔥 [Bug Fix] 在遇到新书之前，先保存上一本书
+                            if (currentBookId && currentEntry && currentEntry.name) {
+                                newLibrary[currentBookId] = currentEntry;
+                                console.log(`📚 [导入] 已保存书籍: ${currentEntry.name} (ID: ${currentBookId})`);
+                            }
+
+                            // 开始新书
                             mode = 'book_meta';
                             currentEntry = { chunks: [], vectors: [], vectorized: [] };
                             currentChunkIndex = -1;
+                            currentBookId = null; // 重置ID
                             continue;
                         }
 
@@ -1366,14 +1374,13 @@
                                 }
                             }
                         }
-
-                        // 当遇到下一本书或文件结束时，保存当前书
-                        if ((line === '=== 书籍信息 ===' && currentBookId) || i === lines.length - 1) {
-                            if (currentBookId && currentEntry.name) {
-                                newLibrary[currentBookId] = currentEntry;
-                            }
-                        }
                     }
+                }
+
+                // 🔥 [Bug Fix] 循环结束后，保存最后一本书
+                if (currentBookId && currentEntry && currentEntry.name) {
+                    newLibrary[currentBookId] = currentEntry;
+                    console.log(`📚 [导入] 已保存书籍（最后一本）: ${currentEntry.name} (ID: ${currentBookId})`);
                 }
 
                 // 更新数据（合并模式）
