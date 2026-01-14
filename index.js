@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.6.8
+// 记忆表格 v1.6.9
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.6.8 启动');
+    console.log('🚀 记忆表格 v1.6.9 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.6.8';
+    const V = 'v1.6.9';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -10058,8 +10058,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 // ✅ 新增：清洗历史记录中的图片，防止包体过大
+                // ⚠️ 关键修复：深拷贝 chat 数组，避免修改原始数据影响界面显示
+                data.chat = JSON.parse(JSON.stringify(data.chat));
+
                 // 遍历所有历史消息，移除图片字段，避免 Base64 数据导致 JSON 超过 20MB
-                currentChat.forEach(msg => {
+                data.chat.forEach(msg => {
                     if (msg.image) delete msg.image;
                     if (msg.imageUrl) delete msg.imageUrl;
                     if (msg.images) delete msg.images;
@@ -10776,6 +10779,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>修复Bug：</strong>修复实时填表刷新页面时可能导致数据丢失的问题</li>
                         <li><strong>优化过滤：</strong>优化黑名单支持过滤残缺标签的问题。</li>
                         <li><strong>优化css：</strong>优化插件表格的按钮排版</li>
+                        <li><strong>兼容生图：</strong>插件清理图片链接避免图片过大导致api请求失败的问题</li>
                     </ul>
                 </div>
 
