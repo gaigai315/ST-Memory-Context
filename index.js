@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.7.1
+// 记忆表格 v1.7.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.7.1 启动');
+    console.log('🚀 记忆表格 v1.7.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.7.1';
+    const V = 'v1.7.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1337,13 +1337,13 @@
                         })
                         .sort((a, b) => b.ts - a.ts); // 按时间戳降序排列
 
-                    // 删除超过20个的旧备份
-                    if (backups.length > 20) {
-                        backups.slice(20).forEach(backup => {
+                    // 删除超过10个的旧备份
+                    if (backups.length > 10) {
+                        backups.slice(10).forEach(backup => {
                             localStorage.removeItem(backup.key);
                             // console.log(`🗑️ [备份清理] 已删除旧备份: ${backup.key}`);
                         });
-                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 20} 个旧备份，保留最近20个`);
+                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 10} 个旧备份，保留最近10个`);
                     }
                 } catch (cleanupError) {
                     console.warn('⚠️ [备份清理] 清理失败:', cleanupError);
@@ -8062,11 +8062,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 这样用户点击保存瞬间，本地数据即刻更新，防止网络延迟期间切换会话导致读取旧数据
             if (!window.extension_settings) window.extension_settings = {};
             window.extension_settings.st_memory_table = allSettings;
-            localStorage.setItem(CK, JSON.stringify(C));
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-            localStorage.setItem(UK, JSON.stringify(UI));
-            // ❌ 已删除：localStorage.setItem(PK, JSON.stringify(PROMPTS));
-            // ✅ 预设数据现在由 PromptManager 管理，通过 profiles 保存
+
+            // 🛡️ [Critical Fix] Wrap localStorage in try-catch to prevent quota errors from blocking server save
+            try {
+                localStorage.setItem(CK, JSON.stringify(C));
+                localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                localStorage.setItem(UK, JSON.stringify(UI));
+                // ❌ 已删除：localStorage.setItem(PK, JSON.stringify(PROMPTS));
+                // ✅ 预设数据现在由 PromptManager 管理，通过 profiles 保存
+            } catch (localStorageError) {
+                console.warn('⚠️ [本地存储失败] localStorage已满或不可用，但会继续保存到服务器:', localStorageError);
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning('浏览器存储已满，但配置仍会保存到服务器', '本地存储警告', { timeOut: 3000 });
+                }
+            }
 
             // ✅ 关键修复：更新 serverData.lastModified，防止后续 loadConfig 误判回滚
             if (!window.serverData) window.serverData = {};
@@ -8346,13 +8355,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <input type="checkbox" id="gg_c_table_inj" ${C.tableInj ? 'checked' : ''} style="transform: scale(1.2);">
             </div>
 
-            <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">👇 默认策略 (当未找到 {{MEMORY}} 变量时)：</div>
+            <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">👇 注入策略 (表格+总结)：</div>
 
-            <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); font-size: 11px; color: ${UI.tc}; opacity: 0.8; line-height: 1.6;">
-                <i class="fa-solid fa-circle-info" style="color: #17a2b8;"></i>
-                表格内容将作为 <strong>系统 (System)</strong> 消息，自动插入到 <strong>聊天记录 (Chat History)</strong> 的最上方（紧挨在 [Start a new Chat] 之前）。
-                <br><br>
-                💡 如需改变位置（例如移动到世界书下方），请在酒馆的【预设/世界书】中手动插入 <code>{{MEMORY}}</code> 变量。
+            <div style="background: rgba(0,0,0,0.03); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); font-size: 11px; color: ${UI.tc}; opacity: 0.8; line-height: 1.5;">
+                插件中的所有内容将作为 <strong>系统 (System)</strong> 消息，自动插入到 <strong>聊天记录 (Chat History)</strong> 的上方。
+                <br>
+                💡 如需改变位置请点击上方i图标查看说明。
             </div>
         </div>
 
@@ -8695,11 +8703,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     css: { fontSize: '13px', lineHeight: '1.8', color: 'var(--g-tc)' },
                     html: `
                         <div style="margin-bottom: 12px; font-weight: 600; color: ${accentColor};">🌟 变量模式：</div>
-                        <div style="margin-bottom: 12px;">与实时填表搭配使用，在酒馆的【预设】中随机一处插入变量调整填表提示词、总结内容、表格内容在上下文的位置：</div>
-                        <div style="margin-bottom: 8px;">• 实时填表插入变量(全部表单含总结)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY}}</code> (跟随实时填表开关)</div>
+                        <div style="margin-bottom: 12px;">如需调整表格里面的内容在上下文的位置，用户需手动将对应的变量，新增条目插入到预设中：</div>
+                        <div style="margin-bottom: 8px;">• 全部内容(表格+总结)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY}}</code> (跟随实时填表开关)</div>
                         <div style="margin-bottom: 8px;">• 表格插入变量(不含总结表)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE}}</code> (强制发送表格内容)</div>
                         <div style="margin-bottom: 8px;">• 总结插入变量(不含其他表格)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_SUMMARY}}</code> (强制发送总结内容)</div>
-                        <div>• 填表规则插入变量：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_PROMPT}}</code></div>
+                        <div>• 实时填表提示词插入变量：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_PROMPT}}</code></div>
                     `
                 });
 
@@ -10923,10 +10931,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复Bug：</strong>修复实时填表刷新页面时可能导致数据丢失的问题</li>
-                        <li><strong>优化过滤：</strong>优化黑名单支持过滤残缺标签的问题。</li>
-                        <li><strong>优化css：</strong>优化插件表格的按钮排版</li>
-                        <li><strong>兼容生图：</strong>插件清理图片链接避免图片过大导致api请求失败的问题</li>
+                        <li><strong>优化功能：</strong>优化浏览器存储过多导致报错问题</li>
                     </ul>
                 </div>
 
