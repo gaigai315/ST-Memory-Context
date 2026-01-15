@@ -1,4 +1,4 @@
-/* Gaigai v1.6.7 */
+/* Gaigai v1.7.2 */
 
 :root {
     --g-c: #888888;
@@ -1599,4 +1599,53 @@ th.g-col-ops {
 
 .gg-custom-modal::-webkit-scrollbar-thumb:hover {
     background: rgba(127, 127, 127, 0.5) !important;
+}
+
+/* ========== 🚀 发现新版本：精致红点 (微整形版) ========== */
+
+/* 1. 图标本体样式 */
+.g-has-update {
+    opacity: 1 !important;
+    /* 图标变色：改为更显眼的亮橙色 */
+    color: #ff7043 !important; 
+    position: relative !important;
+    transform: none !important;
+    animation: none !important;
+}
+
+/* 2. 右上角红点 */
+.g-has-update::after {
+    content: '' !important;
+    position: absolute !important;
+    
+    /* 位置微调：贴得更紧凑，不再悬空 */
+    top: 0px !important;
+    right: -2px !important;
+    
+    /* 尺寸缩小：由 8px 改为 5px，精致很多 */
+    width: 5px !important;
+    height: 5px !important;
+    
+    /* 颜色：正红 */
+    background-color: #ff3b30 !important;
+    
+    /* 形状：圆形 */
+    border-radius: 50% !important;
+    
+    /* 边框变细：由 2px 改为 1px，更细腻 */
+    border: 1px solid #ffffff !important;
+    
+    /* 阴影：保留一点点立体感，但更轻微 */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+    
+    z-index: 100 !important;
+    
+    /* 呼吸动画：幅度减小 */
+    animation: gai-dot-breath-mini 1.5s infinite alternate !important;
+}
+
+/* 3. 呼吸动画 (轻柔版) */
+@keyframes gai-dot-breath-mini {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.2); } /* 只放大1.2倍，不再忽大忽小那么夸张 */
 }
