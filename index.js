@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.7.7
+// 记忆表格 v1.7.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.7.7 启动');
+    console.log('🚀 记忆表格 v1.7.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.7.7';
+    const V = 'v1.7.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1178,7 +1178,11 @@
                     this.s.forEach((sheet, index) => {
                         if (sheet && sheet.r && Array.isArray(sheet.r)) {
                             // 深拷贝行数据（使用 JSON 方式确保完全独立）
-                            backupData[index] = JSON.parse(JSON.stringify(sheet.r));
+                            // 修改：同时备份名字和数据
+                            backupData.push({
+                                n: sheet.n,
+                                r: JSON.parse(JSON.stringify(sheet.r))
+                            });
                             console.log(`💾 [数据备份] 表${index} "${sheet.n}" 备份了 ${sheet.r.length} 行数据`);
                         }
                     });
@@ -1198,16 +1202,19 @@
             // ✅ 4. 恢复数据（智能锚定版：修复新增表格导致总结错位的问题）
             if (preserveData && backupData.length > 0) {
                 // 4.1 分离：取出旧的总结数据（永远是备份数组的最后一个）
-                const oldSummaryData = backupData.pop();
+                const oldSummaryObj = backupData.pop();
+                const oldSummaryData = oldSummaryObj ? oldSummaryObj.r : [];
 
-                // 4.2 恢复详情表：遍历新的详情表（排除最后一个总结表）
-                // 逻辑：this.s.length - 1 是因为我们要留出最后一个位置给总结表
+                // 4.2 恢复详情表：按名字匹配
                 for (let i = 0; i < this.s.length - 1; i++) {
-                    // 如果旧数据里有这一项，就恢复；如果是新增的表(超出旧数据索引)，就置空
-                    if (i < backupData.length) {
-                        this.s[i].r = backupData[i];
+                    const currentTable = this.s[i];
+                    // 在备份中查找名字相同的表
+                    const match = backupData.find(b => b.n === currentTable.n);
+
+                    if (match) {
+                        currentTable.r = match.r; // 名字匹配，恢复数据
                     } else {
-                        this.s[i].r = []; // 🆕 新增的表，保持空白
+                        currentTable.r = []; // 没找到（说明是新表或改名了），置空
                     }
                 }
 
@@ -1217,7 +1224,7 @@
                     this.s[newSummaryIndex].r = oldSummaryData;
                 }
 
-                console.log(`♻️ [数据恢复] 智能重组：详情表恢复 ${Math.min(backupData.length, this.s.length-1)} 个，总结表已归位`);
+                console.log(`♻️ [数据恢复] 已按表名智能匹配数据`);
             }
 
             // ✅ 5. 重新初始化总结管理器
@@ -1336,7 +1343,7 @@
                 const backupKey = `gg_data_${id}_${now}`;
                 localStorage.setItem(backupKey, JSON.stringify(data));
 
-                // 🧹 清理旧备份：只保留最近20个备份，防止localStorage爆满
+                // 🧹 清理旧备份：只保留最近10个备份，防止localStorage爆满
                 try {
                     const allKeys = Object.keys(localStorage);
                     const backups = allKeys
@@ -1604,33 +1611,23 @@
             const details = snapshot.data.filter(s => s.r.length > 0).map(s => `${s.n}:${s.r.length}行`).join(', ');
             console.log(`📸 快照${msgIndex}已保存 - 共${totalRecords}条记录 ${details ? `[${details}]` : '[空]'}`);
 
-            // 🔥 [新增] 持久化快照：保存到 localStorage
+            // 🧹 [优化] 限制快照深度：只保留最近10个消息索引的快照
             try {
-                const sessionId = m.gid();
-                if (sessionId) {
-                    const snapshotKey = `gg_snapshot_${sessionId}`;
-                    localStorage.setItem(snapshotKey, JSON.stringify(snapshotHistory));
-                    // console.log(`💾 [快照持久化] 已保存快照到 ${snapshotKey}`);
-                }
-            } catch (persistError) {
-                // 如果 localStorage 满了，只保留最近10个快照
-                console.warn('⚠️ [快照持久化] localStorage可能已满，尝试精简快照...');
-                try {
-                    const keys = Object.keys(snapshotHistory).sort((a, b) => parseInt(b) - parseInt(a));
-                    if (keys.length > 10) {
-                        const trimmedHistory = {};
-                        keys.slice(0, 10).forEach(k => trimmedHistory[k] = snapshotHistory[k]);
-                        snapshotHistory = trimmedHistory;
+                // 获取所有数字索引的快照键（排除 before_/after_ 前缀的）
+                const numericKeys = Object.keys(snapshotHistory)
+                    .filter(k => !k.startsWith('before_') && !k.startsWith('after_'))
+                    .map(k => parseInt(k))
+                    .filter(n => !isNaN(n))
+                    .sort((a, b) => b - a); // 降序排列
 
-                        const sessionId = m.gid();
-                        if (sessionId) {
-                            localStorage.setItem(`gg_snapshot_${sessionId}`, JSON.stringify(snapshotHistory));
-                            console.log(`🧹 [快照精简] 已精简到最近10个快照并保存`);
-                        }
-                    }
-                } catch (e) {
-                    console.error('❌ [快照持久化] 精简后仍失败，快照仅保留在内存中:', e);
+                // 只保留最近10个
+                if (numericKeys.length > 10) {
+                    const toDelete = numericKeys.slice(10);
+                    toDelete.forEach(key => delete snapshotHistory[key.toString()]);
+                    console.log(`🧹 [快照深度限制] 已清理 ${toDelete.length} 个过旧快照，保留最近10个`);
                 }
+            } catch (trimError) {
+                console.warn('⚠️ [快照精简] 清理失败:', trimError);
             }
         } catch (e) {
             console.error('❌ 快照保存失败:', e);
@@ -1722,8 +1719,8 @@
         const beforeKeys = allKeys.filter(k => k.startsWith('before_')).sort();
         const afterKeys = allKeys.filter(k => k.startsWith('after_')).sort();
 
-        // 保留最近30对快照
-        const maxPairs = 30;
+        // 🧹 [优化] 保留最近10对快照（从30降至10）
+        const maxPairs = 10;
 
         if (beforeKeys.length > maxPairs) {
             const toDeleteBefore = beforeKeys.slice(0, beforeKeys.length - maxPairs);
@@ -1736,57 +1733,14 @@
             toDeleteAfter.forEach(key => delete snapshotHistory[key]);
             console.log(`🧹 已清理 ${toDeleteAfter.length} 个旧after快照`);
         }
-
-        // 🔥 [新增] 持久化清理后的快照
-        try {
-            const sessionId = m.gid();
-            if (sessionId) {
-                localStorage.setItem(`gg_snapshot_${sessionId}`, JSON.stringify(snapshotHistory));
-            }
-        } catch (e) {
-            console.warn('⚠️ [快照清理] 持久化失败:', e);
-        }
     }
 
-    // 🔥 [新增] 加载持久化的快照
+    // 🔥 [已禁用] 加载持久化的快照（已移除localStorage持久化，快照仅保留在内存中）
     function loadSnapshots() {
-        try {
-            const sessionId = m.gid();
-            if (!sessionId) {
-                console.log('⏭️ [快照加载] 无会话ID，跳过加载');
-                return;
-            }
-
-            const snapshotKey = `gg_snapshot_${sessionId}`;
-            const savedSnapshots = localStorage.getItem(snapshotKey);
-
-            if (savedSnapshots) {
-                const parsed = JSON.parse(savedSnapshots);
-                if (parsed && typeof parsed === 'object') {
-                    snapshotHistory = parsed;
-                    const count = Object.keys(snapshotHistory).length;
-                    console.log(`✅ [快照加载] 已从localStorage恢复 ${count} 个快照`);
-
-                    // 输出快照摘要
-                    const msgIndices = Object.keys(snapshotHistory)
-                        .filter(k => !k.startsWith('before_') && !k.startsWith('after_'))
-                        .map(k => parseInt(k))
-                        .filter(n => !isNaN(n))
-                        .sort((a, b) => a - b);
-
-                    if (msgIndices.length > 0) {
-                        console.log(`📸 [快照范围] 第 ${msgIndices[0]} 楼 ~ 第 ${msgIndices[msgIndices.length - 1]} 楼`);
-                    }
-                } else {
-                    console.warn('⚠️ [快照加载] 格式异常，已忽略');
-                }
-            } else {
-                console.log('ℹ️ [快照加载] 无历史快照（新会话或首次加载）');
-            }
-        } catch (e) {
-            console.error('❌ [快照加载] 加载失败:', e);
-            snapshotHistory = {}; // 重置为空对象，避免污染
-        }
+        // ⚠️ [优化] 快照不再从localStorage加载，仅在运行时生成
+        // 这样可以减少localStorage开销，页面刷新后快照会重新构建
+        console.log('ℹ️ [快照系统] 快照仅保留在内存中，不从localStorage加载');
+        snapshotHistory = {}; // 初始化为空对象
     }
 
     function parseOpenAIModelsResponse(data) {
@@ -9002,15 +8956,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.enabled = $('#gg_c_enabled').is(':checked');
                 C.autoBackfill = $('#gg_c_auto_bf').is(':checked');
 
-                // 🛡️ [源头熔断] 强制互斥检查 (防止脏数据写入存档)
-                if (C.enabled && C.autoBackfill) {
-                    console.warn('🛑 [保存拦截] 检测到功能冲突，强制保留【批量填表】，关闭【实时填表】');
-                    C.enabled = false;
-                    // 同步修正 UI 显示，避免视觉误导
-                    $('#gg_c_enabled').prop('checked', false);
-                    // 既然修正了，隐藏原来的批量填表设置区域（这是一个UI细节优化）
-                    // 但为了安全起见，这里只修数据，不操作 DOM 动画以免冲突
-                }
+                // ⚠️ [已禁用] 源头熔断 - 该逻辑会阻止用户从批量模式切换到实时模式
+                // 具体的互斥检查已由各自的事件处理器（change handler）负责，带用户确认对话框
+                // if (C.enabled && C.autoBackfill) {
+                //     console.warn('🛑 [保存拦截] 检测到功能冲突，强制保留【批量填表】，关闭【实时填表】');
+                //     C.enabled = false;
+                //     // 同步修正 UI 显示，避免视觉误导
+                //     $('#gg_c_enabled').prop('checked', false);
+                //     // 既然修正了，隐藏原来的批量填表设置区域（这是一个UI细节优化）
+                //     // 但为了安全起见，这里只修数据，不操作 DOM 动画以免冲突
+                // }
 
                 C.autoBackfillFloor = parseInt($('#gg_c_auto_bf_floor').val()) || 10;
                 C.autoBackfillPrompt = $('#gg_c_auto_bf_prompt').is(':checked');
@@ -10974,11 +10929,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>⚠️重要通知⚠️：</strong>此次更新，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
+                        <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
+                        <li><strong>提醒：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
+                        <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
-                        <li><strong>优化显示：</strong>优化部分显示问题</li>
-                        <li><strong>提醒：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
+                        <li><strong>修复bug：</strong>表格结构编辑器删除时信息错位的bug</li>
                     </ul>
                 </div>
 
