@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.7.8
+// 记忆表格 v1.7.9
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.7.8 启动');
+    console.log('🚀 记忆表格 v1.7.9 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.7.8';
+    const V = 'v1.7.9';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -6302,7 +6302,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         messages: cleanMessages,
                         temperature: temperature,
                         max_tokens: maxTokens,
-                        stream: false,
+                        stream: true, // ✅ 启用流式响应（Claude等提供商要求）
                         // 🛡️ 强力注入安全设置，防止空回
                         safety_settings: [
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -6319,18 +6319,62 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         credentials: 'include'
                     });
 
+                    // ✅ [流式响应处理] 支持Gemini流式
+                    const contentType = proxyResponse.headers.get('content-type') || '';
+                    const isStreamResponse = contentType.includes('text/event-stream');
+
                     if (proxyResponse.ok) {
+                        // 流式模式
+                        if (isStreamResponse && proxyResponse.body) {
+                            console.log('🌊 [Gemini官方-流式] 开始接收流式响应...');
+                            let fullText = '';
+                            const reader = proxyResponse.body.getReader();
+                            const decoder = new TextDecoder('utf-8');
+                            let buffer = '';
+
+                            try {
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (value) buffer += decoder.decode(value, { stream: !done });
+                                    else if (done) buffer += decoder.decode();
+
+                                    const lines = buffer.split('\n');
+                                    if (!done) buffer = lines.pop() || '';
+                                    else buffer = '';
+
+                                    for (const line of lines) {
+                                        const trimmed = line.trim();
+                                        if (!trimmed || trimmed.startsWith(':') || trimmed === 'data: [DONE]') continue;
+                                        const sseMatch = trimmed.match(/^data:\s*/);
+                                        if (sseMatch) {
+                                            const jsonStr = trimmed.substring(sseMatch[0].length);
+                                            if (!jsonStr || jsonStr === '[DONE]') continue;
+                                            try {
+                                                const chunk = JSON.parse(jsonStr);
+                                                const delta = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.text;
+                                                if (delta) fullText += delta;
+                                            } catch (e) { /* 忽略解析错误 */ }
+                                        }
+                                    }
+                                    if (done) break;
+                                }
+                                console.log('✅ [Gemini官方-流式] 成功');
+                                return { success: true, summary: fullText || '' };
+                            } catch (e) {
+                                console.error('❌ [Gemini官方-流式] 失败:', e.message);
+                                throw e;
+                            }
+                        }
+
+                        // 非流式模式
                         const text = await proxyResponse.text();
                         try {
-                            // 尝试解析各种可能的返回格式
                             const data = JSON.parse(text);
                             if (typeof data === 'string') return { success: true, summary: data };
                             if (data.choices?.[0]?.message?.content) return { success: true, summary: data.choices[0].message.content };
                             if (data.content) return { success: true, summary: data.content };
-                            // 通用解析兜底
                             return parseApiResponse(data);
                         } catch (e) {
-                            // 如果不是JSON，可能是纯文本，直接返回
                             if (text && text.length > 0) return { success: true, summary: text };
                         }
                     }
@@ -6364,7 +6408,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         messages: cleanMessages,
                         temperature: temperature,
                         max_tokens: maxTokens,
-                        stream: false,
+                        stream: true, // ✅ 启用流式响应（Claude等提供商要求）
                         custom_prompt_post_processing: "strict",
                         use_makersuite_sysprompt: true,
                         // ✅ 标准 Gemini 格式
@@ -6388,11 +6432,57 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         credentials: 'include'
                     });
 
+                    // ✅ [流式响应处理] 支持Gemini反代流式
+                    const contentType = proxyResponse.headers.get('content-type') || '';
+                    const isStreamResponse = contentType.includes('text/event-stream');
+
                     if (proxyResponse.ok) {
+                        // 流式模式
+                        if (isStreamResponse && proxyResponse.body) {
+                            console.log('🌊 [Gemini反代-流式] 开始接收流式响应...');
+                            let fullText = '';
+                            const reader = proxyResponse.body.getReader();
+                            const decoder = new TextDecoder('utf-8');
+                            let buffer = '';
+
+                            try {
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (value) buffer += decoder.decode(value, { stream: !done });
+                                    else if (done) buffer += decoder.decode();
+
+                                    const lines = buffer.split('\n');
+                                    if (!done) buffer = lines.pop() || '';
+                                    else buffer = '';
+
+                                    for (const line of lines) {
+                                        const trimmed = line.trim();
+                                        if (!trimmed || trimmed.startsWith(':') || trimmed === 'data: [DONE]') continue;
+                                        const sseMatch = trimmed.match(/^data:\s*/);
+                                        if (sseMatch) {
+                                            const jsonStr = trimmed.substring(sseMatch[0].length);
+                                            if (!jsonStr || jsonStr === '[DONE]') continue;
+                                            try {
+                                                const chunk = JSON.parse(jsonStr);
+                                                const delta = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.text;
+                                                if (delta) fullText += delta;
+                                            } catch (e) { /* 忽略解析错误 */ }
+                                        }
+                                    }
+                                    if (done) break;
+                                }
+                                console.log('✅ [Gemini反代-流式] 成功');
+                                return { success: true, summary: fullText || '' };
+                            } catch (e) {
+                                console.error('❌ [Gemini反代-流式] 失败:', e.message);
+                                throw e;
+                            }
+                        }
+
+                        // 非流式模式
                         const text = await proxyResponse.text();
                         try {
                             const data = JSON.parse(text);
-                            // 兼容 Makersuite 的各种返回
                             if (typeof data === 'string') return { success: true, summary: data };
                             if (data.choices?.[0]?.message?.content) return { success: true, summary: data.choices[0].message.content };
                             if (data.content) return { success: true, summary: data.content };
@@ -6446,7 +6536,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         messages: cleanMessages,
                         temperature: temperature,
                         max_tokens: maxTokens,
-                        stream: false,
+                        stream: true, // ✅ 启用流式响应（Claude等提供商要求）
 
                         // 兼容性参数
                         mode: 'chat',
@@ -6497,9 +6587,134 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         credentials: 'include'
                     });
 
-                    // 1. 检查成功状态
+                    // ✅ [流式响应处理] 检查响应类型
+                    const contentType = proxyResponse.headers.get('content-type') || '';
+                    const isStreamResponse = contentType.includes('text/event-stream');
+
                     if (proxyResponse.ok) {
-                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                        // ✅ [流式模式] 处理 SSE 流式响应
+                        if (isStreamResponse && proxyResponse.body) {
+                            console.log('🌊 [后端代理-流式] 开始接收 SSE 流式响应...');
+
+                            let fullText = '';  // 累积完整文本
+                            let fullReasoning = '';  // 累积思考内容
+
+                            try {
+                                const reader = proxyResponse.body.getReader();
+                                const decoder = new TextDecoder('utf-8');
+                                let buffer = '';
+                                let isTruncated = false;
+
+                                while (true) {
+                                    const { done, value } = await reader.read();
+
+                                    if (value) {
+                                        buffer += decoder.decode(value, { stream: !done });
+                                    } else if (done) {
+                                        buffer += decoder.decode();
+                                    }
+
+                                    const lines = buffer.split('\n');
+
+                                    if (!done) {
+                                        buffer = lines.pop() || '';
+                                    } else {
+                                        buffer = '';
+                                        console.log('✅ [后端代理-流式] 接收完成，处理剩余的所有行');
+                                    }
+
+                                    for (const line of lines) {
+                                        const trimmed = line.trim();
+
+                                        if (!trimmed || trimmed.startsWith(':')) continue;
+                                        if (trimmed === 'data: [DONE]' || trimmed === 'data:[DONE]') continue;
+
+                                        const sseMatch = trimmed.match(/^data:\s*/);
+                                        if (sseMatch) {
+                                            const jsonStr = trimmed.substring(sseMatch[0].length);
+
+                                            if (!jsonStr || jsonStr === '[DONE]') continue;
+
+                                            try {
+                                                const chunk = JSON.parse(jsonStr);
+
+                                                const finishReason = chunk.choices?.[0]?.finish_reason;
+                                                if (finishReason) {
+                                                    if (finishReason === 'length') {
+                                                        isTruncated = true;
+                                                        console.warn('⚠️ [后端代理-流式] 检测到输出因 Max Tokens 限制被截断');
+                                                    } else {
+                                                        console.log(`✅ [后端代理-流式] 完成原因: ${finishReason}`);
+                                                    }
+                                                }
+
+                                                const reasoningContent = chunk.choices?.[0]?.delta?.reasoning_content;
+                                                if (reasoningContent) {
+                                                    fullReasoning += reasoningContent;
+                                                }
+
+                                                const delta = chunk.choices?.[0]?.delta?.content;
+                                                if (delta) {
+                                                    fullText += delta;
+                                                }
+
+                                                if (!delta && chunk.choices?.[0]?.text) {
+                                                    fullText += chunk.choices[0].text;
+                                                }
+
+                                            } catch (parseErr) {
+                                                console.warn('⚠️ [后端代理-流式] JSON 解析失败:', parseErr.message);
+                                                if (jsonStr && jsonStr.trim() && !jsonStr.includes('[DONE]')) {
+                                                    fullText += jsonStr;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (done) break;
+                                }
+
+                                if (isTruncated) {
+                                    fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                                }
+
+                                console.log(`✅ [后端代理-流式] 累积文本长度: ${fullText.length} 字符`);
+
+                                if (!fullText.trim() && fullReasoning.trim()) {
+                                    throw new Error('生成失败：AI 仅输出了思考过程，未输出正文（可能是 Token 耗尽）');
+                                }
+
+                                // 清洗 <think> 标签
+                                if (fullText) {
+                                    const rawText = fullText;
+                                    let cleaned = fullText
+                                        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+                                        .replace(/^[\s\S]*?<\/think>/i, '')
+                                        .trim();
+
+                                    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+
+                                    if (!cleaned && rawText.trim().length > 0) {
+                                        console.warn('⚠️ [后端代理-流式清洗] 清洗后内容为空，触发回退保护');
+                                        fullText = rawText;
+                                    } else {
+                                        fullText = cleaned;
+                                        if (rawText.length !== cleaned.length) {
+                                            console.log(`🧹 [后端代理-流式清洗] 已移除 <think> 标签`);
+                                        }
+                                    }
+                                }
+
+                                console.log('✅ [后端代理-流式] 成功');
+                                return { success: true, summary: fullText || '' };
+
+                            } catch (streamErr) {
+                                console.error('❌ [后端代理-流式] 流解析失败:', streamErr.message);
+                                throw streamErr;
+                            }
+                        }
+
+                        // ✅ [非流式模式] 处理 JSON 响应（兼容旧版本或非流式提供商）
                         const text = await proxyResponse.text();
 
                         let data;
@@ -6508,6 +6723,74 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         } catch (e) {
                             console.error('❌ [后端代理] JSON 解析失败:', e.message);
                             console.error('   原始响应 (前300字符):', text.substring(0, 300));
+
+                            // ✨ [Fallback SSE Parser] 检查是否是"无头流"（Headless Stream）
+                            // 当 SillyTavern 剥离了 text/event-stream 头但响应体仍是 SSE 格式时触发
+                            const trimmedText = text.trim();
+                            if (trimmedText.startsWith('data:')) {
+                                console.warn('⚠️ [后端代理] 检测到无头SSE流，启动手动解析...');
+
+                                try {
+                                    let fullText = '';
+                                    let fullReasoning = '';
+
+                                    // 按行分割并解析 SSE 数据
+                                    const lines = text.split('\n');
+                                    for (const line of lines) {
+                                        const trimmed = line.trim();
+
+                                        // 跳过空行、注释行和结束标记
+                                        if (!trimmed || trimmed.startsWith(':') || trimmed === 'data: [DONE]' || trimmed === 'data:[DONE]') {
+                                            continue;
+                                        }
+
+                                        // 提取 SSE 数据
+                                        const sseMatch = trimmed.match(/^data:\s*/);
+                                        if (sseMatch) {
+                                            const jsonStr = trimmed.substring(sseMatch[0].length);
+
+                                            if (!jsonStr || jsonStr === '[DONE]') continue;
+
+                                            try {
+                                                const chunk = JSON.parse(jsonStr);
+
+                                                // 提取 reasoning_content（思考内容）
+                                                const reasoningContent = chunk.choices?.[0]?.delta?.reasoning_content;
+                                                if (reasoningContent) {
+                                                    fullReasoning += reasoningContent;
+                                                }
+
+                                                // 提取 content（正文内容）
+                                                const delta = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.text;
+                                                if (delta) {
+                                                    fullText += delta;
+                                                }
+                                            } catch (parseErr) {
+                                                console.warn('⚠️ [无头SSE解析] JSON块解析失败:', parseErr.message);
+                                                // 如果单个块解析失败，尝试将原始内容添加到结果中
+                                                if (jsonStr && !jsonStr.includes('[DONE]')) {
+                                                    fullText += jsonStr;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 如果成功解析出内容，返回结果
+                                    if (fullText.trim()) {
+                                        console.log(`✅ [无头SSE解析] 成功解析，累积文本长度: ${fullText.length} 字符`);
+                                        return { success: true, summary: fullText };
+                                    } else if (fullReasoning.trim()) {
+                                        console.warn('⚠️ [无头SSE解析] 仅解析到思考内容，无正文');
+                                        return { success: true, summary: fullReasoning };
+                                    }
+
+                                    console.warn('⚠️ [无头SSE解析] 未能提取有效内容');
+                                } catch (sseParseErr) {
+                                    console.error('❌ [无头SSE解析] 解析失败:', sseParseErr.message);
+                                }
+                            }
+
+                            // 如果不是 SSE 流或解析失败，抛出原始错误
                             throw new Error(`后端代理返回非JSON格式\n\n原始响应: ${text.substring(0, 150)}\n\n可能原因：中转API超时或返回了HTML错误页`);
                         }
 
@@ -10935,6 +11218,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
                         <li><strong>修复bug：</strong>表格结构编辑器删除时信息错位的bug</li>
+                        <li><strong>修复bug：</strong>修复流式解析失败的bug</li>
                     </ul>
                 </div>
 
