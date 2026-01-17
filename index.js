@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.7.2
+// 记忆表格 v1.7.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.7.2 启动');
+    console.log('🚀 记忆表格 v1.7.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.7.2';
+    const V = 'v1.7.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -113,30 +113,31 @@
     // ----- 表格结构定义（默认9个表格，支持动态扩展） -----
     // ==================== 默认表格定义（出厂设置模板） ====================
     // 最后一个表永远是"总结表"，前面的都是"数据表"
+    // 🔄 列名前缀规则：# = 覆盖模式（Overwrite），无前缀 = 追加模式（Append）
     const DEFAULT_TABLES = [
-        { n: '主线剧情', c: ['日期', '开始时间', '完结时间', '事件概要', '状态'] },
-        { n: '支线追踪', c: ['状态', '支线名', '开始时间', '完结时间', '事件追踪', '关键NPC'] },
-        { n: '角色状态', c: ['角色名', '状态变化', '时间', '原因', '当前位置'] },
-        { n: '人物档案', c: ['姓名', '年龄', '身份', '地点', '性格', '备注'] },
-        { n: '人物关系', c: ['角色A', '角色B', '关系描述', '情感态度'] },
-        { n: '世界设定', c: ['设定名', '类型', '详细说明', '影响范围'] },
-        { n: '物品追踪', c: ['物品名称', '物品描述', '当前位置', '持有者', '状态', '重要程度', '备注'] },
-        { n: '约定', c: ['约定时间', '约定内容', '核心角色'] },
-        { n: '记忆总结', c: ['表格类型', '总结内容'] }
+        { n: '主线剧情', c: ['#日期', '#开始时间', '#完结时间', '事件概要', '#状态'] },
+        { n: '支线追踪', c: ['#状态', '#支线名', '#开始时间', '#完结时间', '事件追踪', '#关键NPC'] },
+        { n: '角色状态', c: ['#角色名', '#状态变化', '#时间', '原因', '#当前位置'] },
+        { n: '人物档案', c: ['#姓名', '#年龄', '#身份', '#地点', '性格', '备注'] },
+        { n: '人物关系', c: ['#角色A', '#角色B', '#关系描述', '#情感态度'] },
+        { n: '世界设定', c: ['#设定名', '#类型', '详细说明', '影响范围'] },
+        { n: '物品追踪', c: ['#物品名称', '物品描述', '#当前位置', '#持有者', '#状态', '#重要程度', '备注'] },
+        { n: '约定', c: ['#约定时间', '约定内容', '#核心角色'] },
+        { n: '记忆总结', c: ['#表格类型', '总结内容'] }
     ];
 
     // ----- 默认列宽配置（单位：像素） -----
     const DEFAULT_COL_WIDTHS = {
         // 0号表：主线
-        0: { '日期': 90, '开始时间': 80, '完结时间': 80, '状态': 60 },
+        0: { '#日期': 90, '#开始时间': 80, '#完结时间': 80, '#状态': 60 },
         // 1号表：支线 (你觉得太宽的就是这里)
-        1: { '状态': 60, '支线名': 100, '开始时间': 80, '完结时间': 80, '事件追踪': 150, '关键NPC': 80 },
+        1: { '#状态': 60, '#支线名': 100, '#开始时间': 80, '#完结时间': 80, '事件追踪': 150, '#关键NPC': 80 },
         // 其他表默认改小
-        2: { '时间': 100 },
-        3: { '年龄': 40 },
-        6: { '状态': 60, '重要程度': 60 },
-        7: { '约定时间': 100 },
-        8: { '表格类型': 100 }
+        2: { '#时间': 100 },
+        3: { '#年龄': 40 },
+        6: { '#状态': 60, '#重要程度': 60 },
+        7: { '#约定时间': 100 },
+        8: { '#表格类型': 100 }
     };
 
     // ========================================================================
@@ -160,6 +161,7 @@
     let isSummarizing = false;
     let isInitCooling = true; // ✨ 初始化冷却：防止刚加载页面时自动触发任务
     let saveChatDebounceTimer = null; // 🧹 性能优化：saveChat 防抖计时器
+    let hideTagDebounceTimer = null; // 🧹 性能优化：hideMemoryTags 防抖计时器，防止 Regex 脚本冲突
     let isChatSwitching = false; // 🔒 性能优化：会话切换锁，防止卡顿期间误操作
 
     // 🛡️ [辅助函数] 更新 lastManualEditTime 并同步到 window
@@ -889,20 +891,26 @@
             else if (i > this.r.length) { return; }
 
             Object.entries(d).forEach(([k, v]) => {
-                // 🔥 修复：对于需要追加的列（主线剧情列3、支线追踪列4），增强去重逻辑
-                if ((this.n === '主线剧情' && k == '3') || (this.n === '支线追踪' && k == '4')) {
-                    if (this.r[i][k] && v) {
-                        // 检查是否已包含相同内容
-                        if (!this.r[i][k].includes(v.trim())) {
-                            // 不包含 → 追加
-                            this.r[i][k] += '；' + v.trim();
+                // 🔄 前缀规则：# = 覆盖模式（Overwrite），无前缀 = 追加模式（Append）
+                const colDef = this.c[k] || '';
+                const isOverwrite = colDef.trim().startsWith('#');
+                const val = v ? v.trim() : '';
+
+                if (isOverwrite) {
+                    // 覆盖模式：直接赋值
+                    this.r[i][k] = val;
+                } else {
+                    // 追加模式：检查是否已有内容
+                    if (!this.r[i][k]) {
+                        // 单元格为空：直接赋值
+                        this.r[i][k] = val;
+                    } else if (val) {
+                        // 单元格有内容且新值非空：去重后追加
+                        if (!this.r[i][k].includes(val)) {
+                            this.r[i][k] += '；' + val;
                         }
-                        // 已包含或已追加 → 直接返回，不执行后面的覆盖逻辑
-                        return;
                     }
                 }
-                // 对于非追加列，或追加列的首次赋值，直接覆盖
-                this.r[i][k] = v;
             });
         }
         ins(d, insertAfterIndex = null) {
@@ -954,7 +962,9 @@
                 t += `  [${ri}] `;
                 this.c.forEach((cl, ci) => {
                     const v = rw[ci] || '';
-                    if (v) t += `${cl}:${v} | `;
+                    // 🧹 Clean Display: 移除 # 前缀，AI 只看到干净的列名
+                    const colName = cl.replace(/^#/, '');
+                    if (v) t += `${colName}:${v} | `;
                 });
                 t += '\n';
             });
@@ -3114,45 +3124,81 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     function hideMemoryTags() {
         if (!C.hideTag) return;
 
-        // 1. 注入一次性 CSS 规则，这是最安全的隐藏方式
+        // 1. 立即注入 CSS 规则，确保即使在防抖延迟期间也能隐藏标准元素
+        // 这是最安全的隐藏方式，不会与其他脚本冲突
         if (!document.getElementById('gaigai-hide-style')) {
             $('<style id="gaigai-hide-style">memory, gaigaimemory, tableedit { display: none !important; }</style>').appendTo('head');
         }
 
-        // ✅ 性能优化：只查找没有打过标记的元素，极大减少遍历数量
-        $('.mes_text:not([data-gaigai-processed="true"])').each(function () {
-            const root = this;
-            // 标记已处理，防止重复扫描
-            root.dataset.gaigaiProcessed = 'true';
+        // 2. ✅ [防抖策略] 清除之前的定时器，防止在 Regex 脚本快速切换时重复执行
+        if (hideTagDebounceTimer) {
+            clearTimeout(hideTagDebounceTimer);
+        }
 
-            // 策略 A: 如果 <Memory> 被浏览器识别为标签，直接用 CSS 隐藏 (不通过 JS 修改)
-            $(root).find('memory, gaigaimemory, tableedit').hide();
+        // 3. ✅ [防抖策略] 设置新的定时器，等待 1200ms 确保 DOM 完全稳定
+        // 只有在 1200ms 内没有新的调用时，才会真正执行 DOM 操作
+        // ⚠️ 1200ms 是为了应对多个 Regex 脚本（4+）的"渲染风暴"，确保所有脚本都完成后再执行
+        hideTagDebounceTimer = setTimeout(() => {
+            // 4. ✅ [移动端优化] 使用 requestIdleCallback 确保在 CPU 空闲时执行
+            // 这样可以避免在移动设备上与 Regex 脚本等其他插件的 DOM 操作冲突
+            // 如果浏览器不支持 requestIdleCallback，则回退到 requestAnimationFrame
+            const scheduleWork = window.requestIdleCallback || requestAnimationFrame;
+            scheduleWork(() => {
+                // ✅ 性能优化：只查找没有打过标记的元素，极大减少遍历数量
+                $('.mes_text:not([data-gaigai-processed="true"])').each(function () {
+                    const root = this;
+                    // 标记已处理，防止重复扫描
+                    root.dataset.gaigaiProcessed = 'true';
 
-            // 策略 B: 如果 <Memory> 是纯文本，使用 TreeWalker 精准查找
-            // 这种方式只会修改文字节点，旁边的 <img src="..."> 绝对不会被重置！
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-            let node;
-            const nodesToReplace = [];
+                    // 策略 A: 如果 <Memory> 被浏览器识别为标签，直接用 CSS 隐藏 (不通过 JS 修改)
+                    $(root).find('memory, gaigaimemory, tableedit').hide();
 
-            while (node = walker.nextNode()) {
-                if (MEMORY_TAG_REGEX.test(node.nodeValue)) {
-                    nodesToReplace.push(node);
-                }
-            }
+                    // 策略 B: 如果 <Memory> 是纯文本，使用 TreeWalker 精准查找
+                    // 这种方式只会修改文字节点，旁边的 <img src="..."> 绝对不会被重置！
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                    let node;
+                    const nodesToReplace = [];
 
-            if (nodesToReplace.length > 0) {
-                nodesToReplace.forEach(textNode => {
-                    const span = document.createElement('span');
-                    // 只替换文字内容，不触碰父级 innerHTML
-                    const newHtml = textNode.nodeValue.replace(MEMORY_TAG_REGEX,
-                        '<span class="g-hidden-tag" style="display:none!important;visibility:hidden!important;height:0!important;overflow:hidden!important;">$&</span>');
+                    while (node = walker.nextNode()) {
+                        if (MEMORY_TAG_REGEX.test(node.nodeValue)) {
+                            nodesToReplace.push(node);
+                        }
+                    }
 
-                    span.innerHTML = newHtml;
-                    // 原地替换文本节点
-                    textNode.parentNode.replaceChild(span, textNode);
+                    if (nodesToReplace.length > 0) {
+                        nodesToReplace.forEach(textNode => {
+                            // ✅ [双重安全检查] 防止操作已被其他脚本(如Regex)移除的节点
+                            // 检查节点本身和根容器是否仍然连接到文档
+                            // 这是"被动防御"策略的核心：只操作确认安全的节点
+                            if (!textNode.isConnected || !root.isConnected) {
+                                return; // 跳过已分离的节点或容器
+                            }
+
+                            // ✅ [安全检查] 防止操作已被其他脚本(如Regex)移除的节点
+                            // 如果节点已经从 DOM 树中分离，跳过处理
+                            if (!textNode.parentNode || !textNode.parentNode.isConnected) {
+                                return; // 跳过已分离的节点
+                            }
+
+                            try {
+                                // 🔥 [Text Mutation] 直接修改文本内容，不改变 DOM 结构
+                                // 这样可以避免与 Regex 脚本等其他插件的 DOM 操作冲突
+                                const originalText = textNode.nodeValue;
+                                const newText = originalText.replace(MEMORY_TAG_REGEX, '');
+
+                                if (originalText !== newText) {
+                                    textNode.nodeValue = newText;
+                                }
+                            } catch (e) {
+                                // ✅ [容错处理] 如果修改失败（如节点在操作过程中被移除），静默失败
+                                // 避免影响整个聊天界面的正常运行
+                                console.warn('⚠️ [hideMemoryTags] 文本修改失败（可能与其他脚本冲突）:', e);
+                            }
+                        });
+                    }
                 });
-            }
-        });
+            });
+        }, 1200); // 1200ms 防抖延迟，确保多个 Regex 脚本完全停止后再执行（被动防御策略）
     }
 
     // ========================================================================
@@ -3543,6 +3589,31 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             border-color: ${UI.c} !important;
             box-shadow: 0 0 0 1px ${UI.c}af !important;
             opacity: 1 !important;
+        }
+
+        /* 2.5. 🔥 强制覆盖浏览器自动填充样式 (解决手机端自动填充背景色问题) */
+        #gai-main-pop input:-webkit-autofill,
+        #gai-main-pop input:-webkit-autofill:hover,
+        #gai-main-pop input:-webkit-autofill:focus,
+        #gai-main-pop input:-webkit-autofill:active,
+        #gai-main-pop textarea:-webkit-autofill,
+        #gai-main-pop textarea:-webkit-autofill:hover,
+        #gai-main-pop textarea:-webkit-autofill:focus,
+        #gai-main-pop textarea:-webkit-autofill:active,
+        .g-p input:-webkit-autofill,
+        .g-p input:-webkit-autofill:hover,
+        .g-p input:-webkit-autofill:focus,
+        .g-p input:-webkit-autofill:active,
+        .g-p textarea:-webkit-autofill,
+        .g-p textarea:-webkit-autofill:hover,
+        .g-p textarea:-webkit-autofill:focus,
+        .g-p textarea:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 1000px ${bg_input} inset !important;
+            -webkit-text-fill-color: ${color_text} !important;
+            box-shadow: 0 0 0 1000px ${bg_input} inset !important;
+            background-color: ${bg_input} !important;
+            background-clip: content-box !important;
+            transition: background-color 5000s ease-in-out 0s !important;
         }
 
         /* 3. 辅助权重增强 */
@@ -4436,7 +4507,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <div style="display: flex; align-items: center; gap: 5px;">
                     <input type="number" class="g-book-page-input" id="gai-book-page-jump"
                            value="${currentBookPage + 1}" min="1" max="${totalPages}"
-                           data-ti="${tableIndex}">
+                           data-ti="${tableIndex}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span>/ ${totalPages}</span>
                 </div>
 
@@ -4487,10 +4558,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         h += '</th>';
 
         // ✅✅✅ 把这段补回来！这是生成列标题的！
+        // 🔄 前缀规则：# = 覆盖模式（Overwrite），无前缀 = 追加模式（Append）
         s.c.forEach((c, ci) => {
             const width = getColWidth(ti, c) || 100;
-            h += `<th style="width:${width}px;" data-ti="${ti}" data-col="${ci}" data-col-name="${esc(c)}">
-            ${esc(c)}
+            const isOverwrite = c.trim().startsWith('#');
+            const displayName = isOverwrite ? c.replace('#', '') : c;
+            const modeTitle = isOverwrite ? '[🔄 覆盖模式] Overwrite Mode' : '[➕ 追加模式] Append Mode';
+
+            h += `<th style="width:${width}px;" data-ti="${ti}" data-col="${ci}" data-col-name="${esc(c)}" title="${modeTitle}">
+            ${esc(displayName)}
             <div class="g-col-resizer" data-ti="${ti}" data-ci="${ci}" data-col-name="${esc(c)}" title="拖拽调整列宽"></div>
         </th>`;
         });
@@ -7124,7 +7200,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </div>
 
             <div style="display: flex; gap: 5px;">
-                <input type="text" id="gg_bg_url" placeholder="输入图片 URL..." style="flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                <input type="text" id="gg_bg_url" placeholder="输入图片 URL..." style="flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 <button id="gg_btn_clear_bg" style="padding: 5px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">🗑️</button>
             </div>
 
@@ -7393,11 +7469,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <span id="gg_fetch_models_btn" style="cursor:pointer; font-size:10px; color:${UI.tc}; border:1px solid ${UI.c}; padding:1px 6px; border-radius:3px; background:rgba(127,127,127,0.1);">🔄 拉取模型列表</span>
             </div>
 
-            <input type="text" id="gg_api_model" name="gg_api_model_history" autocomplete="on" value="${API_CONFIG.model}" placeholder="gpt-3.5-turbo" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+            <input type="text" id="gg_api_model" name="gg_api_model_history" autocomplete="off" value="${API_CONFIG.model}" placeholder="gpt-3.5-turbo" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;" autocorrect="off" autocapitalize="off" spellcheck="false">
             <select id="gg_api_model_select" style="display:none; width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;"></select>
 
             <label>最大输出长度 (Max Tokens)：</label>
-            <input type="number" id="gg_api_max_tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;">
+            <input type="number" id="gg_api_max_tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 
         </fieldset>
 
@@ -8058,6 +8134,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log(`⏰ [时间戳] 保存时间: ${new Date(allSettings.lastModified).toLocaleString()}`);
             console.log(`📚 [向量库] 保存书架数据: ${Object.keys(currentLibrary).length} 本书`);
 
+            // ✅ [Critical Fix] 立即同步时间戳到本地，防止刷新后被云端旧数据覆盖
+            localStorage.setItem('gg_timestamp', allSettings.lastModified.toString());
+            console.log('✅ [时间戳同步] 已将最新时间戳写入本地 localStorage');
+
             // ✅✅✅ 乐观保存策略：立即更新本地状态，不等待网络请求
             // 这样用户点击保存瞬间，本地数据即刻更新，防止网络延迟期间切换会话导致读取旧数据
             if (!window.extension_settings) window.extension_settings = {};
@@ -8303,7 +8383,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <div id="gg_auto_bf_settings" style="font-size: 11px; background: rgba(0,0,0,0.03); padding: 8px; border-radius: 4px; margin-bottom: 5px; ${C.autoBackfill ? '' : 'display:none;'}">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                     <span>每</span>
-                    <input type="number" id="gg_c_auto_bf_floor" value="${C.autoBackfillFloor || 10}" min="2" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_bf_floor" value="${C.autoBackfillFloor || 10}" min="2" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span>层触发一次</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:8px; border-left:2px solid rgba(255,152,0,0.3);">
@@ -8313,7 +8393,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </label>
                     <span style="opacity:0.7;">|</span>
                     <span style="opacity:0.8;">滞后</span>
-                    <input type="number" id="gg_c_auto_bf_delay_count" value="${C.autoBackfillDelayCount || 5}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_bf_delay_count" value="${C.autoBackfillDelayCount || 5}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span style="opacity:0.8;">层再执行</span>
                 </div>
                 <div style="background: rgba(33, 150, 243, 0.08); border: 1px solid rgba(33, 150, 243, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 6px;">
@@ -8340,7 +8420,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <label style="font-weight: 600;">✂️ 隐藏楼层</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">留</span>
-                    <input type="number" id="gg_c_limit_count" value="${C.contextLimitCount}" min="5" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_limit_count" value="${C.contextLimitCount}" min="5" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <input type="checkbox" id="gg_c_limit_on" ${C.contextLimit ? 'checked' : ''}>
                 </div>
             </div>
@@ -8369,7 +8449,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <label style="font-weight: 600;">🤖 自动总结</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">每</span>
-                    <input type="number" id="gg_c_auto_floor" value="${C.autoSummaryFloor}" min="10" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_floor" value="${C.autoSummaryFloor}" min="10" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span style="font-size: 11px;">层</span>
                     <input type="checkbox" id="gg_c_auto_sum" ${C.autoSummary ? 'checked' : ''} style="transform: scale(1.2);">
                 </div>
@@ -8422,7 +8502,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </label>
                     <span style="opacity:0.7;">|</span>
                     <span style="opacity:0.8;">滞后</span>
-                    <input type="number" id="gg_c_auto_sum_delay_count" value="${C.autoSummaryDelayCount || 5}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                    <input type="number" id="gg_c_auto_sum_delay_count" value="${C.autoSummaryDelayCount || 5}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span style="opacity:0.8;">层再执行</span>
                 </div>
 
@@ -8452,11 +8532,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             <div style="margin-bottom: 8px;">
                 <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">🚫 黑名单标签 (去除)</label>
-                <input type="text" id="gg_c_filter_tags" value="${esc(C.filterTags || '')}" placeholder="例: thinking, system" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
+                <input type="text" id="gg_c_filter_tags" value="${esc(C.filterTags || '')}" placeholder="例: thinking, system" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 
                 <!-- 快速添加区域 -->
                 <div style="margin-top: 6px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                    <span style="font-size:10px; font-weight:bold; color:var(--g-tc); opacity:0.8;">🔥 常用标签：</span>
+                    <span style="font-size:10px; font-weight:bold; color:var(--g-tc); opacity:0.8;">🔥 常用：</span>
                     <span class="gg-quick-tag" data-tag="think" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">think</span>
                     <span class="gg-quick-tag" data-tag="thinking" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">thinking</span>
                     <span class="gg-quick-tag" data-tag="details" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">details</span>
@@ -8470,7 +8550,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             <div>
                 <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">✅ 白名单标签 (仅留)</label>
-                <input type="text" id="gg_c_filter_tags_white" value="${esc(C.filterTagsWhite || '')}" placeholder="例: content, message" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);">
+                <input type="text" id="gg_c_filter_tags_white" value="${esc(C.filterTagsWhite || '')}" placeholder="例: content, message" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 <div style="margin-top: 6px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
                     <span style="font-size:10px; font-weight:bold; color:var(--g-tc); opacity:0.8;">🔥 常用：</span>
                     <span class="gg-quick-tag-white" data-tag="content" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">content</span>
@@ -8528,37 +8608,44 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </div>
 
             <!-- 2. Main Action -->
-            <button id="gg_save_cfg" style="width: 100%; padding: 12px; margin-bottom: 15px; font-weight: bold; background: ${UI.c}; color: ${UI.tc}; border: none; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); cursor: pointer;">
+            <button id="gg_save_cfg" style="width: 100%; padding: 16px; margin-bottom: 15px; font-weight: bold; font-size: 14px; letter-spacing: 2px; background: ${UI.c}; color: ${UI.tc}; border: none; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); cursor: pointer;">
                 💾 保存配置
             </button>
 
-            <!-- 3. Maintenance Tools (2x2 Grid) -->
+            <!-- 3. Maintenance Tools (1 + 2x2 Grid) -->
             <div style="background: rgba(0,0,0,0.03); border-radius: 8px; padding: 10px; border: 1px solid rgba(0,0,0,0.05);">
                 <div style="font-size: 11px; font-weight: bold; color: ${UI.tc}; margin-bottom: 8px; opacity: 0.8; text-align: center;">🛠️ 调试与维护工具</div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <!-- 按钮 1: 最后发送 -->
-                    <button id="gg_open_probe" style="width: 100%; padding: 8px; background: #17a2b8; color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: auto;">
-                        <span style="font-weight:bold; font-size:12px;">🔍 最后发送</span>
-                        <span style="font-size:10px; opacity:0.8; font-weight:normal;">查看上下文内容</span>
-                    </button>
+                <!-- 第一行：独立按钮 - 最后发送 -->
+                <button id="gg_open_probe" style="width: 100%; padding: 8px; background: #17a2b8; color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: auto; margin-bottom: 10px;">
+                    <span style="font-weight:bold; font-size:12px;">🔍 最后发送</span>
+                    <span style="font-size:10px; opacity:0.8; font-weight:normal;">查看上下文内容</span>
+                </button>
 
-                    <!-- 按钮 2: 强制同步 -->
+                <!-- 下方：2x2 网格 -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <!-- 按钮 1: 强制同步 -->
                     <button id="gg_force_cloud_load" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: auto;" title="解决多端同步问题">
                         <span style="font-weight:bold; font-size:12px;">☁️ 强制同步</span>
                         <span style="font-size:10px; opacity:0.8; font-weight:normal;">多端同步专用</span>
                     </button>
 
-                    <!-- 按钮 3: 恢复数据 -->
+                    <!-- 按钮 2: 恢复数据 -->
                     <button id="gg_rescue_btn" style="width: 100%; padding: 8px; background: transparent; color: #dc3545; border: 1px dashed #dc3545; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: auto;" title="尝试找回丢失的数据">
                         <span style="font-weight:bold; font-size:12px;">🚑 恢复数据</span>
                         <span style="font-size:10px; opacity:0.8; font-weight:normal;">数据丢失专用</span>
                     </button>
 
-                    <!-- 按钮 4: 清除缓存 -->
+                    <!-- 按钮 3: 清除缓存 -->
                     <button id="gai-btn-clear-cache" style="width: 100%; padding: 8px; background: transparent; color: #ff9800; border: 1px dashed #ff9800; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: auto;" title="清除本地缓存解决卡顿">
                         <span style="font-weight:bold; font-size:12px;">🧹 清除缓存</span>
                         <span style="font-size:10px; opacity:0.8; font-weight:normal;">插件更新/卡顿专用</span>
+                    </button>
+
+                    <!-- 按钮 4: 查看日志 -->
+                    <button id="gg_show_logs" style="width: 100%; padding: 8px; background: transparent; color: #9c27b0; border: 1px dashed #9c27b0; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: auto;" title="查看浏览器控制台日志">
+                        <span style="font-weight:bold; font-size:12px;">📜 查看日志</span>
+                        <span style="font-size:10px; opacity:0.8; font-weight:normal;">移动端调试专用</span>
                     </button>
                 </div>
             </div>
@@ -8740,10 +8827,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             $('#gg_open_probe').on('click', function () {
-                if (typeof window.Gaigai.showLastRequest === 'function') {
-                    window.Gaigai.showLastRequest();
+                if (window.Gaigai && window.Gaigai.DebugManager) {
+                    window.Gaigai.DebugManager.showLastRequest();
                 } else {
-                    customAlert('❌ 探针模块 (probe.js) 尚未加载。\n\n请确保 probe.js 文件存在于同级目录下，并尝试刷新页面。', '错误');
+                    customAlert('❌ 调试模块尚未加载，请刷新页面后重试。', '错误');
+                }
+            });
+
+            // 查看日志按钮
+            $('#gg_show_logs').on('click', function () {
+                if (window.Gaigai && window.Gaigai.DebugManager) {
+                    // 使用 navTo 导航，这样返回时会回到配置面板
+                    navTo('📜 日志查看器', () => {
+                        window.Gaigai.DebugManager.showLogViewer();
+                    });
+                } else {
+                    customAlert('❌ 调试模块尚未加载，请刷新页面后重试。', '错误');
                 }
             });
 
@@ -8834,144 +8933,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 🚑 历史存档时光机按钮
             $('#gg_rescue_btn').off('click').on('click', async function () {
-                const btn = $(this);
-                const originalText = btn.text();
-                btn.text('正在扫描全盘...');
-
-                // === 🌙 变量定义区 ===
-                const isDark = UI.darkMode;
-                const bgColor = isDark ? '#1e1e1e' : '#fff';
-                const txtColor = isDark ? '#e0e0e0' : UI.tc;
-                const borderColor = isDark ? '1px solid rgba(255,255,255,0.15)' : 'none';
-                const rowBorder = isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #eee';
-                const shadow = isDark ? '0 10px 40px rgba(0,0,0,0.6)' : '0 5px 20px rgba(0,0,0,0.3)';
-
-                // ✨ 修复关键：定义按钮默认颜色
-                // 如果是夜间模式，按钮文字用浅灰色(#e0e0e0)；如果是白天，用主题色(UI.c)
-                const btnDefColor = isDark ? '#e0e0e0' : UI.c;
-                const btnBorderColor = isDark ? 'rgba(255,255,255,0.3)' : UI.c;
-                // ===================
-
-                let backups = [];
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key.startsWith('gg_data_')) {
-                        try {
-                            const raw = localStorage.getItem(key);
-                            const d = JSON.parse(raw);
-                            const count = d.d ? d.d.reduce((sum, sheet) => sum + (sheet.r ? sheet.r.length : 0), 0) : 0;
-                            const ts = d.ts || 0;
-                            backups.push({ key, count, ts, dateStr: new Date(ts).toLocaleString(), id: d.id, data: d });
-                        } catch (e) { }
-                    }
+                if (window.Gaigai && window.Gaigai.DebugManager) {
+                    await window.Gaigai.DebugManager.showRescueUI();
+                } else {
+                    console.error('❌ [Rescue] DebugManager 未加载');
+                    await customAlert('⚠️ 调试模块未加载，请刷新页面后重试。', '错误');
                 }
-
-                backups.sort((a, b) => b.ts - a.ts);
-
-                if (backups.length === 0) {
-                    await customAlert('❌ 未找到历史数据。', '扫描结果');
-                    btn.text(originalText);
-                    return;
-                }
-
-                const $overlay = $('<div>', { css: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 20000002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' } });
-
-                const $box = $('<div>', {
-                    css: {
-                        background: bgColor,
-                        color: txtColor,
-                        border: borderColor,
-                        width: '500px',
-                        maxWidth: '92vw',
-                        maxHeight: '85vh',
-                        margin: 'auto',
-                        padding: '15px',
-                        borderRadius: '12px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                        boxShadow: shadow
-                    }
-                }).html(`
-                    <h3 style="margin:0 0 15px 0; flex-shrink:0; display:flex; align-items:center; gap:8px;">
-                        🚑 历史存档时光机
-                    </h3>
-                    <div style="flex:1; overflow-y:auto; margin-bottom:15px; border-radius:6px; border:${rowBorder};">
-                        <table style="width:100%; font-size:11px; border-collapse: collapse; table-layout:fixed;">
-                            <thead style="position:sticky; top:0; background:${UI.c}; color:#fff;">
-                                <tr>
-                                    <th style="padding:8px 6px; width:50%;">时间</th>
-                                    <th style="padding:8px 4px; width:25%;">数据量</th>
-                                    <th style="padding:8px 4px; width:25%;">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>${backups.map(b => {
-                    const countStyle = b.count > 0 ? 'color:#28a745; font-weight:bold;' : (isDark ? 'color:#777;' : 'color:#999;');
-                    const subTextStyle = isDark ? 'color:#888;' : 'color:#999;';
-
-                    // 📱 优化：缩短时间显示，只保留日期和时间，去掉秒
-                    const shortDate = b.dateStr.replace(/:\d{2}(?:\s|$)/, '').replace(/\d{4}\//, ''); // 去掉秒和年份
-
-                    // ✨ 修改：按钮 style 中的 color 使用 btnDefColor 变量
-                    return `<tr style="border-bottom:${rowBorder}; transition:background 0.2s;">
-                                    <td style="padding:8px 6px; overflow:hidden;">
-                                        <div style="font-weight:600; margin-bottom:2px; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${shortDate}</div>
-                                        <div style="font-size:9px; ${subTextStyle} white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${b.id}</div>
-                                    </td>
-                                    <td style="padding:8px 4px; text-align:center; ${countStyle}">${b.count}</td>
-                                    <td style="padding:8px 4px; text-align:center;">
-                                        <button class="restore-item-btn" data-key="${b.key}" style="padding:4px 8px; cursor:pointer; white-space:nowrap; background:transparent; border:1px solid ${btnBorderColor}; color:${btnDefColor}; border-radius:4px; font-size:10px;">恢复</button>
-                                    </td>
-                                </tr>`;
-                }).join('')}</tbody>
-                        </table>
-                    </div>
-                    <div style="text-align:right; flex-shrink:0;">
-                        <button id="close-rescue" style="padding:8px 20px; cursor:pointer; background:${isDark ? 'rgba(255,255,255,0.1)' : '#f0f0f0'}; border:none; border-radius:6px; color:${txtColor};">关闭</button>
-                    </div>
-                `);
-
-                $overlay.append($box);
-                $('body').append($overlay);
-
-                $box.find('tr').hover(
-                    function () { $(this).css('background', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'); },
-                    function () { $(this).css('background', 'transparent'); }
-                );
-
-                // ✨ 修复：鼠标移出时，恢复的颜色必须是 btnDefColor，而不是 UI.c
-                $box.find('.restore-item-btn').hover(
-                    function () {
-                        // 鼠标悬停：背景变主题色，字变白
-                        $(this).css({ background: UI.c, color: '#fff', border: `1px solid ${UI.c}` });
-                    },
-                    function () {
-                        // 鼠标移出：背景变透明，字变回默认色(夜间为白，白天为主题色)
-                        $(this).css({ background: 'transparent', color: btnDefColor, border: `1px solid ${btnBorderColor}` });
-                    }
-                ).on('click', async function () {
-                    const key = $(this).data('key');
-                    const target = backups.find(b => b.key === key);
-                    if (await customConfirm(`确定回退到 ${target.dateStr} (包含 ${target.count} 行数据) 吗？\n\n⚠️ 当前未保存的内容将会丢失！`, '回档确认')) {
-                        m.s.forEach((sheet, i) => {
-                            if (target.data.d[i]) sheet.from(target.data.d[i]);
-                            else sheet.clear();
-                        });
-                        if (target.data.summarized) summarizedRows = target.data.summarized;
-                        m.save(true);
-                        shw();
-                        $overlay.remove();
-                        if (typeof toastr !== 'undefined') toastr.success('✅ 数据已恢复！');
-                    }
-                });
-
-                $('#close-rescue').on('click', () => $overlay.remove());
-
-                $overlay.on('click', (e) => {
-                    if (e.target === $overlay[0]) $overlay.remove();
-                });
-
-                btn.text(originalText);
             });
 
             // 🧹 清除本地缓存按钮
@@ -8995,6 +8962,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 C.enabled = $('#gg_c_enabled').is(':checked');
                 C.autoBackfill = $('#gg_c_auto_bf').is(':checked');
+
+                // 🛡️ [源头熔断] 强制互斥检查 (防止脏数据写入存档)
+                if (C.enabled && C.autoBackfill) {
+                    console.warn('🛑 [保存拦截] 检测到功能冲突，强制保留【批量填表】，关闭【实时填表】');
+                    C.enabled = false;
+                    // 同步修正 UI 显示，避免视觉误导
+                    $('#gg_c_enabled').prop('checked', false);
+                    // 既然修正了，隐藏原来的批量填表设置区域（这是一个UI细节优化）
+                    // 但为了安全起见，这里只修数据，不操作 DOM 动画以免冲突
+                }
+
                 C.autoBackfillFloor = parseInt($('#gg_c_auto_bf_floor').val()) || 10;
                 C.autoBackfillPrompt = $('#gg_c_auto_bf_prompt').is(':checked');
                 C.autoBackfillSilent = $('#gg_c_auto_bf_silent').is(':checked');
@@ -9683,7 +9661,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     }
 
-                    setTimeout(hideMemoryTags, 100);
+                    // ⚡ Optimization: Only scan DOM if Real-time is active OR if the text contains a tag
+                    // This reduces "Render Storm" conflicts when the plugin is supposed to be passive.
+                    const hasTag = mg.mes && (mg.mes.includes('Memory') || mg.mes.includes('tableEdit'));
+                    if (C.enabled || hasTag) {
+                        setTimeout(hideMemoryTags, 100);
+                    }
 
                     // ✨✨✨【UI 自动刷新】✨✨✨
                     // 如果表格窗口正开着，就刷新当前选中的那个表，让你立刻看到变化
@@ -10104,6 +10087,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (data.dryRun || data.isDryRun || data.quiet || data.bg || data.no_update) return;
             if (isSummarizing || window.isSummarizing) return;
 
+            // ✅ [关键修复] 立即深拷贝 data.chat，防止修改原始引用导致 UI 刷新时数据污染
+            // 必须在所有处理逻辑之前执行，确保后续操作不会影响 ev.detail.chat
+            if (data.chat && Array.isArray(data.chat)) {
+                try {
+                    const copiedChat = JSON.parse(JSON.stringify(data.chat));
+                    data.chat.splice(0, data.chat.length, ...copiedChat);
+                    console.log(`🔒 [opmt] 已深拷贝 chat 数组，防止引用污染`);
+                } catch (e) {
+                    console.warn('⚠️ [opmt] 深拷贝失败，将直接使用原始数据:', e);
+                }
+            }
+
             // 1. 使用全局索引计算 (解决 Prompt 截断导致找不到快照的问题)
             const globalCtx = m.ctx();
             const globalChat = globalCtx ? globalCtx.chat : null;
@@ -10200,17 +10195,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log(`✂️ 隐藏楼层已执行`);
                 }
 
-                // ✅ 新增：清洗历史记录中的图片，防止包体过大
-                // ⚠️ 关键修复：深拷贝 chat 数组，避免修改原始数据影响界面显示
-                // ⚠️ 重要：使用 splice 替换内容而不是替换引用，确保酒馆后端能看到后续的修改
-                try {
-                    const copiedChat = JSON.parse(JSON.stringify(data.chat));
-                    data.chat.splice(0, data.chat.length, ...copiedChat);
-                } catch (e) {
-                    console.warn('⚠️ [图片清洗] 深拷贝失败，将直接修改原始数据:', e);
-                    // 如果深拷贝失败（如循环引用），继续使用原始数据
-                }
-
+                // ✅ 清洗历史记录中的图片，防止包体过大
+                // 注意：data.chat 已在函数开头深拷贝，这里直接修改不会影响原始数据
                 // 遍历所有历史消息，移除图片字段，避免 Base64 数据导致 JSON 超过 20MB
                 data.chat.forEach(msg => {
                     if (msg.image) delete msg.image;
@@ -10672,41 +10658,42 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 确保全局对象存在
         window.Gaigai = window.Gaigai || {};
 
-        // 动态加载 prompt_manager.js
-        const promptManagerUrl = `${EXTENSION_PATH}/prompt_manager.js`;
-        $.getScript(promptManagerUrl)
+        // 🚀 [优先级1] 最先加载 debug_manager.js，确保能捕获后续模块的所有错误
+        const debugManagerUrl = `${EXTENSION_PATH}/debug_manager.js`;
+        $.getScript(debugManagerUrl)
             .done(function () {
-                console.log('✅ [Loader] prompt_manager.js 加载成功');
+                console.log('✅ [Loader] debug_manager.js 加载成功 (优先加载)');
 
-                // 🆕 加载 io_manager.js
-                const ioManagerUrl = `${EXTENSION_PATH}/io_manager.js`;
-                $.getScript(ioManagerUrl)
+                // 🚀 [优先级2] 调试模块就绪后，开始加载业务模块
+                // 动态加载 prompt_manager.js
+                const promptManagerUrl = `${EXTENSION_PATH}/prompt_manager.js`;
+                $.getScript(promptManagerUrl)
                     .done(function () {
-                        console.log('✅ [Loader] io_manager.js 加载成功');
+                        console.log('✅ [Loader] prompt_manager.js 加载成功');
 
-                        // 🆕 加载 backfill_manager.js
-                        const backfillManagerUrl = `${EXTENSION_PATH}/backfill_manager.js`;
-                        $.getScript(backfillManagerUrl)
+                        // 🆕 加载 io_manager.js
+                        const ioManagerUrl = `${EXTENSION_PATH}/io_manager.js`;
+                        $.getScript(ioManagerUrl)
                             .done(function () {
-                                console.log('✅ [Loader] backfill_manager.js 加载成功');
+                                console.log('✅ [Loader] io_manager.js 加载成功');
 
-                                // 🆕 加载 world_info.js (必须在 summary_manager 之前加载)
-                                const worldInfoUrl = `${EXTENSION_PATH}/world_info.js`;
-                                $.getScript(worldInfoUrl)
+                                // 🆕 加载 backfill_manager.js
+                                const backfillManagerUrl = `${EXTENSION_PATH}/backfill_manager.js`;
+                                $.getScript(backfillManagerUrl)
                                     .done(function () {
-                                        console.log('✅ [Loader] world_info.js 加载成功');
+                                        console.log('✅ [Loader] backfill_manager.js 加载成功');
 
-                                        // 🆕 加载 summary_manager.js
-                                        const summaryManagerUrl = `${EXTENSION_PATH}/summary_manager.js`;
-                                        $.getScript(summaryManagerUrl)
+                                        // 🆕 加载 world_info.js (必须在 summary_manager 之前加载)
+                                        const worldInfoUrl = `${EXTENSION_PATH}/world_info.js`;
+                                        $.getScript(worldInfoUrl)
                                             .done(function () {
-                                                console.log('✅ [Loader] summary_manager.js 加载成功');
+                                                console.log('✅ [Loader] world_info.js 加载成功');
 
-                                                // 🆕 加载 debug_manager.js
-                                                const debugManagerUrl = `${EXTENSION_PATH}/debug_manager.js`;
-                                                $.getScript(debugManagerUrl)
+                                                // 🆕 加载 summary_manager.js
+                                                const summaryManagerUrl = `${EXTENSION_PATH}/summary_manager.js`;
+                                                $.getScript(summaryManagerUrl)
                                                     .done(function () {
-                                                        console.log('✅ [Loader] debug_manager.js 加载成功');
+                                                        console.log('✅ [Loader] summary_manager.js 加载成功');
 
                                                         // 🆕 加载 vector_manager.js
                                                         const vectorManagerUrl = `${EXTENSION_PATH}/vector_manager.js`;
@@ -10715,6 +10702,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                                 console.log('✅ [Loader] vector_manager.js 加载成功');
 
                                                                 // ✨ 验证模块是否成功挂载
+                                                                if (!window.Gaigai.DebugManager) {
+                                                                    console.error('⚠️ [Loader] window.Gaigai.DebugManager 未成功挂载！');
+                                                                    console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
+                                                                }
                                                                 if (!window.Gaigai.IOManager) {
                                                                     console.error('⚠️ [Loader] window.Gaigai.IOManager 未成功挂载！');
                                                                     console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
@@ -10730,10 +10721,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                                 if (!window.Gaigai.WI) {
                                                                     console.error('⚠️ [Loader] window.Gaigai.WI 未成功挂载！');
                                                                     console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
-                                                                }
-                                                                if (!window.Gaigai.DebugManager) {
-                                                                    console.error('⚠️ [Loader] window.Gaigai.DebugManager 未成功挂载！');
-                                                                    console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
                                                                 }
                                                                 if (!window.Gaigai.VM) {
                                                                     console.error('⚠️ [Loader] window.Gaigai.VM 未成功挂载！');
@@ -10753,9 +10740,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                                 setTimeout(tryInit, 500);
                                                             });
                                                     })
+                                                    .fail(function (jqxhr, settings, exception) {
+                                                        console.error('❌ [Loader] summary_manager.js 加载失败！');
+                                                        console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                                        console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
+                                                        console.error(`📍 错误详情:`, exception);
+                                                        console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
+                                                        // 即使加载失败，也继续初始化（降级模式）
+                                                        setTimeout(tryInit, 500);
+                                                    });
+                                            })
                                             .fail(function (jqxhr, settings, exception) {
-                                                console.error('❌ [Loader] debug_manager.js 加载失败！');
-                                                console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
+                                                console.error('❌ [Loader] world_info.js 加载失败！');
+                                                console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
                                                 console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                                                 console.error(`📍 错误详情:`, exception);
                                                 console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
@@ -10764,8 +10761,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                             });
                                     })
                                     .fail(function (jqxhr, settings, exception) {
-                                        console.error('❌ [Loader] summary_manager.js 加载失败！');
-                                        console.error(`📍 尝试加载的 URL: ${summaryManagerUrl}`);
+                                        console.error('❌ [Loader] backfill_manager.js 加载失败！');
+                                        console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
                                         console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                                         console.error(`📍 错误详情:`, exception);
                                         console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
@@ -10774,8 +10771,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                     });
                             })
                             .fail(function (jqxhr, settings, exception) {
-                                console.error('❌ [Loader] world_info.js 加载失败！');
-                                console.error(`📍 尝试加载的 URL: ${worldInfoUrl}`);
+                                console.error('❌ [Loader] io_manager.js 加载失败！');
+                                console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
                                 console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                                 console.error(`📍 错误详情:`, exception);
                                 console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
@@ -10784,33 +10781,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             });
                     })
                     .fail(function (jqxhr, settings, exception) {
-                        console.error('❌ [Loader] backfill_manager.js 加载失败！');
-                        console.error(`📍 尝试加载的 URL: ${backfillManagerUrl}`);
+                        console.error('❌ [Loader] prompt_manager.js 加载失败！请检查文件夹名称是否为 ST-Memory-Context');
+                        console.error(`📍 尝试加载的 URL: ${promptManagerUrl}`);
                         console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                         console.error(`📍 错误详情:`, exception);
-                        console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
+                        console.error(`💡 提示：请检查 EXTENSION_PATH 是否正确，当前值为: ${EXTENSION_PATH}`);
                         // 即使加载失败，也继续初始化（降级模式）
                         setTimeout(tryInit, 500);
                     });
             })
             .fail(function (jqxhr, settings, exception) {
-                console.error('❌ [Loader] io_manager.js 加载失败！');
-                console.error(`📍 尝试加载的 URL: ${ioManagerUrl}`);
+                console.error('❌ [Loader] debug_manager.js 加载失败！但尝试继续加载其他模块');
+                console.error(`📍 尝试加载的 URL: ${debugManagerUrl}`);
                 console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
                 console.error(`📍 错误详情:`, exception);
-                console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
-                // 即使加载失败，也继续初始化（降级模式）
-                setTimeout(tryInit, 500);
-            });
-        })
-        .fail(function (jqxhr, settings, exception) {
-            console.error('❌ [Loader] prompt_manager.js 加载失败！请检查文件夹名称是否为 ST-Memory-Context');
-                console.error(`📍 尝试加载的 URL: ${promptManagerUrl}`);
-                console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
-                console.error(`📍 错误详情:`, exception);
-                console.error(`💡 提示：请检查 EXTENSION_PATH 是否正确，当前值为: ${EXTENSION_PATH}`);
-                // 尝试备用路径（兼容某些改了文件夹名的用户）
-                // 如果你的文件夹名字不是这个，请修改 EXTENSION_PATH 变量
+                console.error(`💡 提示：调试模块加载失败，将无法捕获后续错误日志`);
+
+                // 即使调试模块失败，也尝试加载业务模块（降级模式）
+                const promptManagerUrl = `${EXTENSION_PATH}/prompt_manager.js`;
+                $.getScript(promptManagerUrl)
+                    .done(function () {
+                        console.log('✅ [Loader] prompt_manager.js 加载成功 (降级模式)');
+                        // 继续加载其他模块...
+                        setTimeout(tryInit, 500);
+                    })
+                    .fail(function () {
+                        console.error('❌ [Loader] 严重错误：核心模块加载失败，插件无法启动');
+                    });
             });
     }
 
@@ -10840,7 +10837,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         updateTabCount: updateTabCount,  // ✅ 子模块需要
         syncToWorldInfo: (...args) => window.Gaigai.WI.syncToWorldInfo(...args),  // ✅ 总结模块需要同步到世界书（兼容性包装）
         getCsrfToken: getCsrfToken,  // ✅ WI 模块需要
-        customRetryAlert: customRetryAlert  // ✅ 重试弹窗
+        customRetryAlert: customRetryAlert,  // ✅ 重试弹窗
+        DEFAULT_TABLES: DEFAULT_TABLES  // ✅ 单一数据源：默认表格结构（供 prompt_manager.js 等子模块使用）
     });
 
     // ✅ 使用 Object.defineProperty 创建引用（实现双向同步）
@@ -10911,7 +10909,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <div style="font-size:18px; font-weight:bold; margin-bottom:5px; color:var(--g-tc);">
                     📘 记忆表格 (Memory Context)
                 </div>
-                <div style="font-size:12px; opacity:0.8; margin-bottom:8px; color:var(--g-tc);">当前版本: v${cleanVer}</div>
+                <div style="font-size:12px; opacity:0.8; margin-bottom:8px; color:var(--g-tc);">
+                    当前版本: v${cleanVer}
+                    <span style="margin: 0 8px; opacity: 0.5;">|</span>
+                    <a href="https://pcnsnlcapni4.feishu.cn/wiki/AfPuwMlCSieXbckthFUc5bQYnMe" target="_blank" style="text-decoration:none; color:var(--g-tc); border-bottom:1px dashed var(--g-tc);">
+                       📖 详细使用说明书
+                    </a>
+                </div>
                 <div id="update-status" style="background:rgba(0,0,0,0.05); padding:6px; border-radius:4px; font-size:11px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--g-tc);">
                     ⏳ 正在连接 GitHub 检查更新...
                 </div>
@@ -10931,7 +10935,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化功能：</strong>优化浏览器存储过多导致报错问题</li>
+                        <li><strong>⚠️重要通知⚠️：</strong>此次更新，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
+                        <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
+                        <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
                     </ul>
                 </div>
 
@@ -10945,16 +10951,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <div style="background:rgba(255,255,255,0.3); padding:10px; border-radius:6px; border:1px solid rgba(0,0,0,0.05);">
                             <div style="font-weight:bold; margin-bottom:4px; color:var(--g-tc); font-size:12px;">📊 填表模式 (二选一)</div>
                             <div style="font-size:11px; color:var(--g-tc); opacity:0.8;">
-                                • <strong>实时填表：</strong> 每回合都写。优点是实时性强，缺点是费钱/慢。<br>
-                                • <strong>批量填表：</strong> 每N楼写一次。优点是省Token、速度快。<br>
+                                • <strong>实时填表：</strong> 每次回复都写。优点是实时性强。<br>
+                                • <strong>批量填表：</strong> 每N楼写一次。优点是省Token。<br>
                                 <span style="opacity:0.6; font-size:10px;">(推荐开启批量填表 + 独立API)</span>
                             </div>
                         </div>
                         <div style="background:rgba(255,255,255,0.3); padding:10px; border-radius:6px; border:1px solid rgba(0,0,0,0.05);">
                             <div style="font-weight:bold; margin-bottom:4px; color:var(--g-tc); font-size:12px;">📝 总结模式</div>
                             <div style="font-size:11px; color:var(--g-tc); opacity:0.8;">
-                                • <strong>表格源：</strong> 读取表格里的数据生成总结。<br>
-                                • <strong>聊天源：</strong> 读取聊天记录生成总结。<br>
+                                • <strong>表格源：</strong> 依据表格里的填表数据生成总结。<br>
+                                • <strong>聊天源：</strong> 依据聊天历史楼层生成总结。<br>
                                 <span style="opacity:0.6; font-size:10px;">(可在配置中切换总结来源)</span>
                             </div>
                         </div>
@@ -10973,10 +10979,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <div style="margin-top:15px; font-size:11px; text-align:center; opacity:0.7;">
                     <a href="${repoUrl}" target="_blank" style="text-decoration:none; color:var(--g-tc); border-bottom:1px dashed var(--g-tc);">
                        🔗 GitHub 项目主页
-                    </a>
-                    <span style="margin: 0 10px; opacity: 0.5;">|</span>
-                    <a href="https://pcnsnlcapni4.feishu.cn/wiki/AfPuwMlCSieXbckthFUc5bQYnMe" target="_blank" style="text-decoration:none; color:var(--g-tc); border-bottom:1px dashed var(--g-tc);">
-                       📖 详细使用说明书
                     </a>
                 </div>
             </div>
@@ -11082,169 +11084,4 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         return 0;
     }
 
-    // ✨✨✨ 探针模块 (内置版) ✨✨✨
-    (function () {
-        console.log('🔍 探针模块 (内置版) 已启动');
-
-        // 1. Token 计算辅助函数
-        function countTokens(text) {
-            if (!text) return 0;
-            try {
-                if (window.GPT3Tokenizer) {
-                    const tokenizer = new window.GPT3Tokenizer({ type: 'gpt3' });
-                    return tokenizer.encode(text).bpe.length;
-                }
-                const ctx = SillyTavern.getContext();
-                if (ctx && ctx.encode) return ctx.encode(text).length;
-            } catch (e) { }
-            return text.length;
-        }
-
-        // 2. 挂载显示函数到 Gaigai 对象
-        // 必须等待 index.js 主体执行完，Gaigai 对象挂载后才能执行
-        setTimeout(() => {
-            if (!window.Gaigai) return;
-
-            window.Gaigai.showLastRequest = function () {
-                const lastData = window.Gaigai.lastRequestData;
-                if (!lastData || !lastData.chat) {
-                    // ✨ 修复：调用共享的 customAlert，保持 UI 风格一致
-                    if (window.Gaigai.customAlert) {
-                        window.Gaigai.customAlert('❌ 暂无记录！\n\n请先去发送一条消息，插件会自动捕获发送内容。', '🔍 探针数据为空');
-                    } else {
-                        alert('❌ 暂无记录！\n\n请先去发送一条消息，插件会自动捕获发送内容。');
-                    }
-                    return;
-                }
-
-                let UI = { c: '#888888' };
-
-                try {
-                    const savedUI = localStorage.getItem('gg_ui');
-                    if (savedUI) UI = JSON.parse(savedUI);
-                    else if (window.Gaigai.ui) UI = window.Gaigai.ui;
-                } catch (e) { }
-
-                const esc = window.Gaigai.esc || ((t) => t);
-                const pop = window.Gaigai.pop;
-                const chat = lastData.chat;
-                let totalTokens = 0; // 初始化计数器
-                let listHtml = '';
-
-                // 🌙 夜间模式适配：根据 UI.darkMode 定义颜色变量
-                let itemBg, summaryBg, contentBg, borderColor;
-                if (UI.darkMode) {
-                    // 夜间模式：深灰色背景
-                    itemBg = 'rgba(40, 40, 40, 0.9)';
-                    summaryBg = 'rgba(50, 50, 50, 0.9)';
-                    contentBg = 'rgba(30, 30, 30, 0.5)';
-                    borderColor = 'rgba(255, 255, 255, 0.1)';
-                } else {
-                    // 白天模式：白色半透明
-                    itemBg = 'rgba(255, 255, 255, 0.5)';
-                    summaryBg = 'rgba(255, 255, 255, 0.8)';
-                    contentBg = 'rgba(255, 255, 255, 0.3)';
-                    borderColor = 'rgba(0, 0, 0, 0.1)';
-                }
-
-                // 生成列表并计算 Token
-                chat.forEach((msg, idx) => {
-                    const content = msg.content || '';
-                    // 简单的估算Token，仅供参考
-                    const tokens = (msg.content && msg.content.length) ? Math.ceil(msg.content.length / 1.5) : 0;
-                    totalTokens += tokens;
-                    let roleName = msg.role.toUpperCase();
-                    let roleColor = '#666';
-                    let icon = '📄';
-
-                    if (msg.role === 'system') {
-                        roleName = 'SYSTEM (系统)';
-                        roleColor = '#28a745'; icon = '⚙️';
-
-                        // 表格/总结数据
-                        if (msg.isGaigaiData) {
-                            // ✅ 修复：优先显示动态名字 (如 sys(总结1))，没有则显示默认
-                            roleName = msg.name || 'MEMORY (记忆表格)';
-                            roleColor = '#d35400'; icon = '📊';
-                        }
-
-                        // 提示词
-                        if (msg.isGaigaiPrompt) {
-                            roleName = 'PROMPT (提示词)';
-                            roleColor = '#e67e22';
-                            icon = '📌';
-                        }
-
-                        // ✅ 新增：向量化数据识别
-                        if (msg.isGaigaiVector) {
-                            roleName = 'SYSTEM (向量化)';
-                            roleColor = '#e91e63'; // 使用粉色，与向量化主题一致
-                            icon = '💠';
-                        }
-                    } else if (msg.role === 'user') {
-                        roleName = 'USER (用户)'; roleColor = '#2980b9'; icon = '🧑';
-                    } else if (msg.role === 'assistant') {
-                        roleName = 'ASSISTANT (AI)'; roleColor = '#8e44ad'; icon = '🤖';
-                    }
-
-                    listHtml += `
-                <details class="g-probe-item" style="margin-bottom:8px; border:1px solid ${borderColor}; border-radius:6px; background:${itemBg};">
-                    <summary style="padding:10px; background:${summaryBg}; cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; user-select:none; outline:none;">
-                        <div style="font-weight:bold; color:${roleColor}; font-size:12px; display:flex; align-items:center; gap:6px;">
-                            <span>${icon}</span>
-                            <span>${roleName}</span>
-                            <span style="background:rgba(0,0,0,0.05); color:${UI.tc}; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:normal;">#${idx}</span>
-                        </div>
-                        <div style="font-size:11px; font-family:monospace; color:${UI.tc}; background:rgba(0,0,0,0.05); padding:2px 6px; border-radius:4px;">
-                            ${tokens} TK
-                        </div>
-                    </summary>
-                    <div class="g-probe-content" style="padding:10px; font-size:12px; line-height:1.6; color:${UI.tc}; border-top:1px solid ${borderColor}; white-space:pre-wrap; font-family:'Segoe UI', monospace; word-break:break-word; max-height: 500px; overflow-y: auto; background: ${contentBg};">${esc(content)}</div>
-                </details>`;
-                });
-
-                const h = `
-            <div class="g-p" style="padding:15px; height:100%; display:flex; flex-direction:column;">
-                <div style="flex:0 0 auto; background: linear-gradient(135deg, ${UI.c}EE, ${UI.c}99); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.25); color:${UI.tc}; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 10px 30px rgba(0,0,0,0.2);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <div>
-                            <div style="font-size:12px; opacity:0.9;">Total Tokens</div>
-                            <div style="font-size:24px; font-weight:bold;">${totalTokens}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:12px; opacity:0.9;">Messages</div>
-                            <div style="font-size:18px; font-weight:bold;">${chat.length} 条</div>
-                        </div>
-                    </div>
-                    <div style="position:relative;">
-                        <input type="text" id="gai-probe-search-input" placeholder="搜索..."
-                            style="width:100%; padding:8px 10px; padding-left:30px; border:1px solid rgba(255,255,255,0.3); border-radius:4px; background:rgba(0,0,0,0.2); color:${UI.tc}; font-size:12px; outline:none;">
-                        <i class="fa-solid fa-search" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:rgba(255,255,255,0.6); font-size:12px;"></i>
-                    </div>
-                </div>
-                <div id="gai-probe-list" style="flex:1; overflow-y:auto; padding-right:5px;">${listHtml}</div>
-            </div>`;
-
-                if (pop) {
-                    pop('🔍 最后发送内容 & Toke', h, true);
-                    setTimeout(() => {
-                        $('#gai-probe-search-input').on('input', function () {
-                            const val = $(this).val().toLowerCase().trim();
-                            $('.g-probe-item').each(function () {
-                                const $details = $(this);
-                                const text = $details.find('.g-probe-content').text().toLowerCase();
-                                if (!val) {
-                                    $details.show().removeAttr('open').css('border', `1px solid ${borderColor}`);
-                                } else if (text.includes(val)) {
-                                    $details.show().attr('open', true).css('border', `2px solid ${UI.c}`);
-                                } else {
-                                    $details.hide();
-                                }
-                            });
-                        });
-                    }, 100);
-                } else alert('UI库未加载');
-            };
-        }, 500); // 延迟500毫秒确保 window.Gaigai 已挂载
-    })();
 })();

@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.6.8
+ * @version 1.7.3
  * @author Gaigai Team
  */
 
@@ -258,7 +258,7 @@
                     <span><strong>⚙️ 自动总结模式：</strong>${sourceText}</span>
                     <span style="opacity: 0.7;">|</span>
                     <span><strong>📍 进度指针：</strong></span>
-                    <input type="number" id="gg_edit_sum_pointer" value="${lastSumIndex}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:3px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;">
+                    <input type="number" id="gg_edit_sum_pointer" value="${lastSumIndex}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:3px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span>/ ${totalCount} 层</span>
                     <button id="gg_save_sum_pointer_btn" style="padding:3px 10px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
                     <span style="opacity: 0.7;">|</span>
@@ -323,12 +323,12 @@
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
                     <div style="flex:1;">
                         <label style="font-size:11px; display:block; margin-bottom:2px; color:${UI.tc};">起始楼层</label>
-                        <input type="number" id="gg_sum_chat-start" value="${lastSumIndex}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                        <input type="number" id="gg_sum_chat-start" value="${lastSumIndex}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     </div>
                     <span style="font-weight:bold; color:${UI.tc}; margin-top:16px;">➜</span>
                     <div style="flex:1;">
                         <label style="font-size:11px; display:block; margin-bottom:2px; color:${UI.tc};">结束楼层</label>
-                        <input type="number" id="gg_sum_chat-end" value="${totalCount}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                        <input type="number" id="gg_sum_chat-end" value="${totalCount}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     </div>
                 </div>
 
@@ -340,7 +340,7 @@
                     </label>
                     <div id="gg_sum_batch-options" style="display: block; margin-top: 8px; padding-left: 8px;">
                         <label style="font-size: 11px; display: block; margin-bottom: 4px; color:${UI.tc}; opacity: 0.9;">每批处理楼层数：</label>
-                        <input type="number" id="gg_sum_step" value="${savedStep}" min="10" max="200" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;">
+                        <input type="number" id="gg_sum_step" value="${savedStep}" min="10" max="200" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                         <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-top: 4px;">
                             💡 建议值：30-50层。批次间会自动冷却5秒，避免API限流。
                         </div>
@@ -375,12 +375,12 @@
 
                 <div id="gg_opt_specific-row" style="display: none; margin-bottom:10px;">
                     <label style="font-size:11px; display:block; margin-bottom:4px;">页码范围（支持 "5" 或 "2-6"）：</label>
-                    <input type="text" id="gg_opt_range-input" value="1" style="width:100%; padding:6px; border-radius:4px;">
+                    <input type="text" id="gg_opt_range-input" value="1" style="width:100%; padding:6px; border-radius:4px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 </div>
 
                 <div style="margin-bottom:10px;">
                     <label style="font-size:11px; display:block; margin-bottom:4px;">💬 优化建议（可选）</label>
-                    <textarea id="gg_opt_prompt" placeholder="例如：把流水账改写成史诗感、精简字数到200字以内、增加情感描写、用古文风格重写..." style="width:100%; height:80px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;"></textarea>
+                    <textarea id="gg_opt_prompt" placeholder="例如：把流水账改写成史诗感、精简字数到200字以内、增加情感描写、用古文风格重写..." style="width:100%; height:80px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     <div style="font-size:9px; color:${UI.tc}; opacity:0.7; margin-top:4px;">
                         💡 输入您希望AI如何优化总结的具体要求（留空则使用默认优化策略）
                     </div>
@@ -1388,13 +1388,21 @@
                                 // 🔧 修复：只清空参与总结的表格（sourceTables），而不是所有数据表
                                 console.log(`🗑️ [批量清空] 正在清空 ${sourceTables.length} 个参与总结的数据表...`);
 
+                                // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
+                                console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
+                                window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+                                // 为当前状态创建一个内存快照，方便回滚
+                                if (typeof window.Gaigai.saveSnapshot === 'function') {
+                                    window.Gaigai.saveSnapshot('backup_pre_summary_clear_' + Date.now());
+                                }
+
                                 sourceTables.forEach(table => {
                                     if (table) {
                                         table.clear();
                                     }
                                 });
 
-                                finish('✅ 已总结的数据表已清空，总结已归档。');
+                                finish('✅ 已总结的数据表已清空，总结已归档（操作前已自动备份，可在"恢复数据"中找回）。');
                             });
 
                             const $btnHide = $('<button>', {

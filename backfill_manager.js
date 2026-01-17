@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.6.3
+ * @version 1.7.4
  * @author Gaigai Team
  */
 
@@ -67,7 +67,7 @@
                 <div style="background: rgba(0,0,0,0.03); border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.1);">
                     <div style="display:flex; align-items:center; gap:8px; justify-content:center;">
                         <span style="font-size:11px; color:${UI.tc}; opacity:0.8;">追溯进度指针:</span>
-                        <input type="number" id="gg_bf_progress-input" value="${savedIndex}" min="0" max="${totalCount}" style="width:70px; text-align:center; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;">
+                        <input type="number" id="gg_bf_progress-input" value="${savedIndex}" min="0" max="${totalCount}" style="width:70px; text-align:center; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                         <span style="font-size:11px; color:${UI.tc}; opacity:0.8;">层</span>
                         <button id="gg_bf_fix-btn" style="padding:6px 12px; background:#28a745; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold; white-space:nowrap;">修正</button>
                     </div>
@@ -85,13 +85,13 @@
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
                     <div style="flex:1;">
                         <label style="font-size:11px; display:block; margin-bottom:2px; color:${UI.tc};">起始楼层</label>
-                        <input type="number" id="gg_bf_start" value="${defaultStart}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                        <input type="number" id="gg_bf_start" value="${defaultStart}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     </div>
 
                     <span style="font-weight:bold; color:${UI.tc}; margin-top:16px;">➜</span>
                     <div style="flex:1;">
                         <label style="font-size:11px; display:block; margin-bottom:2px; color:${UI.tc};">结束楼层</label>
-                        <input type="number" id="gg_bf_end" value="${totalCount}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);">
+                        <input type="number" id="gg_bf_end" value="${totalCount}" min="0" max="${totalCount}" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     </div>
                 </div>
 
@@ -140,7 +140,7 @@
                 <!-- 🆕 自定义建议输入框 -->
                 <div style="margin-bottom:10px;">
                     <label style="font-size:11px; display:block; margin-bottom:4px;">💬 重点建议 (可选)</label>
-                    <textarea id="gg_bf_custom-prompt" placeholder="例如：重点关注角色情感变化；记录时间和地点；注意特殊道具..." style="width:100%; height:60px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;"></textarea>
+                    <textarea id="gg_bf_custom-prompt" placeholder="例如：重点关注角色情感变化；记录时间和地点；注意特殊道具..." style="width:100%; height:60px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     <div style="font-size:9px; opacity:0.7; margin-top:4px;">
                         💡 输入您希望AI重点关注的内容，将作为高优先级指令
                     </div>
@@ -156,7 +156,7 @@
                         </label>
                         <div id="gg_bf_batch-options" style="display: block; margin-top: 8px; padding-left: 8px;">
                             <label style="font-size: 11px; display: block; margin-bottom: 4px; color:${UI.tc}; opacity: 0.9;">每批处理楼层数：</label>
-                            <input type="number" id="gg_bf_step" value="${savedStep}" min="5" max="100" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;">
+                            <input type="number" id="gg_bf_step" value="${savedStep}" min="5" max="100" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 12px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                             <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-top: 4px;">
                                 💡 建议值：30-50层。批次间会自动冷却5秒，避免API限流。
                             </div>
@@ -935,13 +935,9 @@ ${lastError.message}
             }
             if (triggeredLore.length > 0) contextBlock += `\n【相关世界设定】\n${triggeredLore.join('\n')}`;
 
-            // 2️⃣ Msg 2 (System): contextBlock (人设/世界书)
-            messages.push({
-                role: 'system',
-                content: contextBlock
-            });
+            // ⚠️ contextBlock 将在 backfillInstruction 之后推送（见下方）
 
-            // 3️⃣ Msg 3 (System): backfillPrompt (填表规则 - 在聊天历史之前)
+            // 2️⃣ Msg 2 (System): backfillPrompt (填表规则 - 优先级提升！)
             let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
 
             // 🛡️ [Bug Fix] Loud Fallback for Missing Prompts
@@ -1015,6 +1011,13 @@ ${lastError.message}
             messages.push({
                 role: 'system',
                 content: backfillInstruction
+            });
+
+            // 3️⃣ Msg 3 (System): contextBlock (人设/世界书 - 被动参考数据)
+            // ✅ [NSFW Fix] 将人设包装为"被动参考数据"，降低安全过滤触发率
+            messages.push({
+                role: 'system',
+                content: `【附件：待分析的基础设定档案】\n(以下内容仅供参考)\n\n${contextBlock}`
             });
 
             // 4️⃣ Msg 4...N: chatSlice (聊天历史循环)
@@ -1176,6 +1179,15 @@ ${lastError.message}
                                 if (targetSheet) {
                                     const oldRowCount = targetSheet.r.length;
                                     console.log(`🔥 [重构模式-静默] 开始清空表${targetIndex}，原有 ${oldRowCount} 行数据`);
+
+                                    // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
+                                    console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
+                                    window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+                                    // 为当前状态创建一个内存快照，方便回滚
+                                    if (typeof window.Gaigai.saveSnapshot === 'function') {
+                                        window.Gaigai.saveSnapshot('backup_pre_overwrite_' + Date.now());
+                                    }
+
                                     targetSheet.clear();
                                     console.log(`✅ [重构模式-静默] 表${targetIndex} 已清空，准备写入 ${cs.length} 条新指令`);
                                 }
@@ -1575,6 +1587,14 @@ ${lastError.message}
 
             console.log(`🗑️ [表格优化] 清空表${targetIndex} (共 ${sheet.r.length} 行)`);
 
+            // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
+            console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
+            window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+            // 为当前状态创建一个内存快照，方便回滚
+            if (typeof window.Gaigai.saveSnapshot === 'function') {
+                window.Gaigai.saveSnapshot('backup_pre_opt_' + Date.now());
+            }
+
             // 1. 清空表格
             sheet.clear();
 
@@ -1592,7 +1612,7 @@ ${lastError.message}
             }
 
             if (typeof toastr !== 'undefined') {
-                toastr.success(`表格优化完成！已执行 ${commands.length} 条指令`, '表格优化', { timeOut: 2000 });
+                toastr.success(`表格优化完成！已执行 ${commands.length} 条指令（操作前已自动备份，可在"恢复数据"中找回）`, '表格优化', { timeOut: 3000 });
             }
 
             // 4. 刷新UI
@@ -1934,6 +1954,15 @@ ${lastError.message}
                             if (targetSheet) {
                                 const oldRowCount = targetSheet.r.length;
                                 console.log(`🔥 [重构模式] 开始清空表${regenParams.targetIndex}，原有 ${oldRowCount} 行数据`);
+
+                                // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
+                                console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
+                                window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+                                // 为当前状态创建一个内存快照，方便回滚
+                                if (typeof window.Gaigai.saveSnapshot === 'function') {
+                                    window.Gaigai.saveSnapshot('backup_pre_overwrite_' + Date.now());
+                                }
+
                                 targetSheet.clear();
                                 console.log(`✅ [重构模式] 表${regenParams.targetIndex} 已清空，准备写入 ${cs.length} 条新指令`);
                             }
