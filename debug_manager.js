@@ -773,16 +773,49 @@
                 // 复制日志
                 $('#gg_copy_logs_btn').on('click', () => {
                     const logText = this.logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`).join('\n');
-                    navigator.clipboard.writeText(logText).then(() => {
-                        if (typeof toastr !== 'undefined') {
-                            toastr.success('✅ 日志已复制到剪贴板');
-                        } else {
-                            window.Gaigai.customAlert('✅ 日志已复制到剪贴板', '成功');
+
+                    // 定义兼容旧浏览器的复制函数
+                    const fallbackCopyTextToClipboard = (text) => {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = text;
+
+                        // 避免在手机上拉起键盘
+                        textArea.style.top = "0";
+                        textArea.style.left = "0";
+                        textArea.style.position = "fixed";
+
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+
+                        try {
+                            const successful = document.execCommand('copy');
+                            if (successful) {
+                                if (typeof toastr !== 'undefined') toastr.success('✅ 日志已复制 (兼容模式)');
+                                else window.Gaigai.customAlert('✅ 日志已复制', '成功');
+                            } else {
+                                throw new Error('Fallback copy failed');
+                            }
+                        } catch (err) {
+                            console.error('无法复制:', err);
+                            window.Gaigai.customAlert('❌ 复制失败，请手动长按日志内容复制', '错误');
                         }
-                    }).catch(err => {
-                        console.error('复制失败:', err);
-                        window.Gaigai.customAlert('❌ 复制失败，请手动选择复制', '错误');
-                    });
+                        document.body.removeChild(textArea);
+                    };
+
+                    // 优先尝试现代 API
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(logText).then(() => {
+                            if (typeof toastr !== 'undefined') toastr.success('✅ 日志已复制到剪贴板');
+                            else window.Gaigai.customAlert('✅ 日志已复制到剪贴板', '成功');
+                        }).catch(err => {
+                            console.warn('标准复制API失败，尝试兼容模式:', err);
+                            fallbackCopyTextToClipboard(logText);
+                        });
+                    } else {
+                        // HTTP 环境直接用兼容模式
+                        fallbackCopyTextToClipboard(logText);
+                    }
                 });
 
                 // 清空日志
