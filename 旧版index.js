@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.7.6
+// 记忆表格 v1.7.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.7.6 启动');
+    console.log('🚀 记忆表格 v1.7.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.7.6';
+    const V = 'v1.7.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -6196,42 +6196,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
      * URL 清洗、IP 修正和智能补全工具函数
      * @param {string} url - 原始 URL
      * @param {string} provider - API 提供商类型
-     * @param {boolean} forModelFetch - 是否用于拉取模型列表（默认false）
      * @returns {string} - 处理后的 URL
      */
-    function processApiUrl(url, provider, forModelFetch = false) {
+    function processApiUrl(url, provider) {
         if (!url) return '';
 
-        // 🎯 [反代端口自动优化] 如果是 proxy_only 模式
+        // 如果是“独立反代”模式，直接原样返回！
         if (provider === 'proxy_only') {
-            const cleaned = url.trim();
-
-            // 判断是否是本地地址
-            const isLocalUrl = cleaned.includes('127.0.0.1') ||
-                              cleaned.includes('localhost') ||
-                              cleaned.includes('0.0.0.0');
-
-            // 🔀 分支逻辑：
-            // 1. 本地 build 反代 → 保留 /v1（走 custom 模式）
-            // 2. 远程中转站 → 去掉 /v1（走 MakerSuite 模式）
-            // 3. 拉取模型时 → 保留 /v1（需要访问 /v1/models）
-
-            if (isLocalUrl) {
-                // 本地 build：保留 /v1，只去掉末尾斜杠
-                console.log('🔧 [反代-本地] 检测到本地地址，保留 /v1 走 custom 模式');
-                return cleaned.replace(/\/+$/, '');
-            } else if (forModelFetch) {
-                // 拉取模型：保留 /v1
-                console.log('🔧 [反代-拉取模型] 保留 /v1 访问模型列表');
-                return cleaned.replace(/\/+$/, '');
-            } else if (cleaned.endsWith('/v1')) {
-                // 远程中转站 + 发送对话：去掉 /v1 激活 MakerSuite
-                const withoutV1 = cleaned.replace(/\/v1\/?$/, '');
-                console.log('🔧 [反代-远程] 已自动移除 /v1 后缀，激活 MakerSuite 模式');
-                return withoutV1;
-            }
-
-            return cleaned.replace(/\/+$/, ''); // 只去掉末尾斜杠
+            return url.trim();
         }
 
 
@@ -7465,10 +7437,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <label>API提供商：</label>
             <select id="gg_api_provider" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; margin-bottom:10px;">
                 <optgroup label="━━━ 后端代理 ━━━">
-                    <option value="proxy_only" ${API_CONFIG.provider === 'proxy_only' ? 'selected' : ''}>中转/反代(如build)</option>
                     <option value="openai" ${API_CONFIG.provider === 'openai' ? 'selected' : ''}>OpenAI 兼容模式/OpenAI 官方</option>
                     <option value="compatible" ${API_CONFIG.provider === 'compatible' ? 'selected' : ''}>兼容中转/代理</option>
                     <option value="local" ${API_CONFIG.provider === 'local' ? 'selected' : ''}>本地/内网（本地反代）</option>
+                    <option value="proxy_only" ${API_CONFIG.provider === 'proxy_only' ? 'selected' : ''}>反代(如build)</option>
                     <option value="claude" ${API_CONFIG.provider === 'claude' ? 'selected' : ''}>Claude 官方</option>
                     <option value="deepseek" ${API_CONFIG.provider === 'deepseek' ? 'selected' : ''}>DeepSeek 官方</option>
                     <option value="siliconflow" ${API_CONFIG.provider === 'siliconflow' ? 'selected' : ''}>硅基流动 (SiliconFlow)</option>
@@ -7611,7 +7583,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 // 🔧 URL 智能补全
                 if (typeof processApiUrl === 'function') {
-                    apiUrl = processApiUrl(apiUrl, provider, true); // ✅ 拉取模型时传入 true
+                    apiUrl = processApiUrl(apiUrl, provider);
                 } else {
                     apiUrl = apiUrl.replace(/\/+$/, '');
                     if (provider !== 'gemini' && !apiUrl.includes('/v1') && !apiUrl.includes('/chat')) apiUrl += '/v1';
@@ -7821,22 +7793,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     $select.empty().append('<option value="__manual__">-- 手动输入 --</option>');
                     if (models.length > 0) {
                         models.forEach(m => $select.append(`<option value="${m.id}">${m.name || m.id}</option>`));
-                        // 如果当前输入框的值在模型列表中，自动选中
-                        const currentVal = $input.val();
-                        if (models.map(m => m.id).includes(currentVal)) {
-                            $select.val(currentVal);
-                        } else {
-                            $select.val('__manual__');
-                        }
+                        if (models.map(m => m.id).includes($input.val())) $select.val($input.val());
                         $input.hide(); $select.show();
                         $select.off('change').on('change', function () {
                             const val = $(this).val();
-                            if (val === '__manual__') {
-                                $select.hide();
-                                $input.show().focus();
-                            } else {
-                                $input.val(val);
-                            }
+                            if (val === '__manual__') { $select.hide(); $input.show().focus(); } else { $input.val(val); }
                         });
                     } else {
                         $select.hide(); $input.show().focus();
@@ -10978,7 +10939,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
                         <li><strong>优化显示：</strong>优化部分显示问题</li>
-                        <li><strong>提醒：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
                     </ul>
                 </div>
 

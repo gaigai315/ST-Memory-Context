@@ -1354,25 +1354,18 @@ ${lastError.message}
                 });
             }
 
-            // 3️⃣ 核心指令（优化规则 - 在表格数据之前）
-            let optimizePrompt = window.Gaigai.PromptManager.get('tableOptimizePrompt');
+            // 3️⃣ 核心指令（优化规则 - 调用批量填表提示词）
+            // ✅ 优先使用用户自定义的批量填表提示词，如果没有则使用默认值
+            let optimizePrompt = window.Gaigai.PromptManager.get('backfillPrompt');
             if (!optimizePrompt || !optimizePrompt.trim()) {
-                // 如果提示词不存在，使用默认指令
-                optimizePrompt = `你现在需要对上述表格内容进行优化（合并、精简、润色）。
-请直接输出优化后的结果，使用标准 <Memory> 标签包裹 insertRow 指令。
-
-**注意**：
-1. 你只需要输出**最终应该保留的内容**。
-2. 系统在执行时，会先**清空**该表格的旧数据，然后填入你输出的新内容。
-3. 因此，请完整输出优化后的所有行，不要遗漏。
-4. 使用 insertRow(${targetIndex}, {0:"列0内容", 1:"列1内容", ...}) 的格式。
-5. 表格索引为 ${targetIndex}，请确保所有指令都使用这个索引。`;
+                console.warn('⚠️ [表格优化] 未找到批量填表提示词，使用简化默认指令');
+                optimizePrompt = `请对下方表格进行优化（合并、精简、润色），使用 <Memory> 标签包裹 insertRow 指令输出完整的优化后表格。`;
             }
             optimizePrompt = window.Gaigai.PromptManager.resolveVariables(optimizePrompt, ctx);
 
             // ⚠️ [修复] 强制注入目标表格的列结构定义，防止 AI 列错位
             const columnMapping = sheet.c.map((name, idx) => `Index ${idx}: "${name}"`).join(', ');
-            const strictSchema = `\n\n【CRITICAL: Target Table Schema】\nTable Name: ${sheet.n}\nColumns: ${columnMapping}\n\n⚠️ INSTRUCTION: When generating 'insertRow', you MUST place content into the correct Index based on the schema above. Do NOT merge columns!`;
+            const strictSchema = `\n\n【CRITICAL: Target Table Schema】\nTable Name: ${sheet.n}\nColumns: ${columnMapping}\n\n⚠️ INSTRUCTION: When generating 'insertRow', you MUST place content into the correct Index based on the schema above. Do NOT merge columns!\n⚠️ REMINDER: 本次优化**仅针对用户勾选的【表${targetIndex} - ${sheet.n}】**，请只生成该表的 insertRow 指令，严禁生成其他表格内容。`;
 
             // 用户自定义建议追加到 optimizePrompt
             if (customNote && customNote.trim()) {
