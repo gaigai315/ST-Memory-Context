@@ -50,7 +50,7 @@
             // 🆕 构建表格下拉选项（动态获取所有数据表，不包含总结表）
             let tableOptions = '<option value="-1">全部表格</option>';
             m.s.slice(0, -1).forEach((sheet, i) => {
-                const displayName = i === 1 ? '支线追踪' : sheet.n;
+                const displayName = sheet.n;
                 tableOptions += `<option value="${i}">表${i} - ${displayName}</option>`;
             });
 
@@ -955,7 +955,7 @@ ${lastError.message}
             // 🎯 单表模式指令追加
             if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
                 const sheet = m.s[targetIndex];
-                const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                const sheetName = sheet.n;
                 backfillInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注且填写【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
                 console.log(`🎯 [单表模式] 最终提醒已追加到指令末尾`);
             }
@@ -964,7 +964,7 @@ ${lastError.message}
             const maxDataTableIndex = m.s.length - 2;
             if (isOverwrite && targetIndex >= 0 && targetIndex <= maxDataTableIndex) {
                 const sheet = m.s[targetIndex];
-                const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                const sheetName = sheet.n;
                 backfillInstruction += `\n\n🔥 【重构模式启用】\n⚠️ 用户已启用「重构模式」！\n\n📌 核心要求：\n1. **忽略上述表格的所有旧数据**，它们仅供参考，不是你的填写目标。\n2. 本次追溯将完全基于聊天历史（第 ${start}-${end} 层）重新生成【表${targetIndex} - ${sheetName}】。\n3. 所有指令必须使用 **insertRow(${targetIndex}, {...})**，不要使用 updateRow。\n4. 行索引从 0 开始递增（0, 1, 2, 3...），无需考虑旧数据的索引。\n5. 请完整、系统地提取聊天记录中的所有关键信息，生成全新的表格内容。\n\n💡 提示：这是一次「全新建表」，而不是「增量填表」。`;
                 console.log(`🔥 [重构模式] 已注入特殊指令：目标表${targetIndex}，行范围 ${start}-${end}`);
             }
@@ -1005,7 +1005,7 @@ ${lastError.message}
                 // 2. 单表模式（动态判断是否为数据表）
                 if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
                     const sheet = m.s[targetIndex];
-                    const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                    const sheetName = sheet.n;
                     let sheetContent = sheet.txt(targetIndex);
 
                     // 空表处理
@@ -1385,7 +1385,7 @@ ${lastError.message}
             });
 
             // 4️⃣ 表格数据
-            const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+            const sheetName = sheet.n;
             const tableContent = sheet.txt(targetIndex);
             messages.push({
                 role: 'system',
@@ -1652,7 +1652,7 @@ ${lastError.message}
             console.log(`🔒 [表格优化弹窗打开] 会话ID: ${initialSessionId}`);
 
             return new Promise((resolve) => {
-                const sheetName = targetIndex === 1 ? '支线追踪' : m.s[targetIndex].n;
+                const sheetName = m.s[targetIndex].n;
                 const h = `
                 <div class="g-p">
                     <h4>📊 表格优化确认</h4>
@@ -2140,7 +2140,7 @@ ${lastError.message}
                 // 单表模式（动态判断是否为数据表）
                 if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
                     const sheet = m.s[targetIndex];
-                    const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                    const sheetName = sheet.n;
                     let sheetContent = sheet.txt(targetIndex);
 
                     // 🆕 空表处理：如果表格为空，手动构造列结构
@@ -2187,7 +2187,7 @@ ${lastError.message}
             // 🎯 [关键修复] 单表模式指令直接拼接到 finalInstruction 后面
             if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
                 const sheet = m.s[targetIndex];
-                const sheetName = targetIndex === 1 ? '支线追踪' : sheet.n;
+                const sheetName = sheet.n;
                 finalInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
             }
 
