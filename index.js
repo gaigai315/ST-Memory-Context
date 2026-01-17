@@ -1580,7 +1580,7 @@
             // ✨✨✨ 核心修改：精简状态栏，只告诉 AI 下一个索引 ✨✨✨
             result += '\n[后台索引状态]\n';
             this.s.slice(0, -1).forEach((s, i) => {
-                const displayName = i === 1 ? '支线追踪' : s.n;
+                const displayName = s.n;
                 const nextIndex = s.r.length; // 下一个空位的索引
                 result += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
             });
@@ -2302,7 +2302,7 @@
         const tableTextRaw = m.getTableText();
         let statusStr = '\n=== 📋 表格状态 ===\n';
         m.s.slice(0, -1).forEach((s, i) => {
-            const displayName = i === 1 ? '支线追踪' : s.n;
+            const displayName = s.n;
             const nextIndex = s.r.length;
             statusStr += `表${i} ${displayName}: ⏭️新增请用索引 ${nextIndex}\n`;
         });
