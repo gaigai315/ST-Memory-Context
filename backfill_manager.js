@@ -975,10 +975,15 @@ ${lastError.message}
                 console.log(`💬 [自定义建议] 已注入：${customNote.trim()}`);
             }
 
-            // 🆕 根据 targetIndex 添加表格状态到 backfillInstruction
+            // 2️⃣ 推送 backfillInstruction（仅包含规则和自定义建议，不含表格数据）
+            messages.push({
+                role: 'system',
+                content: backfillInstruction
+            });
+
+            // 3️⃣ Msg 3+ (System): 表格数据（每个表格一个独立消息，确保在探针中显示为独立块）
             if (targetIndex === -1) {
                 // 1. 全部表格模式（动态获取所有数据表）
-                let allTablesContent = '\n\n【系统只读数据库：已归档历史】\n';
                 m.s.slice(0, -1).forEach((sheet, i) => {
                     const sheetName = sheet.n;
                     let sheetContent = sheet.txt(i);
@@ -988,9 +993,14 @@ ${lastError.message}
                         sheetContent = `(当前暂无数据)\n列结构: ${sheet.c.join(' | ')}`;
                     }
 
-                    allTablesContent += `\n【表${i} - ${sheetName}】\n${sheetContent}\n`;
+                    // 推送独立的表格消息
+                    messages.push({
+                        role: 'system',
+                        name: `SYSTEM (${sheetName})`,
+                        content: `【系统只读数据库：已归档历史 - ${sheetName}】\n${sheetContent}`,
+                        isGaigaiData: true
+                    });
                 });
-                backfillInstruction += allTablesContent;
             } else {
                 // 2. 单表模式（动态判断是否为数据表）
                 if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
@@ -1003,24 +1013,25 @@ ${lastError.message}
                         sheetContent = `(当前暂无数据)\n列结构: ${sheet.c.join(' | ')}`;
                     }
 
-                    backfillInstruction += `\n\n【系统只读数据库：已归档历史 - ${sheetName}】\n${sheetContent}`;
+                    // 推送独立的表格消息
+                    messages.push({
+                        role: 'system',
+                        name: `SYSTEM (${sheetName})`,
+                        content: `【系统只读数据库：已归档历史 - ${sheetName}】\n${sheetContent}`,
+                        isGaigaiData: true
+                    });
                     console.log(`🎯 [单表模式] 只处理表${targetIndex} - ${sheetName}`);
                 }
             }
 
-            messages.push({
-                role: 'system',
-                content: backfillInstruction
-            });
-
-            // 3️⃣ Msg 3 (System): contextBlock (人设/世界书 - 被动参考数据)
+            // 4️⃣ Msg N (System): contextBlock (人设/世界书 - 被动参考数据)
             // ✅ [NSFW Fix] 将人设包装为"被动参考数据"，降低安全过滤触发率
             messages.push({
                 role: 'system',
                 content: `【附件：待分析的基础设定档案】\n(以下内容仅供参考)\n\n${contextBlock}`
             });
 
-            // 4️⃣ Msg 4...N: chatSlice (聊天历史循环)
+            // 5️⃣ Msg N+1...M: chatSlice (聊天历史循环)
             let validCount = 0;
 
             // ✅ [性能优化] 分块处理大量消息，防止UI卡死
@@ -1057,7 +1068,7 @@ ${lastError.message}
                 return { success: true }; // 没内容也算完成，不中断批量
             }
 
-            // 5️⃣ 智能触发器（Smart Append）
+            // 6️⃣ 智能触发器（Smart Append）
             const triggerText = `\n\n🛑 [系统指令]：以上是历史剧情。\n请立即根据上文的【填表规则】进行分析，并输出 <Memory> 标签内容。\n严禁回复空白！`;
 
             const lastMsg = messages[messages.length - 1];
