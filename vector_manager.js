@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.6.4
+ * @version 1.7.4
  * @author Gaigai Team
  */
 
@@ -1585,13 +1585,13 @@
 
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">API 地址</label>
-                                <input type="text" id="gg_vm_url" value="${config.url || ''}" placeholder="https://api.siliconflow.cn" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <input type="text" id="gg_vm_url" value="${config.url || ''}" placeholder="https://api.siliconflow.cn" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                             </div>
 
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">API 密钥</label>
                                 <div style="position: relative;">
-                                    <input type="password" id="gg_vm_key" value="${config.key || ''}" placeholder="sk-xxx" style="width: 100%; padding: 5px 30px 5px 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                    <input type="password" id="gg_vm_key" value="${config.key || ''}" placeholder="sk-xxx" style="width: 100%; padding: 5px 30px 5px 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                     <i class="gg-vm-toggle-key fa-solid fa-eye" data-target="gg_vm_key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6; color: ${UI.tc}; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"></i>
                                 </div>
                             </div>
@@ -1599,9 +1599,12 @@
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">模型名称</label>
                                 <div style="display: flex; gap: 4px; align-items: center;">
-                                    <input type="text" id="gg_vm_model" value="${config.model || 'BAAI/bge-m3'}" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                    <input type="text" id="gg_vm_model" value="${config.model || 'BAAI/bge-m3'}" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                     <button id="gg_vm_fetch_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
                                     <button id="gg_vm_test_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+                                </div>
+                                <div style="font-size: 9px; opacity: 0.9; margin-top: 4px; color: #ff9800;">
+                                    ⚠️ 此为向量化(Embedding)模型，不支持LLM模型，如gemini-2.5/deepseek/claude4.5
                                 </div>
                             </div>
 
@@ -1620,21 +1623,21 @@
                             <!-- 最大召回条数 -->
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">最大召回条数</label>
-                                <input type="number" id="gg_vm_max_count" value="${config.maxCount || 3}" min="1" max="20" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <input type="number" id="gg_vm_max_count" value="${config.maxCount || 3}" min="1" max="20" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">每次检索返回的最大结果数</div>
                             </div>
 
                             <!-- 检索上下文深度 -->
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">检索上下文深度</label>
-                                <input type="number" id="gg_vm_context_depth" value="${config.contextDepth || 1}" min="1" max="5" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <input type="number" id="gg_vm_context_depth" value="${config.contextDepth || 1}" min="1" max="5" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">引用最后多少条上下文进行检索，解决短回复无法检索的问题</div>
                             </div>
 
                             <!-- 文本切分符 -->
                             <div style="margin-bottom: 8px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">文本切分符</label>
-                                <input type="text" id="gg_vm_separator" value="${config.separator || '==='}" placeholder="===" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                <input type="text" id="gg_vm_separator" value="${config.separator || '==='}" placeholder="===" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                 <div style="font-size: 9px; opacity: 0.5; margin-top: 2px; color: ${UI.tc};">导入 TXT 时按此分隔符切分文本</div>
                             </div>
 
@@ -1651,20 +1654,20 @@
 
                                 <div style="margin-bottom: 6px;">
                                     <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank API URL</label>
-                                    <input type="text" id="gg_vm_rerank_url" value="${config.rerankUrl || 'https://api.siliconflow.cn/v1/rerank'}" placeholder="https://api.siliconflow.cn/v1/rerank" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                    <input type="text" id="gg_vm_rerank_url" value="${config.rerankUrl || 'https://api.siliconflow.cn/v1/rerank'}" placeholder="https://api.siliconflow.cn/v1/rerank" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                 </div>
 
                                 <div style="margin-bottom: 6px;">
                                     <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank API Key</label>
                                     <div style="position: relative;">
-                                        <input type="password" id="gg_vm_rerank_key" value="${config.rerankKey || ''}" placeholder="sk-..." style="width: 100%; padding: 5px 30px 5px 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                        <input type="password" id="gg_vm_rerank_key" value="${config.rerankKey || ''}" placeholder="sk-..." style="width: 100%; padding: 5px 30px 5px 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                         <i class="gg-vm-toggle-key fa-solid fa-eye" data-target="gg_vm_rerank_key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6; color: ${UI.tc}; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'"></i>
                                     </div>
                                 </div>
 
                                 <div style="margin-bottom: 6px;">
                                     <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank Model</label>
-                                    <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" />
+                                    <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                                 </div>
                             </div>
 
@@ -1935,6 +1938,7 @@
                             value="${this._escapeHtml(defaultValue)}"
                             placeholder="请输入..."
                             style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box; margin-bottom: 6px;"
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                         />
                         <div style="display: flex; gap: 5px;">
                             <button id="gg_vm_prompt_cancel" style="flex: 1; padding: 5px; background: #6c757d; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">
