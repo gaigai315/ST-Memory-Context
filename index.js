@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.8.0
+// 记忆表格 v1.8.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.8.0 启动');
+    console.log('🚀 记忆表格 v1.8.1 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.8.0';
+    const V = 'v1.8.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1339,11 +1339,45 @@
             try {
                 localStorage.setItem(`${SK}_${id}`, JSON.stringify(data));
 
-                // 🔥 [新增] 自动备份机制：创建时间戳备份供"恢复数据"功能使用
+                // 🔥 [优化版] 自动备份机制：创建时间戳备份供"恢复数据"功能使用
                 const backupKey = `gg_data_${id}_${now}`;
-                localStorage.setItem(backupKey, JSON.stringify(data));
 
-                // 🧹 清理旧备份：只保留最近10个备份，防止localStorage爆满
+                // 智能保存函数：自动处理空间不足问题
+                const performSave = () => {
+                    try {
+                        localStorage.setItem(backupKey, JSON.stringify(data));
+                    } catch (e) {
+                        // 检测是否为存储空间已满错误
+                        if (e.name === 'QuotaExceededError' || e.code === 22) {
+                            console.warn('⚠️ [存储空间已满] 触发紧急清理，删除所有旧备份...');
+                            // 紧急清理：删除所有本插件的旧备份
+                            let cleanedCount = 0;
+                            Object.keys(localStorage).forEach(key => {
+                                if (key.startsWith('gg_data_')) {
+                                    localStorage.removeItem(key);
+                                    cleanedCount++;
+                                }
+                            });
+                            console.log(`🧹 [紧急清理] 已删除 ${cleanedCount} 个旧备份，释放存储空间`);
+
+                            // 清理后再试一次
+                            try {
+                                localStorage.setItem(backupKey, JSON.stringify(data));
+                                console.log('✅ [紧急清理] 清理后保存成功');
+                            } catch (e2) {
+                                console.error('❌ [紧急清理] 清理后仍无法保存备份:', e2);
+                                // 即使备份失败，也不要抛出错误，因为主数据已经保存成功
+                            }
+                        } else {
+                            // 其他类型的错误，记录但不中断
+                            console.warn('⚠️ [备份保存] 保存备份时出错:', e);
+                        }
+                    }
+                };
+
+                performSave();
+
+                // 🧹 [常规清理] 只保留最近 5 个备份 (优化：从10个减少到5个)
                 try {
                     const allKeys = Object.keys(localStorage);
                     const backups = allKeys
@@ -1354,13 +1388,12 @@
                         })
                         .sort((a, b) => b.ts - a.ts); // 按时间戳降序排列
 
-                    // 删除超过10个的旧备份
-                    if (backups.length > 10) {
-                        backups.slice(10).forEach(backup => {
+                    // 删除超过5个的旧备份
+                    if (backups.length > 5) {
+                        backups.slice(5).forEach(backup => {
                             localStorage.removeItem(backup.key);
-                            // console.log(`🗑️ [备份清理] 已删除旧备份: ${backup.key}`);
                         });
-                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 10} 个旧备份，保留最近10个`);
+                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 5} 个旧备份，保留最近5个`);
                     }
                 } catch (cleanupError) {
                     console.warn('⚠️ [备份清理] 清理失败:', cleanupError);
@@ -8269,82 +8302,66 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         return rawData;
     }
 
-    // ✅✅✅ [新增] 统一的全量配置保存函数（使用 SillyTavern 原生方式）
+    // ✅✅✅ [稳妥版] 全量配置保存函数 (兼容所有版本)
     async function saveAllSettingsToCloud() {
-        // ✅ 并发保护：防止多次同时调用导致冲突
-        if (window.isSavingToCloud) {
-            console.log('⏸️ [云端同步] 已有保存任务进行中，跳过本次调用');
+        // 1. 防止重复点击
+        if (window.isSavingToCloud) return;
+
+        // 2. 基础校验
+        if (!C || Object.keys(C).length < 5) {
+            if (typeof toastr !== 'undefined') toastr.error('配置异常，拦截上传', '错误');
             return;
         }
 
-        if (!C || Object.keys(C).length < 5) { // 简单校验 C 对象是否包含足够多的键
-            console.error('🛑 [严重拦截] 检测到本地配置异常(为空或不完整)，已阻止上传，防止覆盖云端存档！');
-            if (typeof toastr !== 'undefined') toastr.error('本地配置异常，已阻止云端同步以保护存档', '安全拦截');
-            return;
-        }
-
-        // 🔒 设置锁
         window.isSavingToCloud = true;
-        console.log('🔒 [云端同步] 已锁定');
+
+        // ✨ [UX优化] 让按钮显示"正在保存"，防止用户以为卡死
+        const $btn = $('#gg_save_cfg');
+        const originalText = $btn.length ? $btn.text() : '';
+        if ($btn.length) {
+            $btn.text('⏳ 正在写入服务端...').prop('disabled', true).css('opacity', 0.7);
+        }
 
         try {
-            console.log('💾 [API] 开始保存配置到服务器...');
-
-            // 1. Gather Data
+            // 3. 准备要保存的数据
             const cleanedApiConfig = JSON.parse(JSON.stringify(API_CONFIG));
             delete cleanedApiConfig.lastSummaryIndex;
             delete cleanedApiConfig.lastBackfillIndex;
-
-            // 🛡️ [数据保护] 向量库数据已迁移到世界书存储，不再保存到 settings.json
-            // 强制设为空对象，防止旧数据污染配置文件
-            const currentLibrary = {};
+            const currentLibrary = {}; // 向量库已独立存储，此处设空
 
             const allSettings = {
                 config: C,
                 api: cleanedApiConfig,
                 ui: UI,
-                profiles: window.Gaigai.PromptManager.getProfilesData(),  // ✅ 保存预设数据
-                vectorLibrary: currentLibrary,  // ✅ 强制为空，向量数据已使用世界书存储
-                lastModified: Date.now()  // ✅ 添加时间戳用于防止冲突
+                profiles: window.Gaigai.PromptManager.getProfilesData(),
+                vectorLibrary: currentLibrary,
+                lastModified: Date.now()
             };
 
-            console.log('🔒 [进度隔离] 已移除角色专属进度，仅保存通用配置');
-            console.log(`⏰ [时间戳] 保存时间: ${new Date(allSettings.lastModified).toLocaleString()}`);
-            console.log(`📚 [向量库] 保存书架数据: ${Object.keys(currentLibrary).length} 本书`);
-
-            // ✅ [Critical Fix] 立即同步时间戳到本地，防止刷新后被云端旧数据覆盖
+            // 4. 乐观更新本地状态 (让浏览器立即生效)
             localStorage.setItem('gg_timestamp', allSettings.lastModified.toString());
-            console.log('✅ [时间戳同步] 已将最新时间戳写入本地 localStorage');
-
-            // ✅✅✅ 乐观保存策略：立即更新本地状态，不等待网络请求
-            // 这样用户点击保存瞬间，本地数据即刻更新，防止网络延迟期间切换会话导致读取旧数据
             if (!window.extension_settings) window.extension_settings = {};
             window.extension_settings.st_memory_table = allSettings;
+            if (!window.serverData) window.serverData = {};
+            window.serverData.lastModified = allSettings.lastModified;
 
-            // 🛡️ [Critical Fix] Wrap localStorage in try-catch to prevent quota errors from blocking server save
             try {
                 localStorage.setItem(CK, JSON.stringify(C));
                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
                 localStorage.setItem(UK, JSON.stringify(UI));
-                // ❌ 已删除：localStorage.setItem(PK, JSON.stringify(PROMPTS));
-                // ✅ 预设数据现在由 PromptManager 管理，通过 profiles 保存
-            } catch (localStorageError) {
-                console.warn('⚠️ [本地存储失败] localStorage已满或不可用，但会继续保存到服务器:', localStorageError);
-                if (typeof toastr !== 'undefined') {
-                    toastr.warning('浏览器存储已满，但配置仍会保存到服务器', '本地存储警告', { timeOut: 3000 });
-                }
-            }
+            } catch (e) {}
 
-            // ✅ 关键修复：更新 serverData.lastModified，防止后续 loadConfig 误判回滚
-            if (!window.serverData) window.serverData = {};
-            window.serverData.lastModified = allSettings.lastModified;
-            console.log(`✅ [乐观保存] 本地状态已立即更新，时间戳: ${new Date(allSettings.lastModified).toLocaleString()}`);
-
-            // 2. Get CSRF
+            // 5. 获取通行证
             let csrfToken = '';
             try { csrfToken = await getCsrfToken(); } catch (e) { }
 
-            // 3. READ: Get current server settings strictly
+            // ============================================================
+            // 🐢 [全量保存流程] 读取 -> 合并 -> 写入
+            // 虽然慢一点，但这是兼容性最好的方案，绝对不会 404
+            // ============================================================
+            console.log('🐢 [全量保存] 开始读取 settings.json ...');
+
+            // A. 读取
             const getResponse = await fetch('/api/settings/get', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
@@ -8353,48 +8370,47 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             if (!getResponse.ok) throw new Error('无法读取服务器配置');
-
-            // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
             const text = await getResponse.text();
+            let rawResponse = JSON.parse(text);
 
-            let rawResponse;
-            try {
-                rawResponse = JSON.parse(text);
-            } catch (e) {
-                console.error('❌ [配置读取] JSON 解析失败:', e.message);
-                console.error('   原始响应 (前200字符):', text.substring(0, 200));
-                throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+            // 解析 (处理 settings 字符串包裹的情况)
+            if (rawResponse && typeof rawResponse.settings === 'string') {
+                rawResponse = JSON.parse(rawResponse.settings);
             }
 
-            const currentSettings = parseServerSettings(rawResponse);
+            // B. 合并
+            if (!rawResponse.extension_settings) rawResponse.extension_settings = {};
+            rawResponse.extension_settings.st_memory_table = allSettings;
 
-            // 4. MODIFY: Inject plugin data safely
-            if (!currentSettings.extension_settings) {
-                currentSettings.extension_settings = {};
-            }
-            currentSettings.extension_settings.st_memory_table = allSettings;
-
-            // 5. WRITE: Force save to disk immediately
-            const saveResponse = await fetch('/api/settings/save', {
+            // C. 写入
+            const finalSaveResponse = await fetch('/api/settings/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify(currentSettings),
+                body: JSON.stringify(rawResponse),
                 credentials: 'include'
             });
 
-            if (!saveResponse.ok) throw new Error('无法写入服务器配置');
+            if (!finalSaveResponse.ok) throw new Error('无法写入服务器配置');
 
-            console.log('✅ [API] 配置已强制写入 settings.json (Size:', JSON.stringify(allSettings).length, ')');
-            // ✅ UX Improvement: Silent background sync (no toastr popup)
-            // User gets feedback from manual button clicks, not from auto-save
+            console.log('✅ [保存成功] 配置已更新');
+
+            // 成功提示
+            if ($btn.length) $btn.text('✅ 保存成功');
+            if (typeof toastr !== 'undefined') toastr.success('配置已保存', '成功');
 
         } catch (error) {
-            console.error('❌ [API] 保存失败:', error);
+            console.error('❌ [保存失败]', error);
             if (typeof toastr !== 'undefined') toastr.error(`保存失败: ${error.message}`, '错误');
+            if ($btn.length) $btn.text('❌ 失败');
         } finally {
-            // 🔓 释放锁
+            // 解锁
             window.isSavingToCloud = false;
-            console.log('🔓 [云端同步] 已解锁');
+            // 1.5秒后恢复按钮文字
+            setTimeout(() => {
+                if ($btn.length) {
+                    $btn.text(originalText || '💾 保存配置').prop('disabled', false).css('opacity', 1);
+                }
+            }, 1500);
         }
     }
 
@@ -11120,6 +11136,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
+                        <li><strong>优化逻辑：</strong>优化插件的部分逻辑，减轻卡顿或冲突问题</li>
                     </ul>
                 </div>
 

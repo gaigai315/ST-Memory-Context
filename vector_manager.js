@@ -1082,128 +1082,122 @@
         }
 
         /**
-         * 📚 同步总结表到书架
-         * @returns {Promise<Object>} - { success: boolean, count: number, error?: string }
+         * 📚 同步总结表到书架 (修复版：增量更新，保留未变动的向量)
+         * @returns {Promise<Object>}
          */
         async syncSummaryToBook(autoVectorize = false) {
-            console.log('📚 [VectorManager] 开始同步总结表到书架...');
+            console.log('📚 [VectorManager] 开始同步总结表到书架 (增量模式)...');
 
             try {
-                // 获取 Memory Manager
                 const m = window.Gaigai?.m;
-                if (!m || !m.s || m.s.length === 0) {
-                    throw new Error('Memory Manager 不可用或没有表格数据');
-                }
+                if (!m || !m.s || m.s.length === 0) throw new Error('Memory Manager 不可用');
 
-                // 获取最后一个表格（总结表）
                 const summarySheet = m.s[m.s.length - 1];
-                if (!summarySheet || !summarySheet.r || summarySheet.r.length === 0) {
-                    throw new Error('总结表为空或不存在');
-                }
+                if (!summarySheet || !summarySheet.r) throw new Error('总结表无效');
 
-                // 构建 chunks 数组
-                const chunks = [];
+                // 1. 构建新的 chunks
+                const newChunks = [];
                 for (const row of summarySheet.r) {
-                    // 兼容 Object 和 Array 格式
                     const rowData = Array.isArray(row) ? row : Object.values(row);
-
-                    // 假设格式：[标题, 内容, 备注, ...]
-                    // 根据实际表格结构调整索引
                     const title = rowData[0] || '';
                     const content = rowData[1] || '';
                     const remark = rowData[2] || '';
 
-                    // 构建片段文本：标题 (备注)\n内容
                     let chunkText = '';
-                    if (title) {
-                        chunkText += title;
-                        if (remark) {
-                            chunkText += ` (${remark})`;
-                        }
-                        chunkText += '\n';
-                    }
-                    if (content) {
-                        chunkText += content;
-                    }
+                    if (title) chunkText += title + (remark ? ` (${remark})` : '') + '\n';
+                    if (content) chunkText += content;
 
-                    // ✅ 变量替换：将 {{user}} 和 {{char}} 替换为实际名字
                     chunkText = this._resolvePlaceholders(chunkText);
-
-                    if (chunkText.trim()) {
-                        chunks.push(chunkText.trim());
-                    }
+                    if (chunkText.trim()) newChunks.push(chunkText.trim());
                 }
 
-                if (chunks.length === 0) {
-                    throw new Error('总结表中没有有效内容');
-                }
+                if (newChunks.length === 0) throw new Error('总结表内容为空');
 
-                // 🔒 会话隔离：使用会话 ID 生成唯一的书籍 ID
+                // 2. 准备 ID 和 旧数据
                 const sessionId = m.gid() || 'default';
                 const bookId = 'summary_book_' + sessionId;
                 const defaultBookName = '《剧情总结归档》';
 
-                // 创建或更新书籍
+                let existingVectorsMap = new Map(); // Map<Text, Vector>
+                let existingName = defaultBookName;
+                let existingCreateTime = Date.now();
+
+                // 3. 【核心修复】建立旧数据缓存索引
                 if (this.library[bookId]) {
-                    // 书籍已存在：保留用户自定义的书名，仅更新内容和重置向量化状态
-                    const existingName = this.library[bookId].name;
-                    this.library[bookId] = {
-                        name: existingName, // 保留原书名
-                        chunks: chunks,
-                        vectors: new Array(chunks.length).fill(null),
-                        vectorized: new Array(chunks.length).fill(false),
-                        createTime: this.library[bookId].createTime
-                    };
-                    console.log(`📝 [VectorManager] 更新现有书籍 "${existingName}" (ID: ${bookId})`);
-                } else {
-                    // 书籍不存在：创建新书
-                    this.library[bookId] = {
-                        name: defaultBookName,
-                        chunks: chunks,
-                        vectors: new Array(chunks.length).fill(null),
-                        vectorized: new Array(chunks.length).fill(false),
-                        createTime: Date.now()
-                    };
-                    console.log(`✨ [VectorManager] 创建新书籍 "${defaultBookName}" (ID: ${bookId})`);
+                    const oldBook = this.library[bookId];
+                    existingName = oldBook.name;
+                    existingCreateTime = oldBook.createTime;
+
+                    // 将旧的 文本->向量 存入 Map
+                    oldBook.chunks.forEach((text, idx) => {
+                        if (oldBook.vectorized[idx] && oldBook.vectors[idx]) {
+                            existingVectorsMap.set(text, oldBook.vectors[idx]);
+                        }
+                    });
+                    console.log(`♻️ [缓存复用] 已索引 ${existingVectorsMap.size} 条旧向量`);
                 }
 
-                // 保存到全局
+                // 4. 构建新书籍数据 (尝试继承向量)
+                const newVectors = [];
+                const newVectorized = [];
+                let reusedCount = 0;
+
+                newChunks.forEach(text => {
+                    if (existingVectorsMap.has(text)) {
+                        // ✅ 命中缓存：内容没变，直接复用旧向量
+                        newVectors.push(existingVectorsMap.get(text));
+                        newVectorized.push(true);
+                        reusedCount++;
+                    } else {
+                        // ❌ 内容变了或新内容：重置为空，等待重新向量化
+                        newVectors.push(null);
+                        newVectorized.push(false);
+                    }
+                });
+
+                // 5. 更新书架
+                this.library[bookId] = {
+                    name: existingName,
+                    chunks: newChunks,
+                    vectors: newVectors,     // 使用混合了旧数据的新数组
+                    vectorized: newVectorized, // 状态同步
+                    createTime: existingCreateTime
+                };
+
+                console.log(`📝 [增量同步] 书籍已更新。复用旧向量: ${reusedCount} 条, 待计算: ${newChunks.length - reusedCount} 条`);
+
                 this.saveLibrary();
 
-                // 🔗 自动绑定：将书籍添加到当前会话的 activeBooks
+                // 6. 绑定与自动执行
                 const ctx = m.ctx();
                 if (ctx && ctx.chatMetadata) {
                     const currentActiveBooks = ctx.chatMetadata.gaigai_activeBooks || [];
                     if (!currentActiveBooks.includes(bookId)) {
-                        const newActiveBooks = [...currentActiveBooks, bookId];
-                        this.setActiveBooks(newActiveBooks);
-                        console.log(`🔗 [VectorManager] 已自动绑定书籍到当前会话`);
+                        this.setActiveBooks([...currentActiveBooks, bookId]);
                     }
                 }
 
-                console.log(`✅ [VectorManager] 已同步 ${chunks.length} 条总结到书架`);
-
-                // ⚡ 自动执行向量化
+                // ⚡ 仅当有未向量化的内容时，才触发 API
                 if (autoVectorize) {
-                    console.log('⚡ [VectorManager] 开始自动向量化...');
-                    const vectorizeResult = await this.vectorizeBook(bookId);
-                    console.log(`⚡ [VectorManager] 向量化完成: 成功 ${vectorizeResult.count || 0} 条, 失败 ${vectorizeResult.errors || 0} 条`);
-                    return {
-                        success: true,
-                        count: chunks.length,
-                        bookId: bookId,
-                        vectorized: true,
-                        vectorizeResult: vectorizeResult
-                    };
+                    const needsUpdate = newVectorized.includes(false);
+                    if (needsUpdate) {
+                        console.log('⚡ [VectorManager] 检测到新内容，开始增量向量化...');
+                        const vectorizeResult = await this.vectorizeBook(bookId);
+                        return { success: true, count: newChunks.length, vectorized: true, vectorizeResult };
+                    } else {
+                        console.log('✅ [VectorManager] 所有内容命中缓存，无需调用 API');
+                    }
                 }
 
-                return { success: true, count: chunks.length, bookId: bookId, vectorized: false };
+                return { success: true, count: newChunks.length, bookId, vectorized: false };
 
             } catch (error) {
-                console.error('❌ [VectorManager] 同步总结到书架失败:', error);
+                console.error('❌ [VectorManager] 同步失败:', error);
                 return { success: false, count: 0, error: error.message };
             }
         }
+
+
 
         /**
          * 🗑️ 删除书籍
