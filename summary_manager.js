@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.7.3
+ * @version 1.8.2
  * @author Gaigai Team
  */
 
@@ -774,7 +774,13 @@
                     content: window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('nsfwPrompt'), ctx)
                 });
 
-                // 2. 背景资料
+                // 2. System Prompt (总结提示词主体 - 规则、格式等)
+                messages.push({
+                    role: 'system',
+                    content: targetPrompt
+                });
+
+                // 3. 背景资料
                 let contextText = '';
                 let charInfo = '';
                 if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
@@ -855,12 +861,15 @@
                     return { success: false, error: '范围内无有效内容' };
                 }
 
-                // 7. 指令
+                // 4. 执行指令（对话历史结束标记）
+                const endMarker = window.Gaigai.PromptManager.CHAT_HISTORY_END_MARKER;
                 const lastMsg = messages[messages.length - 1];
                 if (lastMsg && lastMsg.role === 'user') {
-                    lastMsg.content += '\n\n' + targetPrompt;
+                    // 如果最后一条是 user，直接追加
+                    lastMsg.content += '\n\n' + endMarker;
                 } else {
-                    messages.push({ role: 'user', content: targetPrompt });
+                    // 如果最后一条是 assistant，单独发一条 user 消息
+                    messages.push({ role: 'user', content: endMarker });
                 }
 
                 logMsg = `📝 聊天总结: ${startIndex}-${endIndex} (消息数:${messages.length})`;

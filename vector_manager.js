@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.7.4
+ * @version 1.8.2
  * @author Gaigai Team
  */
 
@@ -1552,6 +1552,39 @@
                         .gg-vm-book-list {
                             max-height: 180px;
                         }
+
+                        /* 模型配置行的布局容器 */
+                        .gg-model-row {
+                            display: flex;
+                            gap: 4px;
+                            align-items: center;
+                        }
+                        /* 按钮组容器 */
+                        .gg-model-btns {
+                            display: flex;
+                            gap: 4px;
+                            flex-shrink: 0; /* 防止按钮被压缩 */
+                        }
+
+                        /* 📱 手机端适配 */
+                        @media (max-width: 768px) {
+                            .gg-model-row {
+                                flex-direction: column; /* 改为垂直排列 */
+                                align-items: stretch;
+                                gap: 8px !important;
+                            }
+                            .gg-model-btns {
+                                width: 100%;
+                                display: grid; /* 使用网格布局 */
+                                grid-template-columns: 1fr 1fr; /* 两个按钮平分宽度 */
+                                gap: 10px;
+                            }
+                            .gg-model-btns button {
+                                width: 100% !important;
+                                justify-content: center;
+                                padding: 8px !important; /* 增加手机端点击区域 */
+                            }
+                        }
                     }
                 </style>
 
@@ -1592,10 +1625,13 @@
 
                             <div style="margin-bottom: 6px;">
                                 <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">模型名称</label>
-                                <div style="display: flex; gap: 4px; align-items: center;">
+                                <div class="gg-model-row">
                                     <input type="text" id="gg_vm_model" value="${config.model || 'BAAI/bge-m3'}" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-                                    <button id="gg_vm_fetch_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
-                                    <button id="gg_vm_test_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+
+                                    <div class="gg-model-btns">
+                                        <button id="gg_vm_fetch_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
+                                        <button id="gg_vm_test_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+                                    </div>
                                 </div>
                                 <div style="font-size: 9px; opacity: 0.9; margin-top: 4px; color: #ff9800;">
                                     ⚠️ 此为向量化(Embedding)模型，不支持LLM模型，如gemini-2.5/deepseek/claude4.5
