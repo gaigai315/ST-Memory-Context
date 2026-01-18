@@ -1342,6 +1342,29 @@
                 // 🔥 [优化版] 自动备份机制：创建时间戳备份供"恢复数据"功能使用
                 const backupKey = `gg_data_${id}_${now}`;
 
+                // ⚡ 去重检查：获取最新的备份
+                const allBackupKeys = Object.keys(localStorage).filter(k => k.startsWith(`gg_data_${id}_`));
+                if (allBackupKeys.length > 0) {
+                    // 找到时间戳最大的 key
+                    const latestKey = allBackupKeys.sort().pop();
+                    const latestData = localStorage.getItem(latestKey);
+                    const newDataStr = JSON.stringify(data);
+
+                    if (latestData === newDataStr) {
+                        console.log('⚡ [备份去重] 数据未变动，跳过创建冗余备份');
+                        // 跳过备份，直接进入云端同步
+                    } else {
+                        // 数据有变化，执行备份
+                        performBackup();
+                    }
+                } else {
+                    // 没有旧备份，执行首次备份
+                    performBackup();
+                }
+
+                // 备份执行函数
+                function performBackup() {
+
                 // 智能保存函数：自动处理空间不足问题
                 const performSave = () => {
                     try {
@@ -1398,6 +1421,8 @@
                 } catch (cleanupError) {
                     console.warn('⚠️ [备份清理] 清理失败:', cleanupError);
                 }
+                } // 结束 performBackup 函数
+
             } catch (e) {
                 console.error('❌ [保存失败] localStorage写入失败:', e);
             }
@@ -8394,9 +8419,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             console.log('✅ [保存成功] 配置已更新');
 
-            // 成功提示 (仅更新按钮文字，不弹窗干扰用户)
+            // 成功提示 (仅更新按钮文字，不再弹窗干扰用户)
             if ($btn.length) $btn.text('✅ 保存成功');
-            // if (typeof toastr !== 'undefined') toastr.success('配置已保存', '成功'); // 已移除，避免双重弹窗
+            // 移除 toastr.success，保持静默（避免后台自动保存时弹窗打扰用户）
 
         } catch (error) {
             console.error('❌ [保存失败]', error);

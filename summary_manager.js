@@ -1571,7 +1571,9 @@
 
                     successCount++;
                     actualProgress = batch.end; // ✅ 更新实际完成的进度
-                    if (silent && typeof toastr !== 'undefined') {
+
+                    // ⚡ 优化：只有多批次任务才弹中间进度提示
+                    if (silent && typeof toastr !== 'undefined' && batches.length > 1) {
                         toastr.success(`进度: ${batchNum}/${batches.length} 已保存`, '分批总结');
                     }
 
