@@ -5733,8 +5733,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             API_CONFIG.lastBackfillIndex = 0;  // ✅ 修复：同时重置批量填表进度
             localStorage.setItem(AK, JSON.stringify(API_CONFIG));
 
-            // 🌐 同步重置后的配置到云端
-            await saveAllSettingsToCloud();
+            // ⚡ 异步触发云端同步，不阻塞 UI 线程
+            saveAllSettingsToCloud().catch(err => {
+                console.warn('⚠️ [全清] 后台云端同步失败 (不影响本地清空):', err);
+            });
 
             // ✨✨✨ 关键修改：传入 true，强制突破熔断保护 ✨✨✨
             m.save(true);
@@ -11117,11 +11119,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
-                        <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
-                        <li><strong>修复bug：</strong>表格结构编辑器删除时信息错位的bug</li>
-                        <li><strong>修复bug：</strong>修复流式解析失败的bug</li>
-                        <li><strong>优化过滤：</strong>优化聊天中涉及Base64过大导致TK爆炸或报错的问题</li>
                     </ul>
                 </div>
 
