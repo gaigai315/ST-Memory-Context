@@ -10363,19 +10363,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             isRegenerating = false;
 
-            // 5. 隐藏楼层逻辑 (保持不变)
-            let currentChat = data.chat;
-            if (C.contextLimit && currentChat) {
-                const limitedChat = applyContextLimit(currentChat);
-                if (limitedChat.length !== currentChat.length) {
-                    data.chat.splice(0, data.chat.length, ...limitedChat);
-                    console.log(`✂️ 隐藏楼层已执行`);
-                }
-
-                // ✅ 清洗历史记录中的图片，防止包体过大
-                // 注意：data.chat 已在函数开头深拷贝，这里直接修改不会影响原始数据
-                // 遍历所有历史消息，移除图片字段，避免 Base64 数据导致 JSON 超过 20MB
+            // 5. 🖼️ [强制图片清洗] 无论是否开启隐藏楼层，都必须执行图片清洗
+            // 这是防止 Base64 图片标签导致 Token 飙升的关键步骤
+            if (data.chat && Array.isArray(data.chat)) {
                 data.chat.forEach(msg => {
+                    // 删除图片字段
                     if (msg.image) delete msg.image;
                     if (msg.imageUrl) delete msg.imageUrl;
                     if (msg.images) delete msg.images;
@@ -10399,12 +10391,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         msg.mes = msg.mes.replace(base64MarkdownRegex, '[图片]');
                     }
                 });
-                console.log(`🖼️ 已清洗历史消息中的图片数据（包括文本中的图片标签），防止请求体过大`);
+                console.log(`🖼️ [强制清洗] 已清洗历史消息中的图片数据（包括文本中的图片标签），防止请求体过大`);
+            }
+
+            // 6. 隐藏楼层逻辑 (可选功能)
+            let currentChat = data.chat;
+            if (C.contextLimit && currentChat) {
+                const limitedChat = applyContextLimit(currentChat);
+                if (limitedChat.length !== currentChat.length) {
+                    data.chat.splice(0, data.chat.length, ...limitedChat);
+                    console.log(`✂️ 隐藏楼层已执行`);
+                }
             }
 
             // 注意：向量检索已移至 Fetch Hijack 中处理，确保在发送请求前完成
 
-            // 6. 注入 (此时表格已是回档后的干净状态)
+            // 7. 注入 (此时表格已是回档后的干净状态)
             inj(data);
 
             // 探针
@@ -11113,12 +11115,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>提醒：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
+                        <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>优化表格数据：</strong>表格结构编辑区支持自定义追加或覆盖当前列功能</li>
                         <li><strong>新增日志功能：</strong>配置页面新增日志功能,对后台调试检测</li>
                         <li><strong>修复bug：</strong>表格结构编辑器删除时信息错位的bug</li>
                         <li><strong>修复bug：</strong>修复流式解析失败的bug</li>
+                        <li><strong>优化过滤：</strong>优化聊天中涉及Base64过大导致TK爆炸或报错的问题</li>
                     </ul>
                 </div>
 

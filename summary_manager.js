@@ -1900,8 +1900,15 @@
 
                     // 追加新行按钮
                     $('#gg_opt_append').on('click', async function() {
-                        const finalContent = $('#gg_opt_result_editor').val().trim();
+                        let finalContent = $('#gg_opt_result_editor').val().trim();
                         if (!finalContent) return;
+
+                        // ✅ 清理优化提示词残留
+                        finalContent = finalContent
+                            .replace(/^【待优化内容.*?】\s*/gm, '')
+                            .replace(/^剧情总结 \d+\s*/gm, '')
+                            .replace(/^---+分隔线---+\s*/gm, '')
+                            .trim();
 
                         // 🔒 安全检查1：验证会话ID是否一致
                         const currentSessionId = m.gid();
@@ -1951,8 +1958,15 @@
 
                     // 覆盖按钮
                     $('#gg_opt_replace').on('click', async function() {
-                        const finalContent = $('#gg_opt_result_editor').val().trim();
+                        let finalContent = $('#gg_opt_result_editor').val().trim();
                         if (!finalContent) return;
+
+                        // ✅ 清理优化提示词残留
+                        finalContent = finalContent
+                            .replace(/^【待优化内容.*?】\s*/gm, '')
+                            .replace(/^剧情总结 \d+\s*/gm, '')
+                            .replace(/^---+分隔线---+\s*/gm, '')
+                            .trim();
 
                         // 🔒 安全检查1：验证会话ID是否一致
                         const currentSessionId = m.gid();
@@ -2009,8 +2023,15 @@
 
                         // 覆盖该行逻辑 - 修正版
                         targetIndices.forEach((idx, i) => {
-                            const segment = (segments[i] || '').trim();
+                            let segment = (segments[i] || '').trim();
                             if (!segment) return;
+
+                            // ✅ 清理优化提示词残留（针对每个段落）
+                            segment = segment
+                                .replace(/^【待优化内容.*?】\s*/gm, '')
+                                .replace(/^剧情总结 \d+\s*/gm, '')
+                                .replace(/^---+分隔线---+\s*/gm, '')
+                                .trim();
 
                             // ✨✨✨ 核心修复：不再尝试拆分标题和正文 ✨✨✨
                             // 1. 获取原标题 (保留原标题，防止元数据丢失)（动态获取总结表）
