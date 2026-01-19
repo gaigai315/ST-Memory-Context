@@ -915,8 +915,8 @@
             const multiplier = 2; // 设定为 2 倍召回
             // 如果开启 Rerank，向量阶段召回 2 倍数据；否则只召回 1 倍
             const recallCount = config.rerankEnabled ? (targetCount * multiplier) : targetCount;
-            // 如果开启 Rerank，强制降低向量检索的门槛到 0.05，确保能捞出足够多的候选集；否则保持用户设置的阈值
-            const initialThreshold = config.rerankEnabled ? 0.05 : config.threshold;
+            // Rerank 模式下，设置 0.1 作为粗排门槛，过滤掉绝对不相关的噪音，同时保留绝大多数潜在相关内容。
+            const initialThreshold = config.rerankEnabled ? 0.1 : config.threshold;
 
             // 如果未提供 allowedBookIds，从当前会话获取
             if (!allowedBookIds) {
