@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.8.2
+ * @version 1.8.3
  * @author Gaigai Team
  */
 
@@ -670,7 +670,7 @@
          * @param {boolean} skipSave - 是否跳过保存
          * @param {Array<number>} targetTableIndices - 🆕 指定要总结的表格索引数组（仅表格模式有效，为空则默认所有表）
          */
-        async callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false, skipSave = false, targetTableIndices = null) {
+        async callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false, skipSave = false, targetTableIndices = null, skipWorldInfoSync = false) {
             // 使用 window.Gaigai.loadConfig 确保配置最新
             const loadConfig = window.Gaigai.loadConfig || (() => Promise.resolve());
             await loadConfig();
@@ -999,7 +999,11 @@
                 if (isSilent && !skipSave) {
                     // 总是先保存总结内容
                     m.sm.save(cleanSummary, currentRangeStr);
-                    await window.Gaigai.syncToWorldInfo(cleanSummary);
+
+                    // ✅ 只有当 !skipWorldInfoSync 为真时，才执行世界书同步
+                    if (!skipWorldInfoSync) {
+                        await window.Gaigai.syncToWorldInfo(cleanSummary);
+                    }
 
                     // ✅✅✅ [新增] 自动向量化开启时,自动隐藏总结表所有行
                     if (window.Gaigai.config_obj.autoVectorizeSummary) {
@@ -1041,9 +1045,9 @@
                         if (typeof toastr !== 'undefined') {
                             if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
                         }
-                        return { success: true };
+                        return { success: true, summary: cleanSummary };
                     } else {
-                        // 非表格模式（聊天总结），正常静默执行
+                        // 非表格模式(聊天总结),正常静默执行
                         if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
                             window.Gaigai.saveAllSettingsToCloud().catch(err => {
                                 console.warn('⚠️ [自动总结] 云端同步失败:', err);
@@ -1058,7 +1062,7 @@
                         if (typeof toastr !== 'undefined') {
                             if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
                         }
-                        return { success: true };
+                        return { success: true, summary: cleanSummary };
                     }
                 } else if (isSilent && skipSave) {
                     return { success: true, summary: cleanSummary };
@@ -1559,8 +1563,8 @@
                 try {
                     console.log(`🔄 [分批 ${batchNum}/${batches.length}] 执行中...`);
 
-                    // 调用核心函数
-                    const result = await self.callAIForSummary(batch.start, batch.end, mode, silent, true);
+                    // 调用核心函数，跳过世界书同步
+                    const result = await self.callAIForSummary(batch.start, batch.end, mode, silent, true, false, null, true);
 
                     // 🛑 [熔断检测] 只有用户明确放弃时才终止
                     if (!result || result.success === false) {
@@ -1607,6 +1611,17 @@
                 for (let delay = 6; delay > 0; delay--) {
                     if (window.Gaigai.stopBatch) break;
                     await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+
+            // ✅ [分批缓存优化] 循环结束后，一次性同步完整表格到世界书
+            if (successCount > 0 && !window.Gaigai.stopBatch) {
+                console.log("🚀 [分批总结] 批量任务完成，正在将完整表格镜像同步到世界书...");
+                try {
+                    await window.Gaigai.syncToWorldInfo(null, true);
+                    console.log("✅ [分批总结] 世界书镜像同步完成");
+                } catch (error) {
+                    console.error("❌ [分批总结] 世界书同步失败:", error);
                 }
             }
 

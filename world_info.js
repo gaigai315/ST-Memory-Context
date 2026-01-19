@@ -4,7 +4,7 @@
  * 功能：处理记忆总结与 SillyTavern 世界书的同步和绑定
  * 包含：防抖同步、智能创建/更新、自动绑定角色卡
  *
- * @version 1.6.8
+ * @version 1.8.3
  * @author Gaigai Team
  */
 
@@ -62,35 +62,7 @@
                     console.log(`✅ [智能同步] 内存检测: 书已存在`);
                 }
 
-                // 方法B：API检查（更准确）
-                if (!bookExists) {
-                    try {
-                        const getRes = await fetch('/api/worldinfo/get', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                            body: JSON.stringify({}),
-                            credentials: 'include'
-                        });
-                        if (getRes.ok) {
-                            // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
-                            const text = await getRes.text();
-
-                            let allWorldBooks;
-                            try {
-                                allWorldBooks = JSON.parse(text);
-                            } catch (e) {
-                                console.error('❌ [世界书列表] JSON 解析失败:', e.message);
-                                console.error('   原始响应 (前200字符):', text.substring(0, 200));
-                                throw new Error(`服务器返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
-                            }
-
-                            bookExists = Array.isArray(allWorldBooks) && allWorldBooks.includes(worldBookName);
-                            console.log(`✅ [智能同步] API检测: 书${bookExists ? '已存在' : '不存在'}`);
-                        }
-                    } catch (e) {
-                        console.warn('⚠️ [智能同步] API检测失败，回退到创建模式');
-                    }
-                }
+                // 🚫 [已移除] API 存在性检测已移除。原因：酒馆后端 API 不支持查询列表 (400 Error)。策略调整为：不再探测，直接执行文件上传（Create Mode），利用酒馆的同名覆盖机制。
 
                 // 步骤2：根据存在状态选择同步策略
                 if (bookExists) {
@@ -264,6 +236,8 @@
                     console.warn('⚠️ [世界书同步-覆盖] 获取CSRF Token失败:', e);
                 }
 
+                // 🚫 [已禁用] 自动清理旧文件功能已停用。原因：酒馆后端 API (/api/worldinfo/get) 不支持空参数查询，会导致 400 报错。直接跳过清理步骤，依赖文件名覆盖机制。
+                /*
                 // --- 4. 扫描并删除当前会话的旧版本文件 (严格筛选，不影响其他角色) ---
                 console.log('🔍 [世界书同步-覆盖] 扫描并清理旧文件...');
                 try {
@@ -341,6 +315,7 @@
                 } catch (e) {
                     console.warn('⚠️ [世界书同步-覆盖] 扫描清理过程异常，继续上传:', e);
                 }
+                */
 
                 // 🛑 核心修复：给文件系统喘息时间，防止 500 错误导致的连带写入失败
                 console.log('⏳ [IO缓冲] 等待文件句柄释放 (1.5s)...');
@@ -449,12 +424,18 @@
                             console.log('📝 [世界书同步-追加] 世界书存在但无条目，将创建第一条');
                         }
                     } else if (getRes.status === 404) {
-                        console.log('📝 [世界书同步-追加] 世界书不存在，将创建新书');
+                        // ✅ [Critical Fix] 只有 404 才初始化空书
+                        console.log('📝 [世界书同步-追加] 世界书不存在 (404)，将创建新书');
                     } else {
-                        console.warn(`⚠️ [世界书同步-追加] 获取世界书失败 (${getRes.status})，将创建新书`);
+                        // 🛑 [Critical Fix] 任何其他错误状态都应该中止操作，防止数据丢失
+                        const errorMsg = `服务器错误 (${getRes.status})，中止操作以防止数据丢失`;
+                        console.error(`❌ [世界书同步-追加] ${errorMsg}`);
+                        throw new Error(errorMsg);
                     }
                 } catch (e) {
-                    console.warn('⚠️ [世界书同步-追加] 读取现有数据异常，将创建新书:', e);
+                    // 🛑 [Critical Fix] 网络异常或其他错误必须抛出，不能静默创建新书
+                    console.error('❌ [世界书同步-追加] 读取现有数据失败，中止操作:', e);
+                    throw e;
                 }
 
                 // --- 2. 构建新条目 ---
