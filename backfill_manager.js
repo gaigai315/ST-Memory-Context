@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.7.4
+ * @version 1.8.4
  * @author Gaigai Team
  */
 
@@ -251,8 +251,8 @@
                     // 保存到 localStorage
                     try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
 
-                    // ✅ 关键步骤：同步到聊天记录元数据
-                    m.save();
+                    // ✅ 关键步骤：立即同步到聊天记录元数据
+                    m.save(false, true);
 
                     // ✅ 同步到云端服务器 (确保多设备一致性)
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
@@ -756,24 +756,33 @@ ${lastError.message}
                 }
             } finally {
                 // 3. 结束收尾 - 无论是否出错，都要执行清理
-                window.Gaigai.isBatchBackfillRunning = false;
-                window.Gaigai.stopBatchBackfill = false;
+                // 🛡️ [加强] 绝对确保状态重置，即使发生严重错误
+                try {
+                    window.Gaigai.isBatchBackfillRunning = false;
+                    window.Gaigai.stopBatchBackfill = false;
 
-                // ✅ 清除全局进度状态
-                delete window.Gaigai.backfillProgress;
+                    // ✅ 清除全局进度状态
+                    delete window.Gaigai.backfillProgress;
 
-                if (isUserCancelled) {
-                    if (!isManual) await window.Gaigai.customAlert('批量任务已手动停止或取消', '已中止');
-
-                    // ✨ FIX: Explicitly reset button state immediately
+                    // 🛡️ [加强] 强制重置按钮状态，防止UI冻结
                     const $btn = $('#gg_bf_gen');
                     if ($btn.length > 0) {
                         $btn.text('🚀 开始分析并生成')
-                            .css('background', window.Gaigai.ui.c) // Restore theme color
+                            .css('background', window.Gaigai.ui.c)
                             .css('opacity', '1')
                             .prop('disabled', false);
                     }
 
+                    console.log('🔓 [状态重置] 批量填表锁已释放');
+                } catch (resetError) {
+                    console.error('❌ [严重错误] 状态重置失败:', resetError);
+                    // 即使重置失败，也要强制解锁
+                    window.Gaigai.isBatchBackfillRunning = false;
+                    window.Gaigai.stopBatchBackfill = false;
+                }
+
+                if (isUserCancelled) {
+                    if (!isManual) await window.Gaigai.customAlert('批量任务已手动停止或取消', '已中止');
                     setTimeout(() => updateStatus('', null), 3000);
                     return;
                 }
@@ -781,7 +790,7 @@ ${lastError.message}
                 // 保存最终状态
                 if (successCount > 0) {
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
-                    window.Gaigai.m.save();
+                    window.Gaigai.m.save(false, true); // 批量任务完成后立即保存
 
                     // ✅✅✅ 批量任务完成后，强制更新快照，确保与实时填表同步
                     if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
@@ -1045,6 +1054,13 @@ ${lastError.message}
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
                 content = filterContentByTags(content);
+
+                // ✅ [图片清洗] 移除 Base64 图片，防止请求体过大
+                const base64ImageRegex = /<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi;
+                const base64MarkdownRegex = /!\[[^\]]*\]\(data:image[^)]*\)/gi;
+                content = content.replace(base64ImageRegex, '[图片]');
+                content = content.replace(base64MarkdownRegex, '[图片]');
+
                 if (content && content.trim()) {
                     const isUser = msg.is_user || msg.role === 'user';
                     const role = isUser ? 'user' : 'assistant';
@@ -1135,6 +1151,10 @@ ${lastError.message}
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '');
 
+                // ✅ [修复] 先全局执行清洗（提到最前面，确保无论是否有标签都会清洗）
+                aiOutput = aiOutput.replace(/\\n/g, '\n'); // 处理转义换行
+                aiOutput = aiOutput.replace(/^[\s:：]+/, ''); // 去除头部冒号
+
                 // 1. 尝试匹配完整标签
                 const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);
                 let finalOutput = '';
@@ -1193,7 +1213,7 @@ ${lastError.message}
 
                                     // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
                                     console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
-                                    window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+                                    window.Gaigai.m.save(true, true); // 强制立即保存一份当前状态到 localStorage 历史记录
                                     // 为当前状态创建一个内存快照，方便回滚
                                     if (typeof window.Gaigai.saveSnapshot === 'function') {
                                         window.Gaigai.saveSnapshot('backup_pre_overwrite_' + Date.now());
@@ -1209,7 +1229,7 @@ ${lastError.message}
                             window.Gaigai.config.lastBackfillIndex = end;
                             try { localStorage.setItem('gg_api', JSON.stringify(window.Gaigai.config)); } catch (e) { }
                             if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud().catch(e => { });
-                            m.save();
+                            m.save(false, true); // 批量填表后立即保存
                             if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                                 window.Gaigai.updateCurrentSnapshot();
                             }
@@ -1460,6 +1480,10 @@ ${lastError.message}
                     aiOutput = cleaned || raw;
                 }
 
+                // ✅ [修复] 先全局执行清洗（提到最前面，确保无论是否有标签都会清洗）
+                aiOutput = aiOutput.replace(/\\n/g, '\n'); // 处理转义换行
+                aiOutput = aiOutput.replace(/^[\s:：]+/, ''); // 去除头部冒号
+
                 // ✨ 提取 <Memory> 标签内容（复用 autoRunBackfill 的逻辑）
                 const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);
                 let finalOutput = '';
@@ -1593,7 +1617,7 @@ ${lastError.message}
 
             // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
             console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
-            window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+            window.Gaigai.m.save(true, true); // 强制立即保存一份当前状态到 localStorage 历史记录
             // 为当前状态创建一个内存快照，方便回滚
             if (typeof window.Gaigai.saveSnapshot === 'function') {
                 window.Gaigai.saveSnapshot('backup_pre_opt_' + Date.now());
@@ -1610,7 +1634,7 @@ ${lastError.message}
 
             // 3. 保存
             window.lastManualEditTime = Date.now();
-            m.save();
+            m.save(false, true); // 表格优化后立即保存
             if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                 window.Gaigai.updateCurrentSnapshot();
             }
@@ -1961,7 +1985,7 @@ ${lastError.message}
 
                                 // 🛡️ [安全备份] 在清空表格前，强制保存当前状态
                                 console.log('🛡️ [安全备份] 在清空表格前，强制保存当前状态...');
-                                window.Gaigai.m.save(true); // 强制保存一份当前状态到 localStorage 历史记录
+                                window.Gaigai.m.save(true, true); // 强制立即保存一份当前状态到 localStorage 历史记录
                                 // 为当前状态创建一个内存快照，方便回滚
                                 if (typeof window.Gaigai.saveSnapshot === 'function') {
                                     window.Gaigai.saveSnapshot('backup_pre_overwrite_' + Date.now());
@@ -1996,7 +2020,7 @@ ${lastError.message}
 
                         console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 准备保存数据`);
 
-                        m.save();
+                        m.save(false, true); // 批量填表后立即保存
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
@@ -2043,6 +2067,13 @@ ${lastError.message}
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
                 content = window.Gaigai.tools.filterContentByTags(content);
+
+                // ✅ [图片清洗] 移除 Base64 图片，防止请求体过大
+                const base64ImageRegex = /<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi;
+                const base64MarkdownRegex = /!\[[^\]]*\]\(data:image[^)]*\)/gi;
+                content = content.replace(base64ImageRegex, '[图片]');
+                content = content.replace(base64MarkdownRegex, '[图片]');
+
                 if (content && content.trim()) {
                     const isUser = msg.is_user || msg.role === 'user';
                     const role = isUser ? 'user' : 'assistant';
@@ -2219,6 +2250,10 @@ ${lastError.message}
 
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '');
+
+                // ✅ [修复] 先全局执行清洗（提到最前面，确保无论是否有标签都会清洗）
+                aiOutput = aiOutput.replace(/\\n/g, '\n'); // 处理转义换行
+                aiOutput = aiOutput.replace(/^[\s:：]+/, ''); // 去除头部冒号
 
                 // 1. 尝试匹配完整标签
                 const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);

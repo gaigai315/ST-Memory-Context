@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.8.3
+ * @version 1.8.4
  * @author Gaigai Team
  */
 
@@ -179,7 +179,7 @@
                         C.manualSummaryTargetTables = selectedIndices;
                         console.log(`💾 [手动总结-表格选择] 已保存选择: ${selectedIndices.join(', ')}`);
 
-                        window.Gaigai.m.save();
+                        window.Gaigai.m.save(false, true); // 配置更改立即保存
                         console.log(`💾 [手动总结-表格选择] 已持久化到聊天存档`);
 
                         const selectedCount = selectedIndices.length;
@@ -192,6 +192,7 @@
                         overlay.remove();
                         $(document).off('keydown.gg_sum_modal');
                         $(document).off('click.gg_sum_card');
+                        isOpening = false;
                     });
                 }, 100);
             } catch (error) {
@@ -308,8 +309,8 @@
                     <div style="display:none;">${tableCheckboxes}</div>
                 </div>
 
-                <button id="gg_sum_table-snap" style="width:100%; padding:10px; background:#4caf50; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
-                    🚀 开始表格总结
+                <button id="gg_sum_table-snap" style="width:100%; padding:10px; background:${window.Gaigai.isTableSummaryRunning ? '#999' : '#4caf50'}; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px; box-shadow: 0 2px 5px rgba(0,0,0,0.15); opacity:${window.Gaigai.isTableSummaryRunning ? '0.7' : '1'};" ${window.Gaigai.isTableSummaryRunning ? 'disabled' : ''}>
+                    ${window.Gaigai.isTableSummaryRunning ? '⏳ 正在执行... (后台运行中)' : '🚀 开始表格总结'}
                 </button>
             </div>
 
@@ -439,6 +440,17 @@
                     console.log('🔄 [界面恢复] 检测到分批总结正在执行，已恢复按钮状态');
                 }
 
+                // ✅ [UI恢复] 检查表格总结是否正在运行
+                if (window.Gaigai.isTableSummaryRunning) {
+                    const $btn = $('#gg_sum_table-snap');
+                    if ($btn.length > 0) {
+                        $btn.text('⏳ 正在执行... (后台运行中)')
+                            .prop('disabled', true)
+                            .css('opacity', 0.7);
+                    }
+                    console.log('🔄 [界面恢复] 检测到表格总结正在执行');
+                }
+
                 // ✨ 修正进度按钮点击事件
                 $('#gg_save_sum_pointer_btn').on('click', async function() {
                     const API_CONFIG = window.Gaigai.config;
@@ -472,7 +484,7 @@
                     }
 
                     // 3. 保存到角色存档（通过 m.save()）
-                    m.save();
+                    m.save(false, true); // 进度指针修正立即保存
 
                     // 4. 刷新显示
                     if (typeof toastr !== 'undefined') {
@@ -519,9 +531,20 @@
                         ? $('#gg_sum_silent-mode').is(':checked')
                         : C.autoSummarySilent;
 
+                    // 设置全局锁
+                    window.Gaigai.isTableSummaryRunning = true;
                     $btn.text('⏳ AI正在阅读...').prop('disabled', true).css('opacity', 0.7);
-                    await self.callAIForSummary(null, null, 'table', isSilent, false, false, selectedTableIndices);
-                    $btn.text(oldText).prop('disabled', false).css('opacity', 1);
+
+                    try {
+                        await self.callAIForSummary(null, null, 'table', isSilent, false, false, selectedTableIndices);
+                    } finally {
+                        // 释放全局锁
+                        window.Gaigai.isTableSummaryRunning = false;
+                        // 恢复按钮 (如果界面还开着)
+                        if ($('#gg_sum_table-snap').length > 0) {
+                            $btn.text(oldText).prop('disabled', false).css('opacity', 1);
+                        }
+                    }
                 });
 
                 // 聊天记录总结 - 分批模式复选框切换
@@ -845,6 +868,13 @@
                 targetSlice.forEach((msg) => {
                     if (msg.isGaigaiPrompt || msg.isGaigaiData || msg.isPhoneMessage) return;
                     let content = msg.mes || msg.content || '';
+
+                    // ✅ [图片清洗] 移除 Base64 图片，防止请求体过大
+                    const base64ImageRegex = /<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi;
+                    const base64MarkdownRegex = /!\[[^\]]*\]\(data:image[^)]*\)/gi;
+                    content = content.replace(base64ImageRegex, '[图片]');
+                    content = content.replace(base64MarkdownRegex, '[图片]');
+
                     content = cleanMemoryTags(content);
                     content = window.Gaigai.tools.filterContentByTags(content);
 
@@ -973,8 +1003,21 @@
                     cleanSummary = cleaned || raw;
                 }
 
+                // ✅ [增强清洗] 处理转义字符和头部标点
+                // 1. 处理转义换行符 (解决 \n 显示为文本的问题)
+                cleanSummary = cleanSummary.replace(/\\n/g, '\n');
+                // 2. 去除开头的冒号、中文冒号、空格 (解决 ": 浴缸的事" 问题)
+                cleanSummary = cleanSummary.replace(/^[\s:：]+/, '');
+                // 3. 再次去除首尾空格
+                cleanSummary = cleanSummary.trim();
+
                 if (!cleanSummary || cleanSummary.length < 10) {
-                    if (!isSilent) await window.Gaigai.customAlert('总结内容过短或无效', '警告');
+                    if (!isSilent) {
+                        const shouldRetry = await window.Gaigai.customRetryAlert("总结内容过短或为空，AI 可能没看懂指令。", "⚠️ 内容无效");
+                        if (shouldRetry) {
+                            return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
+                        }
+                    }
                     return { success: false, error: '总结内容过短或无效' };
                 }
 
@@ -1035,7 +1078,7 @@
                             });
                         }
 
-                        m.save();
+                        m.save(false, true); // 批量总结完成后立即保存
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
@@ -1054,7 +1097,7 @@
                             });
                         }
 
-                        m.save();
+                        m.save(false, true); // 自动总结完成后立即保存
                         window.Gaigai.updateCurrentSnapshot();
 
                         if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
@@ -1305,7 +1348,7 @@
 
                         console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 保存总结数据`);
 
-                        m.save();
+                        m.save(false, true); // 总结保存后立即同步
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
@@ -1461,7 +1504,7 @@
                             });
 
                             function finish(msg) {
-                                m.save();
+                                m.save(false, true); // 总结去重操作立即保存
                                 $dOverlay.remove();
                                 if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
                                 $('.g-t[data-i="8"]').click();
@@ -1648,7 +1691,7 @@
 
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
 
-                window.Gaigai.m.save();
+                window.Gaigai.m.save(false, true); // 批量聊天总结完成后立即保存
 
                 if ($('#edit-last-sum').length) $('#edit-last-sum').val(API_CONFIG.lastSummaryIndex);
                 if ($('#man-start').length) $('#man-start').val(API_CONFIG.lastSummaryIndex);
@@ -1815,6 +1858,11 @@
                         .trim();
                 }
 
+                // ✅ [增强清洗] 处理转义字符和头部标点
+                rawText = rawText.replace(/\\n/g, '\n'); // 处理转义换行
+                rawText = rawText.replace(/^[\s:：]+/, ''); // 去除头部冒号
+                rawText = rawText.trim();
+
                 // 尝试拆分
                 let segments = [];
                 if (targetIndices.length > 1) {
@@ -1968,7 +2016,7 @@
 
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 追加新页到总结表`);
 
-                        m.save();
+                        m.save(false, true); // 追加总结后立即保存
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
@@ -2089,7 +2137,7 @@
 
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 覆盖 ${targetIndices.length} 页内容`);
 
-                        m.save();
+                        m.save(false, true); // 总结优化后立即保存
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }

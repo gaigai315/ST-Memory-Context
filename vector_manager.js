@@ -401,7 +401,7 @@
                 ctx.chatMetadata.gaigai_activeBooks = bookIds;
 
                 // 保存聊天数据
-                m.save();
+                m.save(false, true); // 向量书绑定立即保存
 
                 console.log(`🔗 [VectorManager] 已绑定 ${bookIds.length} 本书到当前会话`);
             } catch (error) {
@@ -2523,7 +2523,7 @@
                         console.warn('⚠️ [VectorManager] localStorage 保存失败:', e);
                     }
 
-                    if (m) m.save();
+                    if (m) m.save(false, true); // 向量配置保存立即执行
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
                         await window.Gaigai.saveAllSettingsToCloud();
                     }

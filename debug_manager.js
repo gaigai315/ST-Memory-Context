@@ -3,7 +3,7 @@
  *
  * 功能：提供调试和维护工具（清除缓存、重置配置等）
  *
- * @version 1.7.4
+ * @version 1.8.4
  * @author Gaigai Team
  */
 
@@ -435,18 +435,76 @@
                 pop('🔍 最后发送内容 & Token', h, true);
                 setTimeout(() => {
                     $('#gai-probe-search-input').on('input', function () {
-                        const val = $(this).val().toLowerCase().trim();
+                        const val = $(this).val().trim();
+                        const lowerVal = val.toLowerCase();
+
+                        // 高亮样式：暗黄背景+白字 (适配夜间模式)
+                        const highlightStyle = 'background:#b8860b; color:#fff; font-weight:bold; border-radius:2px; box-shadow:0 0 2px rgba(0,0,0,0.5);';
+
+                        let firstMatch = null; // 记录第一个匹配项
+
                         $('.g-probe-item').each(function () {
                             const $details = $(this);
-                            const text = $details.find('.g-probe-content').text().toLowerCase();
+                            const $content = $details.find('.g-probe-content');
+
+                            // 1. 首次搜索时缓存原始纯文本 (避免反复读取DOM导致性能下降)
+                            if ($content.data('raw-text') === undefined) {
+                                $content.data('raw-text', $content.text());
+                            }
+                            const rawText = $content.data('raw-text');
+
+                            // 2. 清空搜索时：恢复默认状态
                             if (!val) {
                                 $details.show().removeAttr('open').css('border', `1px solid ${borderColor}`);
-                            } else if (text.includes(val)) {
+                                $content.html(window.Gaigai.esc(rawText)); // 恢复无高亮的转义文本
+                                return;
+                            }
+
+                            // 3. 匹配逻辑
+                            if (rawText.toLowerCase().includes(lowerVal)) {
                                 $details.show().attr('open', true).css('border', `2px solid ${window.Gaigai.ui.c}`);
+
+                                // 记录第一个匹配项
+                                if (!firstMatch) {
+                                    firstMatch = $details;
+                                }
+
+                                // --- 高亮核心逻辑 ---
+                                // 转义正则特殊字符 (防止搜 ? * 等报错)
+                                const safeVal = val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                // 创建正则 (全局+忽略大小写)
+                                const regex = new RegExp(`(${safeVal})`, 'gi');
+
+                                // 拆分并重组 HTML
+                                const parts = rawText.split(regex);
+                                const highlightedHtml = parts.map(part => {
+                                    if (part.toLowerCase() === lowerVal) {
+                                        // 命中部分：加高亮
+                                        return `<span style="${highlightStyle}">${window.Gaigai.esc(part)}</span>`;
+                                    } else {
+                                        // 普通部分：仅转义
+                                        return window.Gaigai.esc(part);
+                                    }
+                                }).join('');
+
+                                $content.html(highlightedHtml);
+                                // -------------------
+
                             } else {
                                 $details.hide();
                             }
                         });
+
+                        // 🎯 自动滚动到第一个匹配项
+                        if (firstMatch && val) {
+                            const $container = $('#gai-probe-list');
+                            if ($container.length) {
+                                const containerTop = $container.scrollTop();
+                                const itemTop = firstMatch.position().top;
+                                const targetScroll = containerTop + itemTop - 10; // 留10px边距
+                                $container.scrollTop(targetScroll);
+                            }
+                        }
                     });
                 }, 100);
             } else {
@@ -588,7 +646,7 @@
                         else sheet.clear();
                     });
                     if (target.data.summarized) window.Gaigai.summarizedRows = target.data.summarized;
-                    m.save(true);
+                    m.save(true, true); // 数据恢复立即保存
                     shw();
                     $overlay.remove();
                     if (typeof toastr !== 'undefined') toastr.success('✅ 数据已恢复！');

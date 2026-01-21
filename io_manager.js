@@ -23,10 +23,13 @@
          */
         exportData(data, filename, format = 'json') {
             const V = window.Gaigai.V || 'v1.0.0';
+
+            // ✅ FIX: Include summarizedRows in the export payload
             const exportData = {
                 v: V,
                 t: new Date().toISOString(),
-                s: data.map(s => s.json())
+                s: data.map(s => s.json()),
+                summarized: window.Gaigai.summarizedRows || {} // Save hidden state
             };
 
             let content, mimeType, extension;
@@ -66,6 +69,8 @@
          */
         _generateHumanReadableTxt(sheets) {
             let output = '';
+            // Get hidden state safely
+            const summarizedRows = window.Gaigai.summarizedRows || {};
 
             sheets.forEach((sheet, tableIndex) => {
                 const tableName = sheet.n || `表格${tableIndex}`;
@@ -79,7 +84,11 @@
                     const columns = sheet.c || [];
 
                     sheet.r.forEach((row, rowIndex) => {
-                        output += `[${rowIndex}] `;
+                        // Check if hidden
+                        const isHidden = summarizedRows[tableIndex] && summarizedRows[tableIndex].includes(rowIndex);
+                        const statusPrefix = isHidden ? '[已归档] ' : '';
+
+                        output += `[${rowIndex}] ${statusPrefix}`;
 
                         const pairs = [];
                         columns.forEach((colName, colIndex) => {

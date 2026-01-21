@@ -1,6 +1,6 @@
 // ========================================================================
 // 提示词管理器 - Prompt Manager for Memory Table Extension
-// 版本: 1.8.2
+// 版本: 1.8.4
 // ========================================================================
 (function() {
     'use strict';
@@ -15,7 +15,7 @@
 
     // ===== 常量定义 =====
     const PROFILE_KEY = 'gg_profiles';  // 预设数据存储键
-    const PROMPT_VERSION = 3.7;         // 提示词版本号
+    const PROMPT_VERSION = 3.9;         // 提示词版本号
 
     // ========================================================================
     // 默认提示词定义区
@@ -129,7 +129,7 @@ In all Virtual Universes, every event (including Primal Instincts, Dominance Hie
 -主键:[角色A]+[角色B]的组合.
 -规则:两人的关系只有一种状态.如果关系改变(如:朋友→恋人),找到对应的行,覆盖更新[关系描述]列.
 
-【各表格记录规则(同一天多事件系统会自动用分号连接)】
+【各表格记录规则(严格遵守)】
 - 主线剧情(表0):仅记录主角与{{user}}直接产生互动的剧情和影响主线剧情的重要事件或主角/{{user}}的单人主线剧情.格式:HH:mm[地点]角色名行为描述(客观记录事件/互动/结果)
 - 支线追踪(表1):记录NPC独立情节、或{{user}}/{{char}}与NPC的互动.严禁记录主线剧情.状态必须明确(进行中/已完成/已失败).格式:HH:mm[地点]角色名行为描述(客观记录事件/互动/结果)
 - 角色状态:仅记录角色自由或身体的重大状态变化(如死亡、残废、囚禁、失明、失忆及恢复).若角色已在表中,仅在同一行更新.
@@ -209,10 +209,10 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 --------------------------------------
 👉 现在，请停止角色扮演，切换为【绝对客观的历史记录者】身份。
 
-📝 你的任务是：读取上述【结构化数据库】（包含主线、支线、状态、物品等多个表格），将其还原为一份连贯、完整的剧情档案。
+📝 你的任务是：读取上述【结构化数据库】（包含主线、支线、状态、物品等多个表格），将其还原为一份连贯、完整的剧情档案。严禁总结内容中输出#或*符号，直接按照正确输出范例进行输出。
 
 【核心指令：多维数据融合】
-严禁只翻译【主线剧情】表！你必须将所有表格的信息像拼图一样拼回去：
+严禁只翻译单个数据表！你必须将所有表格的信息像拼图一样拼回去：
 1. 🔗 [状态融合]：如果在【角色状态】表中看到"A受伤"，必须找到对应时间点的主线剧情，将其描述为："A在冲突中受伤"。
 2. 📦 [物品追踪]：如果在【物品追踪】表中看到"B获得神器"，必须在剧情中写明："B获得了神器[xxx]"。
 3. 🤝 [关系整合]：如果在【人物关系】表中看到"A与B决裂"，必须在对应事件后注明："导致双方关系破裂"。
@@ -236,7 +236,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
    - ❌ 错误：10:00 A说话。10:05 A吃饭。
    - ✅ 正确：10:00-10:05 [餐厅] A一边说话一边吃饭，期间发生了...
 
-【✅ 正确输出范例】
+【✅ 正确输出范例】：
 
 【主线剧情 2024年03月15日】
 08:00-10:30 [教室] 角色A与B发生争执，导致B[状态:受伤]；A随后被带离现场。
@@ -245,7 +245,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 【支线剧情 2024年03月15日】
 08:15-09:00 [档案室] NPC甲秘密销毁了档案，触发了[世界设定:紧急销毁程序]。
 
-⚡ **立即执行**：
+⚡ 立即执行：
 请综合分析所有表格数据，生成一份高质量的剧情总结。`;
 
     // ----- 3. 聊天历史总结提示词 -----
@@ -442,7 +442,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 -主键:[角色A]+[角色B]的组合.
 -规则:两人的关系只有一种状态.如果关系改变(如:朋友→恋人),找到对应的行,覆盖更新[关系描述]列.
 
-【各表格记录规则(同一天多事件系统会自动用分号连接)】
+【各表格记录规则(严格遵守)】
 - 主线剧情(表0):仅记录主角与{{user}}直接产生互动的剧情和影响主线剧情的重要事件或主角/{{user}}的单人主线剧情.格式:HH:mm[地点]角色名行为描述(客观记录事件/互动/结果)
 - 支线追踪(表1):记录NPC独立情节、或{{user}}/{{char}}与NPC的互动.严禁记录主线剧情.状态必须明确(进行中/已完成/已失败).格式:HH:mm[地点]角色名行为描述(客观记录事件/互动/结果)
 - 角色状态:仅记录角色自由或身体的重大状态变化(如死亡、残废、囚禁、失明、失忆及恢复).若角色已在表中,仅在同一行更新.
@@ -554,6 +554,76 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         }
     }
 
+    // ========================================================================
+    // 表格结构预设管理
+    // ========================================================================
+
+    const TABLE_PRESETS_KEY = 'gg_table_presets';
+
+    /**
+     * 获取所有表格结构预设
+     * @returns {Object} 预设对象 { "预设名": [...columns...], ... }
+     */
+    function getTablePresets() {
+        try {
+            const data = localStorage.getItem(TABLE_PRESETS_KEY);
+            return data ? JSON.parse(data) : {};
+        } catch (e) {
+            console.error('[PromptManager] 读取表格预设失败:', e);
+            return {};
+        }
+    }
+
+    /**
+     * 保存表格结构预设
+     * @param {Object} presets 预设对象
+     */
+    function saveTablePresets(presets) {
+        try {
+            localStorage.setItem(TABLE_PRESETS_KEY, JSON.stringify(presets));
+            console.log('[PromptManager] 表格预设已保存');
+        } catch (e) {
+            console.error('[PromptManager] 保存表格预设失败:', e);
+        }
+    }
+
+    /**
+     * 添加或更新表格结构预设
+     * @param {string} name 预设名称
+     * @param {Array} structure 表格结构数组
+     */
+    function saveTablePreset(name, structure) {
+        const presets = getTablePresets();
+        presets[name] = structure;
+        saveTablePresets(presets);
+    }
+
+    /**
+     * 删除表格结构预设
+     * @param {string} name 预设名称
+     */
+    function deleteTablePreset(name) {
+        const presets = getTablePresets();
+        delete presets[name];
+        saveTablePresets(presets);
+    }
+
+    /**
+     * 获取唯一的预设名称（自动递增）
+     * @param {string} baseName 基础名称
+     * @param {Object} existingPresets 现有预设对象
+     * @returns {string} 唯一名称
+     */
+    function getUniquePresetName(baseName, existingPresets) {
+        let newName = baseName;
+        let counter = 1;
+        while (existingPresets[newName]) {
+            newName = `${baseName} (${counter})`;
+            counter++;
+        }
+        return newName;
+    }
+
     /**
      * 初始化预设系统（数据迁移）
      * 如果是旧版数据，自动转换为新的预设结构
@@ -603,6 +673,24 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
             saveProfilesData(profilesData);
             console.log('[PromptManager] 预设系统初始化完成');
+        }
+
+        // ✅ 初始化表格结构预设
+        const tablePresets = getTablePresets();
+        if (!tablePresets || Object.keys(tablePresets).length === 0) {
+            console.log('[PromptManager] 首次加载，初始化表格结构预设...');
+
+            // ✨ 修复：优先读取用户现有的自定义结构，防止数据丢失
+            let initialStructure = window.Gaigai.DEFAULT_TABLES || [];
+            const userCustomConfig = window.Gaigai.config_obj ? window.Gaigai.config_obj.customTables : null;
+
+            if (userCustomConfig && Array.isArray(userCustomConfig) && userCustomConfig.length > 0) {
+                console.log('[PromptManager] 检测到用户旧版自定义表格结构，已迁移为默认预设');
+                initialStructure = userCustomConfig;
+            }
+
+            saveTablePreset('默认结构', initialStructure);
+            console.log('[PromptManager] 表格结构预设初始化完成');
         }
 
         return profilesData;
@@ -857,6 +945,43 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     data: data.data
                 };
                 saveProfilesData(profilesData);
+
+                // ✅ 处理表格结构（如果存在）
+                if (data.linkedTableStructure && Array.isArray(data.linkedTableStructure)) {
+                    let structureName = data.structureName || data.name + ' 的表格结构';
+                    const existingPresets = getTablePresets();
+
+                    // ✅ 命名冲突处理：使用 while 循环自动递增
+                    let finalName = structureName;
+                    let counter = 1;
+                    while (existingPresets[finalName]) {
+                        finalName = `${structureName} (${counter})`;
+                        counter++;
+                    }
+
+                    // 1. 仅保存到预设库，不应用！
+                    saveTablePreset(finalName, data.linkedTableStructure);
+                    console.log(`📦 [导入] 表格结构已保存到预设库: ${finalName} (未应用)`);
+
+                    // 2. 提示用户（明确告知只是保存了）
+                    let msg = `✅ 预设 "${data.name}" 已导入！\n\n`;
+                    if (finalName !== structureName) {
+                        msg += `📋 附带的表格结构已重命名并保存为：\n【${finalName}】\n\n`;
+                    } else {
+                        msg += `📋 附带的表格结构已保存为：\n【${finalName}】\n\n`;
+                    }
+                    msg += `🛡️ 安全提示：\n新结构已存入【表格结构编辑器】的预设列表中。\n为了保护现有数据，插件**未**自动应用该结构。\n\n如需使用，请前往编辑器手动选择并点击"应用"。`;
+
+                    // ✅ 更新时间戳并同步到云端
+                    localStorage.setItem('gg_timestamp', Date.now().toString());
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                        await window.Gaigai.saveAllSettingsToCloud();
+                    }
+
+                    await window.Gaigai.customAlert(msg, '导入成功 (安全模式)');
+                    showPromptManager(); // 刷新界面
+                    return; // 结束，不再执行下面的通用成功提示
+                }
 
                 // ✅ 更新时间戳并同步到云端
                 localStorage.setItem('gg_timestamp', Date.now().toString());
@@ -1429,11 +1554,39 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             });
 
             // 导入/导出功能
-            // 导出当前预设
+            // 导出当前预设按钮
             $('#gg_export_single_btn').on('click', function() {
+                // 1. ✅ 获取当前会话实际使用的表格结构（而不是全局配置）
+                const m = window.Gaigai.m;
+                const currentTableConfig = m.all().map(s => ({
+                    n: s.n,
+                    c: [...s.c] // 深拷贝列数组
+                }));
+
+                // 2. 识别表格结构的预设名称
+                let structureName = '自定义结构';
+
+                // 检查是否匹配默认结构
+                if (JSON.stringify(window.Gaigai.DEFAULT_TABLES) === JSON.stringify(currentTableConfig)) {
+                    structureName = '默认结构';
+                } else {
+                    // 检查是否匹配已保存的预设
+                    const presets = getTablePresets();
+                    for (const [pName, pStruct] of Object.entries(presets)) {
+                        if (JSON.stringify(pStruct) === JSON.stringify(currentTableConfig)) {
+                            structureName = pName;
+                            break;
+                        }
+                    }
+                }
+
+                console.log(`📤 [导出提示词] 当前表格结构: ${structureName}`);
+
                 const exportData = {
                     name: currentProfile.name,
-                    data: currentData
+                    data: currentData,
+                    linkedTableStructure: currentTableConfig,
+                    structureName: structureName // ✅ 导出表格结构的预设名称
                 };
                 const filename = `preset_${currentProfile.name}_${Date.now()}.json`;
                 downloadJson(exportData, filename);
@@ -1561,7 +1714,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
     }
 
     /**
-     * 显示表格编辑器（动态增删版 - 手机极致适配）
+     * 显示表格编辑器（多预设管理模式 - 重构版）
      */
     function showTableEditor() {
         const C = window.Gaigai.config_obj;
@@ -1573,10 +1726,23 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         const shw = window.Gaigai.shw;
 
         // ✅ Reference the single source of truth from index.js
-        // This ensures consistency with the # prefix logic for Overwrite/Append modes
         const DEFAULT_TABLES = window.Gaigai.DEFAULT_TABLES || [];
 
-        let currentTables = window.Gaigai.m.all().map(s => ({ n: s.n, c: [...s.c] }));
+        // ✅ 当前编辑器中的表格数据（直接从内存中读取当前正在使用的结构）
+        // 从 m.all() 获取当前活跃的表格对象，转换为编辑器需要的格式
+        let currentTables = m.all().map(s => ({
+            n: s.n,
+            c: [...s.c] // 深拷贝列数组
+        }));
+        let currentPresetName = ''; // 当前选中的预设名称
+
+        console.log('📋 [表格编辑器] 已加载当前会话的表格结构:', currentTables.map(t => t.n).join(', '));
+
+        // ✅ 最小化模板：用于新建预设
+        const MINIMAL_TEMPLATE = [
+            { n: '主线剧情', c: ['事件', '地点', '人物'] },
+            { n: '总结表', c: ['#总结'] }
+        ];
 
         const renderEditor = () => {
             let editorRows = '';
@@ -1589,7 +1755,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     ? ''
                     : `<button class="btn-del-table" data-idx="${idx}">🗑️</button>`;
 
-                // ⚠️ 总结表特殊标记（使用固定深灰色，确保在任何模式下都清晰可见）
+                // ⚠️ 总结表特殊标记
                 const indexBadge = isSummaryTable
                     ? `<span style="font-size:10px; background:#555555; color:#fff; padding:0 4px; border-radius:3px; margin-left:4px; height:16px; line-height:16px; display:inline-block; border:none;">总结表</span>`
                     : '';
@@ -1669,6 +1835,13 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     font-size: 12px;
                 }
 
+                /* ✅ 新增：按压回弹效果 */
+                .gg-action-box button:active {
+                    transform: scale(0.96);
+                    filter: brightness(0.9);
+                    transition: transform 0.1s;
+                }
+
                 /* --- 📱 手机端极致适配 (<600px) --- */
                 @media (max-width: 600px) {
                     /* 1. 头部压缩 */
@@ -1708,8 +1881,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     }
 
                     /* 3. 按钮全体瘦身 */
-                    #gg_add_new_table_btn,
-                    #gg_copy_table_definition_btn {
+                    #gg_add_new_table_btn {
                         flex: 0 0 auto !important;
                         padding: 0 !important;
                         height: 32px !important; /* 强制按钮高度 */
@@ -1720,14 +1892,18 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                         display: flex; align-items: center; justify-content: center;
                     }
 
-                    /* 保存结构和恢复默认按钮保持正常大小 */
-                    #gg_save_table_structure_btn,
-                    #gg_reset_table_structure_btn {
+                    /* ✅ 修复：将两个按钮的选择器写在一起，强制统一高度和样式 */
+                    #gg_reset_table_structure_btn,
+                    #gg_copy_table_definition_btn {
+                        flex: 1 !important; /* 强制平分宽度 */
                         height: 40px !important;
                         min-height: 40px !important;
                         font-size: 13px !important;
-                        padding: 8px !important;
+                        padding: 0 !important; /* 避免 padding 撑大 */
                         margin-top: 6px !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
                     }
 
                     /* 复选框区域紧凑 */
@@ -1744,6 +1920,34 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
             </style>
 
             <div class="g-p" style="padding: 10px; padding-bottom: 30px;">
+                <!-- 表格结构预设管理区域 - 重构版 -->
+                <div class="gg-preset-manager" style="background: rgba(33, 150, 243, 0.1); border-radius: 8px; padding: 12px; border: 1px solid rgba(33, 150, 243, 0.3); margin-bottom: 12px;">
+                    <h4 style="margin: 0 0 8px 0; color: ${UI.tc}; font-size: 13px;">📦 表格结构预设管理</h4>
+
+                    <!-- 预设选择 -->
+                    <div style="margin-bottom: 8px;">
+                        <select id="gg_table_preset_select" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); background: rgba(255,255,255,0.9); color: #000; font-size: 13px;">
+                        </select>
+                    </div>
+
+                    <!-- 操作按钮组 -->
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+                        <button id="gg_new_preset_btn" style="flex: 1; min-width: 100px; padding: 8px 12px; background: #28a745; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">
+                            ➕ 新建结构
+                        </button>
+                        <button id="gg_rename_preset_btn" style="padding: 8px 12px; background: #ffc107; color: #000; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                            ✏️ 重命名
+                        </button>
+                        <button id="gg_delete_preset_btn" style="padding: 8px 12px; background: #dc3545; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;">
+                            🗑️ 删除
+                        </button>
+                    </div>
+
+                    <div style="font-size: 10px; opacity: 0.7; line-height: 1.3;">
+                        💡 提示：切换预设会自动加载内容到编辑器。编辑后点击下方"应用"按钮，会自动保存预设并生效到表格。导出提示词时默认导出当前使用的表格结构。
+                    </div>
+                </div>
+
                 <div class="gg-editor-header" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 12px;">
                     <h4 style="margin: 0; color: ${UI.tc};">✏️ 表格结构编辑器</h4>
                     <div style="font-size: 11px; opacity: 0.8; margin-top:5px;">
@@ -1759,25 +1963,26 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     ➕ 插入新表
                 </button>
 
-                <div class="gg-bind-box" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
-                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; padding: 6px; background: rgba(33, 150, 243, 0.1); border-radius: 6px; border: 1px solid rgba(33, 150, 243, 0.2);">
-                        <input type="checkbox" id="gg_bind_to_current_chat" ${m.structureBound ? 'checked' : ''} style="transform: scale(1.1);">
-                        <span style="font-size: 11px; color: ${UI.tc}; font-weight: 600;">
-                            🔒 仅绑定当前角色
-                        </span>
-                    </label>
-
+                <div class="gg-action-box" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <button id="gg_save_table_structure_btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
-                            💾 保存结构
+                        <button id="gg_apply_to_current_chat_btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                            🚀 应用到当前对话
                         </button>
-                        <button id="gg_reset_table_structure_btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
-                            🔄 恢复默认
+                        <button id="gg_set_as_global_btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                            🌐 设为全局默认
                         </button>
                     </div>
-                    <button id="gg_copy_table_definition_btn" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px;">
-                        📋 复制定义
-                    </button>
+                    <div style="font-size: 10px; opacity: 0.7; margin-bottom: 8px; line-height: 1.3;">
+                        💡 <strong>当前对话</strong>：仅对本次聊天生效 | <strong>全局默认</strong>：新对话的默认结构
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="gg_reset_table_structure_btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                            🔄 恢复默认
+                        </button>
+                        <button id="gg_copy_table_definition_btn" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px;">
+                            📋 复制定义
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -1785,6 +1990,56 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         window.Gaigai.pop('✏️ 表格结构编辑器', h, true);
 
         setTimeout(() => {
+            // ========== 辅助函数 ==========
+
+            // 加载预设列表到下拉菜单
+            const loadPresetList = () => {
+                const presets = getTablePresets();
+                const $select = $('#gg_table_preset_select');
+                $select.empty(); // 清空所有选项
+
+                // ✅ 智能选中：自动匹配当前加载的 currentTables 与预设
+                const currentJson = JSON.stringify(currentTables);
+                let matchedPreset = null;
+
+                // ✅ 优先检查是否匹配 DEFAULT_TABLES（确保出厂默认值能正确识别）
+                if (JSON.stringify(window.Gaigai.DEFAULT_TABLES) === currentJson) {
+                    matchedPreset = '默认结构';
+                } else {
+                    // 再检查其他预设
+                    for (const [name, structure] of Object.entries(presets)) {
+                        if (JSON.stringify(structure) === currentJson) {
+                            matchedPreset = name;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchedPreset) {
+                    // 找到匹配的预设，自动选中
+                    currentPresetName = matchedPreset;
+                    console.log(`✅ [表格编辑器] 当前结构匹配预设: ${matchedPreset}`);
+                } else {
+                    // 没有匹配的预设，设置为空值（移动端友好）
+                    currentPresetName = '';
+                    console.log('ℹ️ [表格编辑器] 当前结构为自定义结构（未保存为预设）');
+                }
+
+                // 添加所有预设选项
+                Object.keys(presets).forEach(name => {
+                    const selected = (name === matchedPreset) ? 'selected' : '';
+                    $select.append(`<option value="${window.Gaigai.esc(name)}" ${selected}>${window.Gaigai.esc(name)}</option>`);
+                });
+
+                // 如果没有匹配，设置 select 的 value 为空（不选中任何选项）
+                if (!matchedPreset) {
+                    $select.val('');
+                }
+
+                // 渲染编辑器（使用已经加载的 currentTables）
+                $('#gg_table_editor_list').html(renderEditor());
+            };
+
             // 实时更新 input 数据到 currentTables
             const updateCurrentData = () => {
                 $('.tbl-name').each(function() {
@@ -1797,17 +2052,7 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                 });
             };
 
-            // ➕ 添加新表逻辑
-            $('#gg_add_new_table_btn').on('click', function() {
-                updateCurrentData();
-                const summaryTable = currentTables.pop();
-                currentTables.push({ n: '新表格', c: ['列1', '列2'] });
-                currentTables.push(summaryTable);
-                $('#gg_table_editor_list').html(renderEditor());
-                bindDeleteEvents();
-            });
-
-            // 🗑️ 删除表格逻辑
+            // 删除表格事件绑定
             const bindDeleteEvents = () => {
                 $('.btn-del-table').off('click').on('click', async function() {
                     const idx = $(this).data('idx');
@@ -1820,58 +2065,347 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
                     }
                 });
             };
+
+            // ========== 初始化 ==========
+            loadPresetList();
             bindDeleteEvents();
 
-            // 保存结构按钮
-            $('#gg_save_table_structure_btn').on('click', async function() {
-                updateCurrentData();
-                for (let i = 0; i < currentTables.length; i++) {
-                    if (!currentTables[i].n) { await window.Gaigai.customAlert(`第${i+1}个表格无名！`, '错误'); return; }
-                    if (currentTables[i].c.length === 0) { await window.Gaigai.customAlert(`第${i+1}个表格无列！`, '错误'); return; }
-                }
-                const bindToCurrentChat = $('#gg_bind_to_current_chat').is(':checked');
-                m.structureBound = bindToCurrentChat;
+            // ========== 事件处理器 ==========
 
-                if (bindToCurrentChat) {
-                    m.initTables(currentTables, true);
-                    m.save(true);
-                    window.Gaigai.shw();
-                    await window.Gaigai.customAlert('✅ 已绑定到当前角色！', '成功');
-                } else {
-                    C.customTables = currentTables;
-                    localStorage.setItem('gg_config', JSON.stringify(C));
-                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') await window.Gaigai.saveAllSettingsToCloud();
-                    m.initTables(currentTables);
-                    m.save(true);
-                    window.Gaigai.shw();
-                    await window.Gaigai.customAlert('✅ 已保存为全局默认！', '成功');
+            // 📋 下拉框切换事件 - 自动加载预设
+            $('#gg_table_preset_select').on('change', function() {
+                const selectedName = $(this).val();
+                if (!selectedName) {
+                    currentPresetName = '';
+                    currentTables = [];
+                    $('#gg_table_editor_list').html(renderEditor());
+                    return;
                 }
+
+                const presets = getTablePresets();
+                const structure = presets[selectedName];
+                if (structure) {
+                    currentPresetName = selectedName;
+                    currentTables = JSON.parse(JSON.stringify(structure)); // 深拷贝
+                    $('#gg_table_editor_list').html(renderEditor());
+                    bindDeleteEvents();
+                }
+            });
+
+            // ➕ 新建结构按钮
+            $('#gg_new_preset_btn').on('click', async function() {
+                const newName = await window.Gaigai.PromptManager.customPrompt('请输入新结构名称：', '我的表格结构');
+                if (!newName) return;
+
+                const presets = getTablePresets();
+                if (presets[newName]) {
+                    await window.Gaigai.customAlert(`结构"${newName}"已存在，请使用其他名称`, '错误');
+                    return;
+                }
+
+                // ✅ 使用当前正在编辑的结构作为模板（而不是空白模板）
+                const newStructure = JSON.parse(JSON.stringify(currentTables));
+                saveTablePreset(newName, newStructure);
+
+                // ✅ 同步到云端
+                localStorage.setItem('gg_timestamp', Date.now().toString());
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud();
+                }
+
+                // 刷新列表并选中新预设
+                loadPresetList();
+                $('#gg_table_preset_select').val(newName);
+                currentPresetName = newName;
+                currentTables = JSON.parse(JSON.stringify(newStructure));
+                $('#gg_table_editor_list').html(renderEditor());
+                bindDeleteEvents();
+
+                await window.Gaigai.customAlert(`✅ 结构"${newName}"已创建\n\n已克隆当前结构，可以继续编辑`, '创建成功');
+            });
+
+            // ✏️ 重命名结构按钮
+            $('#gg_rename_preset_btn').on('click', async function() {
+                const selectedName = $('#gg_table_preset_select').val();
+                if (!selectedName) {
+                    await window.Gaigai.customAlert('请先选择一个结构', '提示');
+                    return;
+                }
+                if (selectedName === '默认结构') {
+                    await window.Gaigai.customAlert('"默认结构"不可重命名', '提示');
+                    return;
+                }
+
+                const newName = await window.Gaigai.PromptManager.customPrompt('请输入新名称：', selectedName);
+                if (!newName || newName === selectedName) return;
+
+                const presets = getTablePresets();
+                if (presets[newName]) {
+                    await window.Gaigai.customAlert(`结构"${newName}"已存在，请使用其他名称`, '错误');
+                    return;
+                }
+
+                // 重命名：复制到新名称，删除旧名称
+                presets[newName] = presets[selectedName];
+                delete presets[selectedName];
+                saveTablePresets(presets);
+
+                // ✅ 同步到云端
+                localStorage.setItem('gg_timestamp', Date.now().toString());
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud();
+                }
+
+                loadPresetList();
+                $('#gg_table_preset_select').val(newName);
+                await window.Gaigai.customAlert(`✅ 结构已重命名为"${newName}"`, '成功');
+            });
+
+            // 🗑️ 删除结构按钮
+            $('#gg_delete_preset_btn').on('click', async function() {
+                const selectedName = $('#gg_table_preset_select').val();
+                if (!selectedName) {
+                    await window.Gaigai.customAlert('请先选择一个结构', '提示');
+                    return;
+                }
+                if (selectedName === '默认结构') {
+                    await window.Gaigai.customAlert('"默认结构"不可删除', '提示');
+                    return;
+                }
+                const confirmed = await window.Gaigai.customConfirm(`确定删除结构"${selectedName}"？`, '确认删除');
+                if (!confirmed) return;
+
+                deleteTablePreset(selectedName);
+
+                // ✅ 同步到云端
+                localStorage.setItem('gg_timestamp', Date.now().toString());
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud();
+                }
+
+                // ✅ FIX: Force reset to Default Structure immediately
+                currentTables = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+                currentPresetName = '默认结构'; // Ensure we switch to default context
+
+                // Update UI
+                loadPresetList();
+                $('#gg_table_preset_select').val(currentPresetName); // Visually select default
+                $('#gg_table_editor_list').html(renderEditor());     // Re-render inputs with default data
+                bindDeleteEvents();                                  // Re-bind delete buttons
+
+                await window.Gaigai.customAlert(`✅ 结构"${selectedName}"已删除，编辑器已重置为默认结构`, '成功');
+            });
+
+            // ➕ 添加新表逻辑
+            $('#gg_add_new_table_btn').on('click', function() {
+                updateCurrentData();
+                const summaryTable = currentTables.pop();
+                currentTables.push({ n: '新表格', c: ['列1', '列2'] });
+                currentTables.push(summaryTable);
+                $('#gg_table_editor_list').html(renderEditor());
+                bindDeleteEvents();
+            });
+
+            // 🚀 应用到当前对话按钮
+            $('#gg_apply_to_current_chat_btn').on('click', async function() {
+                const $btn = $(this);
+                const originalText = $btn.text();
+                const originalBg = $btn.css('background');
+
+                updateCurrentData();
+
+                // 验证数据
+                for (let i = 0; i < currentTables.length; i++) {
+                    if (!currentTables[i].n) {
+                        await window.Gaigai.customAlert(`第${i+1}个表格无名！`, '错误');
+                        return;
+                    }
+                    if (currentTables[i].c.length === 0) {
+                        await window.Gaigai.customAlert(`第${i+1}个表格无列！`, '错误');
+                        return;
+                    }
+                }
+
+                // ✅ Auto-save to preset if a preset is selected
+                if (currentPresetName) {
+                    saveTablePreset(currentPresetName, currentTables);
+                    console.log('💾 [Auto-Save] Applied structure saved to preset:', currentPresetName);
+                }
+
+                // 1. 更新运行时状态 (仅应用到当前对话)
+                m.structureBound = true;
+                m.initTables(currentTables, true);
+
+                // 2. 插件层保存 (写入 localStorage)
+                m.save(true, true);
+
+                // 3. 🔥【核心修复】强制同步到酒馆元数据并写入硬盘
+                // 这一步确保即使清理了 localStorage，结构也能从 chat 文件中恢复
+                try {
+                    const ctx = SillyTavern.getContext();
+                    if (ctx && ctx.chatMetadata) {
+                        // 确保 gaigai 对象存在
+                        if (!ctx.chatMetadata.gaigai) ctx.chatMetadata.gaigai = {};
+
+                        // 强制写入结构信息
+                        ctx.chatMetadata.gaigai.structure = currentTables;
+                        ctx.chatMetadata.gaigai.structureBound = true;
+
+                        // 强制酒馆立即保存到文件 (绕过防抖)
+                        if (typeof ctx.saveChat === 'function') {
+                            ctx.saveChat();
+                            console.log('💾 [强力保存] 已强制将表格结构写入酒馆存档文件');
+                        }
+                    }
+                } catch (e) {
+                    console.error('❌ [强力保存失败]', e);
+                }
+
+                // 刷新界面
+                if (typeof window.Gaigai.shw === 'function') {
+                    window.Gaigai.shw();
+                }
+
+                await window.Gaigai.customAlert('✅ 已保存并应用到当前对话！\n\n结构已写入存档文件', '应用成功');
+
+                // ✅ 新增：视觉反馈
+                $btn.text('✅ 已应用到当前').css('background', '#28a745');
+
+                // 2秒后恢复
+                setTimeout(() => {
+                    $btn.text(originalText).css('background', originalBg);
+                }, 2000);
+            });
+
+            // 🌐 设为全局默认按钮
+            $('#gg_set_as_global_btn').on('click', async function() {
+                const $btn = $(this);
+                const originalText = $btn.text();
+                const originalBg = $btn.css('background');
+
+                updateCurrentData();
+
+                // 验证数据
+                for (let i = 0; i < currentTables.length; i++) {
+                    if (!currentTables[i].n) {
+                        await window.Gaigai.customAlert(`第${i+1}个表格无名！`, '错误');
+                        return;
+                    }
+                    if (currentTables[i].c.length === 0) {
+                        await window.Gaigai.customAlert(`第${i+1}个表格无列！`, '错误');
+                        return;
+                    }
+                }
+
+                // ✅ Auto-save to preset if a preset is selected
+                if (currentPresetName) {
+                    saveTablePreset(currentPresetName, currentTables);
+                    console.log('💾 [Auto-Save] Applied structure saved to preset:', currentPresetName);
+                }
+
+                // 应用到全局配置
+                C.customTables = currentTables;
+                localStorage.setItem('gg_config', JSON.stringify(C));
+
+                // 同步到云端
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud();
+                }
+
+                // 重新初始化表格对象（非绑定模式）
+                m.initTables(currentTables);
+
+                // 强制保存数据以更新结构
+                m.save(true, true);
+
+                // 刷新界面
+                if (typeof window.Gaigai.shw === 'function') {
+                    window.Gaigai.shw();
+                }
+
+                await window.Gaigai.customAlert('✅ 已保存并设为全局默认！\n\n预设已更新，新对话将默认使用此结构。', '设置成功');
+
+                // ✅ 新增：视觉反馈
+                $btn.text('✅ 已设为全局').css('background', '#28a745');
+
+                // 2秒后恢复
+                setTimeout(() => {
+                    $btn.text(originalText).css('background', originalBg);
+                }, 2000);
             });
 
             // 恢复默认按钮
             $('#gg_reset_table_structure_btn').on('click', async function() {
-                if (!await window.Gaigai.customConfirm('确定恢复默认？', '确认')) return;
-                C.customTables = null;
-                localStorage.setItem('gg_config', JSON.stringify(C));
-                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') await window.Gaigai.saveAllSettingsToCloud();
-                m.initTables(DEFAULT_TABLES);
-                m.save(true);
-                window.Gaigai.shw();
-                showTableEditor();
-                await window.Gaigai.customAlert('✅ 已恢复默认结构', '成功');
+                if (!await window.Gaigai.customConfirm('确定将编辑器重置为出厂默认结构？\n\n⚠️ 这不会删除你保存的预设，也不会立即应用到表格。\n点击"应用"按钮后才会生效。', '加载默认模板')) return;
+
+                // 1. Reset data to factory defaults
+                currentTables = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+
+                // 2. FORCE select the default preset
+                currentPresetName = '默认结构';
+
+                // 3. Update the actual preset storage to ensure it matches factory defaults
+                saveTablePreset('默认结构', currentTables);
+
+                // 4. Update UI
+                loadPresetList();
+                $('#gg_table_preset_select').val('默认结构'); // Visually select it
+                $('#gg_table_editor_list').html(renderEditor());
+                bindDeleteEvents();
+
+                await window.Gaigai.customAlert('✅ 已恢复为默认结构模板', '加载成功');
             });
 
-            // 复制定义按钮
-            $('#gg_copy_table_definition_btn').on('click', function() {
+            // 📋 复制定义按钮 (Mobile Optimized)
+            $('#gg_copy_table_definition_btn').on('click', async function() {
+                const $btn = $(this);
+                const originalText = $btn.text();
+                const originalBg = $btn.css('background');
+
+                // 1. Construct definition string
                 let definition = '📋 表格定义\n';
-                for (let i = 0; i < currentTables.length; i++) {
-                    const name = $(`.tbl-name[data-index="${i}"]`).val().trim();
+                $('.tbl-name').each(function() {
+                    const i = $(this).data('index');
+                    const name = $(this).val().trim();
                     const cols = $(`.tbl-cols[data-index="${i}"]`).val().trim();
                     definition += `Idx ${i}: ${name} (${cols})\n`;
-                }
-                navigator.clipboard.writeText(definition).then(() => {
-                    window.Gaigai.customAlert('✅ 已复制到剪贴板', '成功');
                 });
+
+                // 2. Robust Copy Logic (Mobile Fallback)
+                try {
+                    await navigator.clipboard.writeText(definition);
+                } catch (err) {
+                    // Fallback for mobile devices that block clipboard API
+                    const textArea = document.createElement("textarea");
+                    textArea.value = definition;
+
+                    // Ensure element is not visible but part of DOM
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    textArea.style.top = "0";
+                    document.body.appendChild(textArea);
+
+                    textArea.focus();
+                    textArea.select();
+
+                    try {
+                        document.execCommand('copy');
+                    } catch (e) {
+                        console.error('Fallback copy failed', e);
+                        await window.Gaigai.customAlert('❌ 复制失败，请手动截图保存', '错误');
+                        return;
+                    } finally {
+                        document.body.removeChild(textArea);
+                    }
+                }
+
+                // 3. Visual Feedback (Green Button)
+                $btn.text('✅ 已复制').css('background', '#28a745');
+
+                // 4. Reset after 2s
+                setTimeout(() => {
+                    $btn.text(originalText).css('background', originalBg);
+                }, 2000);
             });
         }, 100);
     }
@@ -1892,9 +2426,19 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
         initProfiles: initProfiles,
         getCurrentCharacterName: getCurrentCharacterName,
 
+        // 表格结构预设管理
+        getTablePresets: getTablePresets,
+        saveTablePresets: saveTablePresets,
+        saveTablePreset: saveTablePreset,
+        deleteTablePreset: deleteTablePreset,
+        getUniquePresetName: getUniquePresetName,
+
         // UI 函数
         showPromptManager: showPromptManager,
         showTableEditor: showTableEditor,
+
+        // UI 辅助函数
+        customPrompt: customPrompt,         // ✅ 自定义输入弹窗
 
         // 默认提示词常量（供外部引用）
         DEFAULT_TABLE_PROMPT: DEFAULT_TABLE_PROMPT,
