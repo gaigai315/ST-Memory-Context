@@ -1003,14 +1003,6 @@
                     cleanSummary = cleaned || raw;
                 }
 
-                // ✅ [增强清洗] 处理转义字符和头部标点
-                // 1. 处理转义换行符 (解决 \n 显示为文本的问题)
-                cleanSummary = cleanSummary.replace(/\\n/g, '\n');
-                // 2. 去除开头的冒号、中文冒号、空格 (解决 ": 浴缸的事" 问题)
-                cleanSummary = cleanSummary.replace(/^[\s:：]+/, '');
-                // 3. 再次去除首尾空格
-                cleanSummary = cleanSummary.trim();
-
                 if (!cleanSummary || cleanSummary.length < 10) {
                     if (!isSilent) {
                         const shouldRetry = await window.Gaigai.customRetryAlert("总结内容过短或为空，AI 可能没看懂指令。", "⚠️ 内容无效");
@@ -1857,11 +1849,6 @@
                         .replace(/^[\s\S]*?<\/think>/i, '')         // 移除残缺开头
                         .trim();
                 }
-
-                // ✅ [增强清洗] 处理转义字符和头部标点
-                rawText = rawText.replace(/\\n/g, '\n'); // 处理转义换行
-                rawText = rawText.replace(/^[\s:：]+/, ''); // 去除头部冒号
-                rawText = rawText.trim();
 
                 // 尝试拆分
                 let segments = [];

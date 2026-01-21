@@ -1151,10 +1151,6 @@ ${lastError.message}
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '');
 
-                // ✅ [修复] 先全局执行清洗（提到最前面，确保无论是否有标签都会清洗）
-                aiOutput = aiOutput.replace(/\\n/g, '\n'); // 处理转义换行
-                aiOutput = aiOutput.replace(/^[\s:：]+/, ''); // 去除头部冒号
-
                 // 1. 尝试匹配完整标签
                 const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);
                 let finalOutput = '';
@@ -1500,10 +1496,6 @@ ${lastError.message}
                     // 如果清洗后为空，保留原文
                     aiOutput = cleaned || raw;
                 }
-
-                // ✅ [修复] 先全局执行清洗（提到最前面，确保无论是否有标签都会清洗）
-                aiOutput = aiOutput.replace(/\\n/g, '\n'); // 处理转义换行
-                aiOutput = aiOutput.replace(/^[\s:：]+/, ''); // 去除头部冒号
 
                 // ✨ 提取 <Memory> 标签内容（复用 autoRunBackfill 的逻辑）
                 const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);
@@ -2291,10 +2283,6 @@ ${lastError.message}
 
                 const unesc = window.Gaigai.unesc || ((s) => s);
                 let aiOutput = unesc(result.summary || result.text || '');
-
-                // ✅ [修复] 先全局执行清洗（提到最前面，确保无论是否有标签都会清洗）
-                aiOutput = aiOutput.replace(/\\n/g, '\n'); // 处理转义换行
-                aiOutput = aiOutput.replace(/^[\s:：]+/, ''); // 去除头部冒号
 
                 // 1. 尝试匹配完整标签
                 const tagMatch = aiOutput.match(/<Memory>([\s\S]*?)<\/Memory>/i);
