@@ -44,7 +44,7 @@
         filterTagsWhite: '',    // 白名单标签（仅留）
         contextLimit: true,     // ✅ 默认开启隐藏楼层
         contextLimitCount: 30,  // ✅ 隐藏30楼
-        protectGreeting: true,  // ✅ 默认保护第0楼（开场白）
+        protectGreeting: false, // ❌ 默认不保护第0楼（开场白）
         tableInj: true,
         tablePos: 'system',
         tablePosType: 'system_end',
