@@ -1200,6 +1200,27 @@ ${lastError.message}
                             .replace(/<!--/g, '')         // 移除 HTML 注释头
                             .replace(/-->/g, '')          // 移除 HTML 注释尾
                             .trim();
+
+                        // [增强版自动修复] 智能补全截断的 JSON 指令
+                        // 检测到 updateRow/insertRow 但结尾缺少闭合符号
+                        if ((innerText.includes('insertRow') || innerText.includes('updateRow')) && innerText.includes('-->')) {
+                            // 检查是否缺少 "})
+                            if (!/\}\)\s*-->/.test(innerText)) {
+                                console.log('🔧 [自动修复] 检测到指令未闭合，正在尝试智能补全...');
+
+                                // 策略：检查 --> 前面是否已经是引号
+                                // 如果是 (..." -->)，只补 })
+                                // 如果不是 (...文字 -->)，补 "})
+                                if (/["']\s*-->/.test(innerText)) {
+                                    innerText = innerText.replace(/(\s*)-->/, '$1}) -->');
+                                    console.log('✅ [自动修复] 已补全闭合括号: })');
+                                } else {
+                                    innerText = innerText.replace(/(\s*)-->/, '$1"}) -->');
+                                    console.log('✅ [自动修复] 已补全引号和闭合括号: "})');
+                                }
+                            }
+                        }
+
                         const cs = window.Gaigai.tools.prs(innerText);
                         if (cs.length > 0) {
                             // ✅✅✅ [重构模式] 静默模式下的事务性安全清空
@@ -1521,6 +1542,26 @@ ${lastError.message}
                     .replace(/<!--/g, '')         // 移除 HTML 注释头
                     .replace(/-->/g, '')          // 移除 HTML 注释尾
                     .trim();
+
+                // [增强版自动修复] 智能补全截断的 JSON 指令
+                // 检测到 updateRow/insertRow 但结尾缺少闭合符号
+                if ((innerText.includes('insertRow') || innerText.includes('updateRow')) && innerText.includes('-->')) {
+                    // 检查是否缺少 "})
+                    if (!/\}\)\s*-->/.test(innerText)) {
+                        console.log('🔧 [自动修复] 检测到指令未闭合，正在尝试智能补全...');
+
+                        // 策略：检查 --> 前面是否已经是引号
+                        // 如果是 (..." -->)，只补 })
+                        // 如果不是 (...文字 -->)，补 "})
+                        if (/["']\s*-->/.test(innerText)) {
+                            innerText = innerText.replace(/(\s*)-->/, '$1}) -->');
+                            console.log('✅ [自动修复] 已补全闭合括号: })');
+                        } else {
+                            innerText = innerText.replace(/(\s*)-->/, '$1"}) -->');
+                            console.log('✅ [自动修复] 已补全引号和闭合括号: "})');
+                        }
+                    }
+                }
 
                 const cs = window.Gaigai.tools.prs(innerText);
 
