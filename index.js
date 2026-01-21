@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.8.5
+// 记忆表格 v1.8.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.8.5 启动');
+    console.log('🚀 记忆表格 v1.8.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.8.5';
+    const V = 'v1.8.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2592,7 +2592,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const commentEnd = new RegExp('--\\x3e', 'g');
         let cleanTx = tx.replace(commentStart, ' ').replace(commentEnd, ' ');
         // 压缩空白，规范化函数名 (针对脚本格式)
-        cleanTx = cleanTx.replace(/\s+/g, ' ').replace(/Row\s+\(/g, 'Row(').trim();
+        // ✅ 先将字面量换行符 \\n 替换为空格，防止 JSON 解析时被误处理
+        cleanTx = cleanTx.replace(/\\n/g, ' ').replace(/\s+/g, ' ').replace(/Row\s+\(/g, 'Row(').trim();
 
         const cs = [];
 
