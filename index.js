@@ -10665,14 +10665,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 1. 创建容器 (模仿酒馆的 drawer 结构，这样间距和高度会自动对齐)
         const $wrapper = $('<div>', {
             id: 'gaigai-wrapper',
-            class: 'drawer' // 关键：使用 drawer 类名，骗过 CSS 让它认为这是原生按钮
+            class: 'drawer' // 关键：使用 drawer 类名，让 CSS 自动继承主题样式
         });
 
-        // 2. 创建对齐容器
-        const $toggle = $('<div>', { class: 'drawer-toggle' });
-
-        // 3. 创建图标 (模仿原生图标样式)
-        // ✅ 注入状态点样式（增强版：添加脉动动画）
+        // 2. 注入状态点样式（增强版：添加脉动动画）
         if (!$('#gg-status-dot-style').length) {
             $('<style id="gg-status-dot-style">').text(`
                 .gg-status-dot {
@@ -10716,17 +10712,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let pressTimer;
         let isLongPress = false;
 
-        // 创建图标 (完全模仿原生按钮结构)
+        // 3. 创建图标 (完全模仿原生按钮结构，自动继承主题样式)
         const $icon = $('<div>', {
             id: 'gaigai-top-btn',
-            // 复制原生类名 + 我们的图标类
             class: 'drawer-icon fa-solid fa-table fa-fw interactable',
             title: '记忆表格 (点击打开 | 长按开关)',
             tabindex: '0',
-            css: {
-                position: 'relative',
-                color: 'var(--SmartThemeBodyColor)' // ✅ [新增] 强制跟随酒馆主题色
-            }
+            css: { position: 'relative' } // 仅保留 relative 用于定位状态点
         });
 
         // 状态小圆点（增强版：添加动态 class）
@@ -10829,9 +10821,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             return false;
         });
 
-        // 4. 组装
-        $toggle.append($icon);
-        $wrapper.append($toggle);
+        // 4. 组装 (直接将图标添加到容器，无中间层)
+        $wrapper.append($icon);
 
         // 5. 插入到扩展设置按钮后面，如果找不到则追加到工具栏末尾
         if ($extBtn.length > 0) {
