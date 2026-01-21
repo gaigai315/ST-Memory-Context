@@ -10723,7 +10723,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             class: 'drawer-icon fa-solid fa-table fa-fw interactable',
             title: '记忆表格 (点击打开 | 长按开关)',
             tabindex: '0',
-            css: { position: 'relative' } // 仅用于状态点定位
+            css: {
+                position: 'relative',
+                color: 'var(--SmartThemeBodyColor)' // ✅ [新增] 强制跟随酒馆主题色
+            }
         });
 
         // 状态小圆点（增强版：添加动态 class）
