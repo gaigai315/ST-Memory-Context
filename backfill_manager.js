@@ -896,53 +896,9 @@ ${lastError.message}
             const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
             const filterContentByTags = window.Gaigai.tools.filterContentByTags;
 
-            // 构建上下文和System信息
+            // 构建上下文 (精简版：只保留名字，防止敏感设定触发空回)
             let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
-            if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
-                const char = ctx.characters[ctx.characterId];
-                // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                if (char.description) {
-                    const cleanedDesc = window.Gaigai.tools.filterContentByTags(char.description);
-                    if (cleanedDesc) contextBlock += `\n[人物简介]\n${cleanedDesc}\n`;
-                }
-                if (char.personality) {
-                    const cleanedPers = window.Gaigai.tools.filterContentByTags(char.personality);
-                    if (cleanedPers) contextBlock += `\n[性格/设定]\n${cleanedPers}\n`;
-                }
-                if (char.scenario) {
-                    const cleanedScen = window.Gaigai.tools.filterContentByTags(char.scenario);
-                    if (cleanedScen) contextBlock += `\n[场景/背景]\n${cleanedScen}\n`;
-                }
-            }
-
-            // 世界书
-            let scanTextForWorldInfo = '';
-            chatSlice.forEach(msg => scanTextForWorldInfo += (msg.mes || msg.content || '') + '\n');
-
-            let worldInfoList = [];
-            try {
-                if (ctx.worldInfo && Array.isArray(ctx.worldInfo)) {
-                    worldInfoList = ctx.worldInfo;
-                } else if (window.world_info && Array.isArray(window.world_info)) {
-                    worldInfoList = window.world_info;
-                }
-            } catch (e) { console.error('WorldInfo Error in Backfill:', e); }
-
-            let triggeredLore = [];
-            if (Array.isArray(worldInfoList) && worldInfoList.length > 0 && scanTextForWorldInfo) {
-                const lowerText = scanTextForWorldInfo.toLowerCase();
-                worldInfoList.forEach(entry => {
-                    if (!entry || typeof entry !== 'object') return;
-                    const keysStr = entry.keys || entry.key || '';
-                    if (!keysStr) return;
-                    const keys = String(keysStr).split(',').map(k => k.trim().toLowerCase()).filter(k => k);
-                    if (keys.some(k => lowerText.includes(k))) {
-                        const content = entry.content || entry.entry || '';
-                        if (content) triggeredLore.push(`[相关设定: ${keys[0]}] ${content}`);
-                    }
-                });
-            }
-            if (triggeredLore.length > 0) contextBlock += `\n【相关世界设定】\n${triggeredLore.join('\n')}`;
+            // (已移除人物简介、性格、场景和世界书，仅基于聊天记录分析)
 
             // ⚠️ contextBlock 将在 backfillInstruction 之后推送（见下方）
 
@@ -1366,30 +1322,16 @@ ${lastError.message}
                 )
             });
 
-            // 2️⃣ 背景资料（可选）
-            let contextText = '';
+            // 2️⃣ 背景资料 (精简版)
             let userName = ctx.name1 || 'User';
             let charName = 'Character';
             if (ctx.characterId !== undefined && ctx.characters && ctx.characters[ctx.characterId]) {
                 charName = ctx.characters[ctx.characterId].name || ctx.name2 || 'Character';
-                const char = ctx.characters[ctx.characterId];
-                // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                const filterContentByTags = window.Gaigai.tools.filterContentByTags;
-                if (char.description) {
-                    const cleanedDesc = filterContentByTags(char.description);
-                    if (cleanedDesc) contextText += `[人物简介]\n${cleanedDesc}\n`;
-                }
-                if (char.personality) {
-                    const cleanedPers = filterContentByTags(char.personality);
-                    if (cleanedPers) contextText += `[性格/设定]\n${cleanedPers}\n`;
-                }
             }
-            if (contextText) {
-                messages.push({
-                    role: 'system',
-                    content: `【背景资料】\n角色: ${charName}\n用户: ${userName}\n\n${contextText}`
-                });
-            }
+            messages.push({
+                role: 'system',
+                content: `【背景资料】\n角色: ${charName}\n用户: ${userName}`
+            });
 
             // 3️⃣ 核心指令（优化规则 - 调用批量填表提示词）
             // ✅ 优先使用用户自定义的批量填表提示词，如果没有则使用默认值
@@ -2115,53 +2057,8 @@ ${lastError.message}
                 }
             });
 
-            // 插入上下文
+            // 插入上下文 (精简版)
             let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
-            if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
-                const char = ctx.characters[ctx.characterId];
-                // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                if (char.description) {
-                    const cleanedDesc = window.Gaigai.tools.filterContentByTags(char.description);
-                    if (cleanedDesc) contextBlock += `\n[人物简介]\n${cleanedDesc}\n`;
-                }
-                if (char.personality) {
-                    const cleanedPers = window.Gaigai.tools.filterContentByTags(char.personality);
-                    if (cleanedPers) contextBlock += `\n[性格/设定]\n${cleanedPers}\n`;
-                }
-                if (char.scenario) {
-                    const cleanedScen = window.Gaigai.tools.filterContentByTags(char.scenario);
-                    if (cleanedScen) contextBlock += `\n[场景/背景]\n${cleanedScen}\n`;
-                }
-            }
-
-            // 世界书
-            let scanTextForWorldInfo = '';
-            chatSlice.forEach(msg => scanTextForWorldInfo += (msg.mes || msg.content || '') + '\n');
-
-            let worldInfoList = [];
-            try {
-                if (ctx.worldInfo && Array.isArray(ctx.worldInfo)) {
-                    worldInfoList = ctx.worldInfo;
-                } else if (window.world_info && Array.isArray(window.world_info)) {
-                    worldInfoList = window.world_info;
-                }
-            } catch (e) { console.error('WorldInfo Error in Backfill:', e); }
-
-            let triggeredLore = [];
-            if (Array.isArray(worldInfoList) && worldInfoList.length > 0 && scanTextForWorldInfo) {
-                const lowerText = scanTextForWorldInfo.toLowerCase();
-                worldInfoList.forEach(entry => {
-                    if (!entry || typeof entry !== 'object') return;
-                    const keysStr = entry.keys || entry.key || '';
-                    if (!keysStr) return;
-                    const keys = String(keysStr).split(',').map(k => k.trim().toLowerCase()).filter(k => k);
-                    if (keys.some(k => lowerText.includes(k))) {
-                        const content = entry.content || entry.entry || '';
-                        if (content) triggeredLore.push(`[相关设定: ${keys[0]}] ${content}`);
-                    }
-                });
-            }
-            if (triggeredLore.length > 0) contextBlock += `\n【相关世界设定】\n${triggeredLore.join('\n')}`;
 
             messages[0].content += '\n\n' + contextBlock;
 

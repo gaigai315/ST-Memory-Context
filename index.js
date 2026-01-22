@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.8.6
+// 记忆表格 v1.8.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.8.6 启动');
+    console.log('🚀 记忆表格 v1.8.7 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.8.6';
+    const V = 'v1.8.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -6678,7 +6678,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         // 🛑 [强力防空回] 如果内容为空，且没有思考过程，直接抛出错误进入 catch
                         if (!fullText || !fullText.trim()) {
                             if (!fullReasoning || !fullReasoning.trim()) {
-                                throw new Error("API 连接成功但返回内容为空。\n可能原因：\n1. 模型被安全过滤(Safety Filter)\n2. 账户余额不足\n3. 上游服务未返回标准格式");
+                                throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
                             }
                         }
 
@@ -6691,7 +6691,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
 
                     const errText = await proxyResponse.text();
-                    throw new Error(`酒馆后端报错: ${errText.substring(0, 100)}`);
+                    throw new Error(`酒馆后端报错: ${errText.substring(0, 1000)}`);
                 }
 
                 // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路径
@@ -6756,7 +6756,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         // 🛑 [强力防空回] 如果内容为空，且没有思考过程，直接抛出错误进入 catch
                         if (!fullText || !fullText.trim()) {
                             if (!fullReasoning || !fullReasoning.trim()) {
-                                throw new Error("API 连接成功但返回内容为空。\n可能原因：\n1. 模型被安全过滤(Safety Filter)\n2. 账户余额不足\n3. 上游服务未返回标准格式");
+                                throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
                             }
                         }
 
@@ -6769,7 +6769,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
 
                     const errText = await proxyResponse.text();
-                    throw new Error(`反代修复模式报错: ${errText}`);
+                    throw new Error(`反代修复模式报错: ${errText.substring(0, 1000)}`);
 
                 } else {
 
@@ -6880,7 +6880,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         // 🛑 [强力防空回] 如果内容为空，且没有思考过程，直接抛出错误进入 catch
                         if (!fullText || !fullText.trim()) {
                             if (!fullReasoning || !fullReasoning.trim()) {
-                                throw new Error("API 连接成功但返回内容为空。\n可能原因：\n1. 模型被安全过滤(Safety Filter)\n2. 账户余额不足\n3. 上游服务未返回标准格式");
+                                throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
                             }
                         }
 
@@ -6934,9 +6934,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     else statusTip = ' (未知网络错误)';
 
                     // 注意引号是反引号 ` `
-                    console.warn(`⚠️ [后端代理失败] ${s}${statusTip}: ${errText.substring(0, 200)}`);
+                    console.warn(`⚠️ [后端代理失败] ${s}${statusTip}: ${errText.substring(0, 1000)}`);
 
-                    throw new Error(`酒馆后端请求失败 ${s}${statusTip}: ${errText.substring(0, 100)}`);
+                    throw new Error(`酒馆后端请求失败 ${s}${statusTip}: ${errText.substring(0, 1000)}`);
 
                 }
 
@@ -7091,7 +7091,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     else if (directResponse.status === 429) statusTip = ' (请求太快被限流)';
 
                     // 👇 这一行也必须用反引号 ` `，不要改动！
-                    throw new Error(`直连请求失败 ${directResponse.status}${statusTip}: ${errText.substring(0, 200)}`);
+                    throw new Error(`直连请求失败 ${directResponse.status}${statusTip}: ${errText.substring(0, 1000)}`);
                 }
 
                 // ✅ [伪流式响应处理] 实现健壮的 SSE 流式解析
@@ -10671,42 +10671,56 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             class: 'drawer' // 关键：使用 drawer 类名，让 CSS 自动继承主题样式
         });
 
-        // 2. 注入状态点样式（增强版：添加脉动动画）
+        // 2. 注入图标样式（流光扫过动画）
         if (!$('#gg-status-dot-style').length) {
             $('<style id="gg-status-dot-style">').text(`
-                .gg-status-dot {
+                /* 基础设置：确保图标与酒馆原生图标对齐 */
+                #gaigai-top-btn {
+                    position: relative !important;
+                    overflow: hidden !important; /* 关键：用于限制流光溢出 */
+                    transition: all 0.3s ease;
+                    /* 修复高度不一致的核心：强制 Flex 居中，消除基线对齐导致的偏移 */
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                }
+
+                /* 定义流光动画：左上 -> 右下 */
+                @keyframes gg-shine-sweep {
+                    0% { left: -100%; top: -100%; }
+                    20% { left: 100%; top: 100%; }
+                    100% { left: 100%; top: 100%; }
+                }
+
+                /* 开启状态：使用白色流光 */
+                #gaigai-top-btn.active::after {
+                    content: "";
                     position: absolute;
-                    bottom: 2px;
-                    right: 2px;
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 50%;
-                    border: 1.5px solid var(--SmartThemeBodyColor, #202123);
-                    z-index: 10;
-                    transition: background-color 0.3s, transform 0.2s;
+                    width: 150%;
+                    height: 200%;
+                    /* 使用白色渐变，两头透明，中间高亮 */
+                    background: linear-gradient(
+                        135deg,
+                        transparent 20%,
+                        rgba(255, 255, 255, 0.9) 50%,
+                        transparent 80%
+                    );
+                    opacity: 0.8;
+                    transform: rotate(45deg);
+                    top: -100%;
+                    left: -100%;
+                    animation: gg-shine-sweep 5s infinite linear; /* 5秒一次，更慢更明显 */
                     pointer-events: none;
-                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+                    z-index: 10;
+                    filter: blur(3px); /* 减少模糊，让流光更清晰 */
                 }
 
-                /* ✨ 启用状态：脉动动画 */
-                .gg-status-dot.active {
-                    animation: gg-pulse 2s ease-in-out infinite;
-                }
-
-                @keyframes gg-pulse {
-                    0%, 100% {
-                        opacity: 1;
-                        transform: scale(1);
-                    }
-                    50% {
-                        opacity: 0.7;
-                        transform: scale(1.15);
-                    }
-                }
-
-                /* 休眠状态：无动画 */
-                .gg-status-dot.inactive {
-                    opacity: 0.6;
+                /* 开启状态：图标本体微亮，文字带白色光晕 */
+                #gaigai-top-btn.active {
+                    filter: brightness(1.3);
+                    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
                 }
             `).appendTo('head');
         }
@@ -10715,23 +10729,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let pressTimer;
         let isLongPress = false;
 
-        // 3. 创建图标 (完全模仿原生按钮结构，自动继承主题样式)
+        // 3. 创建图标
         const $icon = $('<div>', {
             id: 'gaigai-top-btn',
-            class: 'drawer-icon fa-solid fa-table fa-fw interactable',
+            class: `drawer-icon fa-solid fa-table fa-fw interactable${C.masterSwitch ? ' active' : ''}`,
             title: '记忆表格 (点击打开 | 长按开关)',
-            tabindex: '0',
-            css: { position: 'relative' } // 仅保留 relative 用于定位状态点
+            tabindex: '0'
         });
 
-        // 状态小圆点（增强版：添加动态 class）
-        const $statusDot = $('<span>', {
-            class: `gg-status-dot ${C.masterSwitch ? 'active' : 'inactive'}`,
-            css: { background: C.masterSwitch ? '#28a745' : '#888' } // 初始化颜色
+        // 创建 drawer-toggle 包装层（复刻酒馆标准结构）
+        const $toggle = $('<div>', {
+            class: 'drawer-toggle'
         });
-
-        // 组装
-        $icon.append($statusDot);
 
         $icon.on('mousedown touchstart', function(e) {
             // 1. 按下时：重置标记，启动计时器
@@ -10751,11 +10760,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (typeof saveAllSettingsToCloud === 'function') saveAllSettingsToCloud();
                 console.log(`✅ [长按开关] 配置已保存，masterSwitch = ${C.masterSwitch}`);
 
-                // 更新状态点颜色和动画
-                $statusDot
-                    .css('background', C.masterSwitch ? '#28a745' : '#888')
-                    .removeClass('active inactive')
-                    .addClass(C.masterSwitch ? 'active' : 'inactive');
+                // 更新状态视觉反馈
+                if (C.masterSwitch) {
+                    $('#gaigai-top-btn').addClass('active');
+                } else {
+                    $('#gaigai-top-btn').removeClass('active');
+                }
 
                 // 震动反馈 (手机端)
                 if (navigator.vibrate) navigator.vibrate(50);
@@ -10824,8 +10834,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             return false;
         });
 
-        // 4. 组装 (直接将图标添加到容器，无中间层)
-        $wrapper.append($icon);
+        // 4. 组装 (复刻酒馆标准结构)
+        $toggle.append($icon);        // 图标放入 toggle 层
+        $wrapper.append($toggle);     // toggle 层放入容器
 
         // 5. 插入到扩展设置按钮后面，如果找不到则追加到工具栏末尾
         if ($extBtn.length > 0) {
@@ -11426,6 +11437,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>新增：</strong>新增隐藏楼层保留第0层内容</li>
                         <li><strong>优化：</strong>优化实时填表保存逻辑，避免表格内容丢失</li>
                         <li><strong>修复：</strong>修复选择表格总结后弹窗锁死的bug</li>
+                        <li><strong>修复：</strong>修复记忆表格图标不适配部分主题</li>
                     </ul>
                 </div>
 
