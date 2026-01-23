@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.8.7
+// 记忆表格 v1.8.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.8.7 启动');
+    console.log('🚀 记忆表格 v1.8.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.8.7';
+    const V = 'v1.8.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -10499,12 +10499,29 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         console.log(`↺ [opmt] 成功回档: 表格已恢复至基准 [${baseKey}]`);
                     }
                 } else if (baseIndex === -1 && snapshotHistory['-1']) {
-                    // ✅ [安全补丁] 同样检查楼层高度
-                    if (targetIndex > 5) {
-                        console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高但只有创世快照，禁止回滚，保持当前数据。`);
+                    // 🛡️ [终极防御] 检查当前内存中是否已有数据
+                    // 如果当前详情表有数据(行数>0)，但系统试图回滚到空快照(-1)，这绝对是误判！
+                    // 此时必须信任当前内存数据，将其反向同步给快照，而不是清空数据。
+                    const hasData = m.s.slice(0, -1).some(s => s.r && s.r.length > 0);
+
+                    if (hasData) {
+                        console.warn(`🛑 [opmt] 致命拦截：检测到试图将有效数据回滚到空快照(-1)！`);
+                        console.warn(`🔧 [opmt] 自动修正：将当前内存数据强制确立为新的基准快照(-1)。`);
+
+                        // 修正快照 -1
+                        snapshotHistory['-1'] = {
+                            data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))),
+                            summarized: JSON.parse(JSON.stringify(summarizedRows)),
+                            timestamp: Date.now()
+                        };
                     } else {
-                        restoreSnapshot('-1', true); // <--- 这里也加了 true
-                        console.log(`↺ [opmt] 成功回档: 表格已恢复至创世状态`);
+                        // 只有当当前真的是空的，或者楼层极低时，才允许回滚到创世快照
+                        if (targetIndex > 5) {
+                            console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高但只有创世快照，禁止回滚，保持当前数据。`);
+                        } else {
+                            restoreSnapshot('-1', true);
+                            console.log(`↺ [opmt] 成功回档: 表格已恢复至创世状态`);
+                        }
                     }
                 } else {
                     // ⚠️ 如果实在找不到存档，为了防止脏数据污染 Prompt，这里选择不做操作(保持现状)或清空
@@ -10674,55 +10691,56 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 2. 注入图标样式（流光扫过动画）
         if (!$('#gg-status-dot-style').length) {
             $('<style id="gg-status-dot-style">').text(`
-                /* 基础设置：确保图标与酒馆原生图标对齐 */
-                #gaigai-top-btn {
-                    position: relative !important;
-                    overflow: hidden !important; /* 关键：用于限制流光溢出 */
-                    transition: all 0.3s ease;
-                    /* 修复高度不一致的核心：强制 Flex 居中，消除基线对齐导致的偏移 */
-                    display: flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                    width: 100% !important;
-                    height: 100% !important;
-                }
+    /* 基础设置：完全融入酒馆顶栏 */
+    #gaigai-top-btn {
+        position: relative !important;
+        overflow: hidden !important;
+        transition: opacity 0.3s ease;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100% !important;
+        height: 100% !important;
+    }
 
-                /* 定义流光动画：左上 -> 右下 */
-                @keyframes gg-shine-sweep {
-                    0% { left: -100%; top: -100%; }
-                    20% { left: 100%; top: 100%; }
-                    100% { left: 100%; top: 100%; }
-                }
+    #gaigai-top-btn:hover,
+    #gaigai-top-btn.gg-enabled {
+        filter: none !important;
+        text-shadow: none !important;
+    }
 
-                /* 开启状态：使用白色流光 */
-                #gaigai-top-btn.active::after {
-                    content: "";
-                    position: absolute;
-                    width: 150%;
-                    height: 200%;
-                    /* 使用白色渐变，两头透明，中间高亮 */
-                    background: linear-gradient(
-                        135deg,
-                        transparent 20%,
-                        rgba(255, 255, 255, 0.9) 50%,
-                        transparent 80%
-                    );
-                    opacity: 0.8;
-                    transform: rotate(45deg);
-                    top: -100%;
-                    left: -100%;
-                    animation: gg-shine-sweep 5s infinite linear; /* 5秒一次，更慢更明显 */
-                    pointer-events: none;
-                    z-index: 10;
-                    filter: blur(3px); /* 减少模糊，让流光更清晰 */
-                }
+    /* 定义流光动画：紧凑的行程，实现无缝循环 */
+    @keyframes gg-shine-sweep {
+        0% { left: -80%; }
+        100% { left: 120%; }
+    }
 
-                /* 开启状态：图标本体微亮，文字带白色光晕 */
-                #gaigai-top-btn.active {
-                    filter: brightness(1.3);
-                    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-                }
-            `).appendTo('head');
+    /* 开启状态：丝滑匀速流光 */
+    #gaigai-top-btn.gg-enabled::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -80%;
+        width: 60%;
+        height: 100%;
+
+        /* 柔和的白光渐变 */
+        background: linear-gradient(
+            to right,
+            transparent 0%,
+            rgba(255, 255, 255, 0.3) 20%,
+            rgba(255, 255, 255, 0.75) 50%,
+            rgba(255, 255, 255, 0.3) 80%,
+            transparent 100%
+        );
+
+        transform: skewX(-25deg);
+        /* 关键：3.5s 慢速 + linear 匀速 = 丝滑不间断 */
+        animation: gg-shine-sweep 3.5s infinite linear;
+        pointer-events: none;
+        z-index: 10;
+    }
+`).appendTo('head');
         }
 
         // 长按计时器和标志
@@ -10732,7 +10750,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 3. 创建图标
         const $icon = $('<div>', {
             id: 'gaigai-top-btn',
-            class: `drawer-icon fa-solid fa-table fa-fw interactable${C.masterSwitch ? ' active' : ''}`,
+            class: `drawer-icon fa-solid fa-table fa-fw interactable closedIcon${C.masterSwitch ? ' gg-enabled' : ''}`,
             title: '记忆表格 (点击打开 | 长按开关)',
             tabindex: '0'
         });
@@ -10762,9 +10780,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 // 更新状态视觉反馈
                 if (C.masterSwitch) {
-                    $('#gaigai-top-btn').addClass('active');
+                    $('#gaigai-top-btn').addClass('gg-enabled');
                 } else {
-                    $('#gaigai-top-btn').removeClass('active');
+                    $('#gaigai-top-btn').removeClass('gg-enabled');
                 }
 
                 // 震动反馈 (手机端)
@@ -11433,11 +11451,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
                         <li><strong>新增：</strong>新增记忆插件总开关，长按图标即可一键开关</li>
-                        <li><strong>新增：</strong>新增表格结构编辑方案，导出提示词时默认将当前使用的表格结构关联导出</li>
-                        <li><strong>新增：</strong>新增隐藏楼层保留第0层内容</li>
-                        <li><strong>优化：</strong>优化实时填表保存逻辑，避免表格内容丢失</li>
-                        <li><strong>修复：</strong>修复选择表格总结后弹窗锁死的bug</li>
-                        <li><strong>修复：</strong>修复记忆表格图标不适配部分主题</li>
+                        <li><strong>优化：</strong>优化保存逻辑，避免表格内容丢失</li>
+                        <li><strong>修复：</strong>优化记忆表格图标</li>
                     </ul>
                 </div>
 
