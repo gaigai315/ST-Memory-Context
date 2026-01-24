@@ -26,16 +26,14 @@
 
 .g-w {
     position: relative !important;
-    
-    background: #fcfcfc !important;
 
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    
+    /* 移除固定背景色和 backdrop-filter，让 thm() 函数动态控制 */
+    /* background 和 backdrop-filter 由 index.js 的 thm() 函数注入 */
+
     border-radius: 12px !important;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
-    border: 1px solid rgba(255, 255, 255, 0.6) !important; /* 边框也加白一点 */
-    
+    border: 1px solid rgba(255, 255, 255, 0.6) !important;
+
     /* ...保留下面的宽高设置... */
     width: 90vw !important;
     height: 80vh !important;
@@ -43,7 +41,7 @@
     max-height: calc(100vh - 40px) !important;
     min-width: 280px !important;
     min-height: 250px !important;
-    
+
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -136,17 +134,23 @@
     min-height: 0;
 }
 
-/* ========== ✅ 标签栏（优化手机端） ========== */
+/* ========== ✅ 标签栏（工具栏下方） ========== */
 .g-ts {
     display: flex;
     gap: 4px;
-    border-bottom: 2px solid rgba(0, 0, 0, 0.1);
-    margin-bottom: 8px;
+    border-top: 2px solid rgba(0, 0, 0, 0.1); /* 顶部边框分隔 */
+    border-bottom: 2px solid rgba(0, 0, 0, 0.1); /* 底部边框分隔 */
+    margin-top: 0; /* 紧贴工具栏 */
+    margin-bottom: 8px; /* 与表格保持间距 */
+    padding-top: 8px; /* 添加顶部内边距 */
+    padding-bottom: 8px; /* 添加底部内边距 */
     flex-wrap: wrap;
     flex-shrink: 0;
     max-height: 80px;
     overflow-y: auto;
-    padding-bottom: 2px;
+    background: rgba(255, 255, 255, 0.3); /* 添加背景色 */
+    padding-left: 4px;
+    padding-right: 4px;
 }
 
 .g-ts::-webkit-scrollbar {
@@ -163,7 +167,7 @@
     border: none;
     background: rgba(0, 0, 0, 0.05);
     cursor: pointer;
-    border-radius: 5px 5px 0 0;
+    border-radius: 5px; /* 改为全圆角 */
     font-size: 12px;
     color: var(--g-tc); /* 跟随主题字体颜色 */
     opacity: 0.7; /* 未激活的标签稍微淡一点 */
@@ -187,10 +191,84 @@
 /* ========== ✅ 工具栏（优化手机端） ========== */
 .g-tl {
     display: flex;
-    gap: 6px;
+    flex-direction: column;
+    gap: 8px;
     margin-bottom: 8px;
-    flex-wrap: wrap;
     flex-shrink: 0;
+}
+
+/* 顶部搜索栏和折叠按钮 */
+.g-tl-header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+}
+
+/* 搜索输入框 */
+.g-search-input {
+    flex: 1;
+    min-width: 120px;
+    padding: 8px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 20px;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--g-tc);
+    transition: all 0.2s;
+}
+
+.g-search-input:focus {
+    outline: none;
+    border-color: var(--g-c);
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.g-search-input::placeholder {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+/* 折叠按钮 */
+.g-collapse-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    padding: 0;
+    background: var(--g-c);
+    color: var(--g-tc);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.g-collapse-btn:hover {
+    filter: brightness(0.9);
+    transform: scale(1.05);
+}
+
+.g-collapse-btn:active {
+    transform: scale(0.95);
+}
+
+/* 可折叠的工具栏面板 */
+.g-toolbar-panel {
+    overflow: hidden;
+}
+
+.g-tl .g-btn-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
 }
 
 #gai-src {
@@ -278,45 +356,43 @@
 
 /* ========== 平板/窄屏优化 (601px - 900px) ========== */
 @media (max-width: 900px) and (min-width: 601px) {
-    /* 1. 布局容器：强制垂直排列 */
+    /* 1. 工具栏容器 */
     #gai-main-pop .g-tl {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
         width: 100% !important;
         margin-bottom: 12px !important;
-        padding: 0 !important;
     }
 
-    /* 2. 搜索框：稍微宽一点的留白 */
-    #gai-main-pop .g-search-group {
-        width: 100% !important;
-        flex: 0 0 auto !important;
-        margin-bottom: 12px !important;
-        padding: 0 20px !important; /* 平板两边留白多一点 */
-        box-sizing: border-box !important;
+    /* 2. 搜索栏和折叠按钮 */
+    #gai-main-pop .g-tl-header {
+        padding: 4px 8px !important;
     }
 
-    #gai-main-pop #gai-src {
-        padding: 0 12px !important;
-        height: 34px !important; /* 平板容易点，稍微高一点 */
-        min-height: 34px !important;
-        font-size: 13px !important; /* 字体也稍微大一点 */
-        width: 100% !important;
-        border-radius: 6px !important;
+    #gai-main-pop .g-search-input {
+        padding: 8px 12px !important;
+        font-size: 13px !important;
+    }
+
+    #gai-main-pop .g-collapse-btn {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+        min-height: 40px !important;
+        max-width: 40px !important;
+        max-height: 40px !important;
+        flex-shrink: 0 !important;
     }
 
     /* 3. 按钮组：网格布局，一行 6 个 */
-    #gai-main-pop .g-btn-group {
+    #gai-main-pop .g-toolbar-panel .g-btn-group {
         /* ✅ 核心：平板屏幕宽，我们一行放 6 个，比例更协调 */
         display: grid !important;
-        grid-template-columns: repeat(6, 1fr) !important; 
-        
+        grid-template-columns: repeat(6, 1fr) !important;
+
         gap: 10px !important; /* 间距 */
         width: 100% !important;
         padding: 0 20px !important; /* 左右留白 20px */
         box-sizing: border-box !important;
-        
+
         justify-content: stretch !important;
     }
 
@@ -326,23 +402,35 @@
         min-width: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
-        
+
         font-size: 12px !important; /* 字体大一点 */
         height: 32px !important;    /* 高度大一点 */
         min-height: 32px !important;
-        
+
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         line-height: 1 !important;
-        
+
         border-radius: 6px !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
     }
 
     /* 5. 让"配置"按钮在最后一行居中（平板上一行6个，配置按钮跨中间2格比较好看） */
-    #gai-main-pop .g-btn-group button:last-child {
-        grid-column: 3 / span 2 !important; 
+    #gai-main-pop .g-toolbar-panel .g-btn-group button:last-child {
+        grid-column: 3 / span 2 !important;
+    }
+
+    /* 6. 标签栏优化（在工具栏下方） */
+    .g-ts {
+        max-height: 60px !important;
+        padding: 8px 12px !important;
+        margin-bottom: 10px !important;
+    }
+
+    .g-t {
+        padding: 8px 14px !important;
+        font-size: 13px !important;
     }
 }
 
@@ -353,7 +441,7 @@
         padding: 0 !important;
         align-items: flex-end !important;
     }
-    
+
     .g-w {
         width: 100vw !important;
         max-width: 100vw !important; /* ✅ 防止因 padding 导致容器超宽 */
@@ -387,65 +475,79 @@
     .g-p div {
         touch-action: pan-y !important;
     }
-    
+
     /* 2. 标题栏变矮 */
     .g-hd {
         padding: 6px 10px !important;
         min-height: 40px !important;
     }
 
-    /* 3. 标签栏横向滑动 */
+    /* 3. 标签栏横向滑动（在工具栏下方） */
     .g-ts {
         flex-wrap: nowrap !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         white-space: nowrap !important;
-        max-height: 40px !important;
-        padding-bottom: 0 !important;
-        margin-bottom: 4px !important;
+        max-height: 50px !important;
+        padding: 6px 4px !important;
+        margin-top: 0 !important;
+        margin-bottom: 6px !important;
         -webkit-overflow-scrolling: touch;
         gap: 6px !important;
+        border-top: 2px solid rgba(0, 0, 0, 0.15) !important;
+        border-bottom: 2px solid rgba(0, 0, 0, 0.15) !important;
     }
-    
+
     .g-ts::-webkit-scrollbar {
         display: none !important;
         height: 0 !important;
     }
 
     .g-t {
-        padding: 4px 10px !important;
+        padding: 6px 12px !important;
         font-size: 12px !important;
-        min-height: 28px !important;
+        min-height: 32px !important;
         flex-shrink: 0 !important;
-        border-radius: 14px !important;
+        border-radius: 16px !important;
     }
 
-    /* 4. 工具栏布局：去掉搜索框，纯按钮 */
-    #gai-main-pop .g-tl {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        width: 100% !important;
-        margin-bottom: 10px !important;
-        padding: 0 !important;
+    /* 4. 顶部工具栏优化 */
+    .g-tl {
+        margin-bottom: 6px !important;
     }
 
-    /* 移除搜索框相关的任何占位 */
-    #gai-main-pop .g-search-group {
-        display: none !important; 
+    .g-tl-header {
+        padding: 2px 4px !important;
+    }
+
+    .g-search-input {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+        min-height: 36px !important;
+    }
+
+    .g-collapse-btn {
+        width: 36px !important;
+        height: 36px !important;
+        min-width: 36px !important;
+        min-height: 36px !important;
+        max-width: 36px !important;
+        max-height: 36px !important;
+        font-size: 14px !important;
+        flex-shrink: 0 !important;
     }
 
     /* 按钮组容器：Grid 网格布局 (强制4列) */
-    #gai-main-pop .g-btn-group {
+    #gai-main-pop .g-toolbar-panel .g-btn-group {
         display: grid !important;
         /* 核心：重复4次，平均分配宽度 = 一行4个 */
-        grid-template-columns: repeat(4, 1fr) !important; 
-        
+        grid-template-columns: repeat(4, 1fr) !important;
+
         /* 间距：上下10px，左右8px */
         gap: 10px 8px !important;
-        
+
         width: 100% !important;
-        padding: 0 12px !important; 
+        padding: 0 8px !important;
         box-sizing: border-box !important;
         justify-content: stretch !important;
     }
@@ -456,16 +558,16 @@
         min-width: 0 !important;
         padding: 0 !important;
         margin: 0 !important;
-        
+
         font-size: 11px !important;
-        height: 32px !important; /*稍微加高一点点方便点击*/
+        height: 32px !important;
         min-height: 32px !important;
-        
+
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         line-height: 1 !important;
-        
+
         border-radius: 6px !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
     }
@@ -475,14 +577,14 @@
     .g-tbl-wrap td {
         font-size: 11px !important;
     }
-    
+
     .g-tbl-wrap td {
         /* ✨ 修复：使用CSS变量，确保手机端也能响应行高调整 */
         height: var(--g-rh, 45px);
         min-height: var(--g-rh, 45px) !important;
         padding: 2px 4px !important;
     }
-    
+
     /* 手机端稍微增加一点内边距，防止字贴边 */
     .g-e {
         padding: 4px !important;
@@ -496,7 +598,7 @@
     .g-col-num input[type="checkbox"] {
         transform: scale(1.0) !important;
     }
-    
+
     .g-col-resizer {
         width: 20px !important;
         right: -10px !important;

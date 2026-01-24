@@ -159,6 +159,9 @@
                     });
 
                     $(document).off('click.gg_sum_card').on('click.gg_sum_card', '.gg-choice-card', function(e) {
+                        // ✅ Fix: If the input itself is clicked, let the browser handle it natively
+                        if ($(e.target).is('input')) return;
+
                         e.preventDefault();
                         e.stopPropagation();
                         const $cb = $(this).find('input');

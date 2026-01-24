@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.8.8
+// 记忆表格 v1.8.9
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.8.8 启动');
+    console.log('🚀 记忆表格 v1.8.9 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -24,7 +24,7 @@
     let isRestoringSettings = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.8.8';
+    const V = 'v1.8.9';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -3162,8 +3162,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // 🚀 D. 排序并执行插入 (关键：从高到低，防止索引错位)
-        // 排序规则：索引从大到小 (Descending)，这样先插后面的，再插前面的，不会影响索引
-        insertionOps.sort((a, b) => b.index - a.index);
+        // 排序规则：索引从大到小 (Descending)
+        // ⚡ Tie-breaker: 如果索引相同 (同个锚点)，优先执行 Table，后执行 Summary
+        // 这样 Summary 会被插入到 Table 的上方 (后插者在顶端)
+        insertionOps.sort((a, b) => {
+            if (b.index !== a.index) {
+                return b.index - a.index;
+            }
+            // 索引相同，控制执行顺序：Table 先 -> Summary 后
+            // 数组排序：return -1 代表 a 排在 b 前面
+            if (a.type === 'Table' && b.type === 'Summary') return -1;
+            if (a.type === 'Summary' && b.type === 'Table') return 1;
+            return 0;
+        });
 
         insertionOps.forEach(op => {
             ev.chat.splice(op.index, 0, ...op.messages);
@@ -4463,20 +4474,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             return `<button class="g-t${isActive}" data-i="${i}">${displayName} (${count})</button>`;
         }).join('');
 
+        // 读取工具栏折叠状态
+        const toolbarCollapsed = localStorage.getItem('gg_toolbar_collapsed') === 'true';
+        const chevronIcon = toolbarCollapsed ? 'fa-chevron-down' : 'fa-chevron-up';
+        const panelStyle = toolbarCollapsed ? ' style="display:none;"' : '';
+
         const tls = `
-        <div class="g-btn-group">
-            <button id="gai-btn-add" title="新增一行">➕ 新增</button>
-            <button id="gai-btn-del" title="删除选中行">🗑️ 删除</button>
-            <button id="gai-btn-toggle" title="切换选中行的已总结状态">👻 显/隐</button>
-            <button id="gai-btn-sum" title="AI智能总结">📝 总结</button>
-            <button id="gai-btn-back" title="追溯历史剧情填表">⚡ 追溯</button>
-            <button id="gai-btn-export" title="导出JSON备份">📥 导出</button>
-            <button id="gai-btn-import" title="从JSON恢复数据">📤 导入</button>
-            <button id="gai-btn-view" title="视图设置">📏 视图</button>
-            <button id="gai-btn-clean" title="保留总结，清空详情">🧹 清表</button>
-            <button id="gai-btn-clear" title="清空所有数据">💥 全清</button>
-            <button id="gai-btn-theme" title="设置外观">🎨 主题</button>
-            <button id="gai-btn-config" title="插件设置">⚙️ 配置</button>
+        <div class="g-tl-header">
+            <input type="text" id="gai-search-input" class="g-search-input" placeholder="🔍 搜索..." />
+            <button id="gai-collapse-toggle" class="g-collapse-btn" title="折叠/展开工具栏">
+                <i class="fa-solid ${chevronIcon}"></i>
+            </button>
+        </div>
+        <div class="g-toolbar-panel" id="gai-toolbar-panel"${panelStyle}>
+            <div class="g-btn-group">
+                <button id="gai-btn-add" title="新增一行">➕ 新增</button>
+                <button id="gai-btn-del" title="删除选中行">🗑️ 删除</button>
+                <button id="gai-btn-toggle" title="切换选中行的已总结状态">👻 显/隐</button>
+                <button id="gai-btn-sum" title="AI智能总结">📝 总结</button>
+                <button id="gai-btn-back" title="追溯历史剧情填表">⚡ 追溯</button>
+                <button id="gai-btn-export" title="导出JSON备份">📥 导出</button>
+                <button id="gai-btn-import" title="从JSON恢复数据">📤 导入</button>
+                <button id="gai-btn-view" title="视图设置">📏 视图</button>
+                <button id="gai-btn-clean" title="保留总结，清空详情">🧹 清表</button>
+                <button id="gai-btn-clear" title="清空所有数据">💥 全清</button>
+                <button id="gai-btn-theme" title="设置外观">🎨 主题</button>
+                <button id="gai-btn-config" title="插件设置">⚙️ 配置</button>
+            </div>
         </div>
     `;
 
@@ -4494,8 +4518,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     `;
 
         const h = `<div class="g-vw">
-        <div class="g-ts">${tbs}</div>
         <div class="g-tl">${tls}</div>
+        <div class="g-ts">${tbs}</div>
         <div class="g-tb">${tbls}</div>
     </div>`;
 
@@ -4811,6 +4835,57 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('.g-row').removeClass('g-selected');
             $('.g-row-select').prop('checked', false);
             $('.g-select-all').prop('checked', false);
+
+            // 清空搜索框并重置过滤
+            $('#gai-search-input').val('');
+            $('.g-row').show();
+        });
+
+        // =========================================================
+        // 🔍 搜索功能
+        // =========================================================
+        $('#gai-search-input').off('input').on('input', function () {
+            const searchTerm = $(this).val().toLowerCase().trim();
+
+            // 获取当前激活的表格
+            const activeIndex = parseInt($('.g-t.act').data('i'));
+            const $activeTable = $(`.g-tbc[data-i="${activeIndex}"]`);
+
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有行
+                $activeTable.find('.g-row').show();
+                return;
+            }
+
+            // 遍历所有行进行过滤
+            $activeTable.find('.g-row').each(function () {
+                const rowText = $(this).text().toLowerCase();
+                if (rowText.includes(searchTerm)) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+
+        // =========================================================
+        // 🔽 折叠/展开工具栏
+        // =========================================================
+        $('#gai-collapse-toggle').off('click').on('click', function () {
+            const $panel = $('#gai-toolbar-panel');
+            const $icon = $(this).find('i');
+
+            if ($panel.is(':visible')) {
+                // 折叠
+                $panel.slideUp(200);
+                $icon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+                localStorage.setItem('gg_toolbar_collapsed', 'true');
+            } else {
+                // 展开
+                $panel.slideDown(200);
+                $icon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+                localStorage.setItem('gg_toolbar_collapsed', 'false');
+            }
         });
 
         // =========================================================
@@ -8648,7 +8723,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     $('#gg_modal_cancel').on('click', function () { overlay.remove(); $(document).off('keydown.gg_modal'); $(document).off('click.gg_card'); isOpening = false; });
                     overlay.on('click', function (e) { if (e.target === overlay[0]) { overlay.remove(); $(document).off('keydown.gg_modal'); $(document).off('click.gg_card'); isOpening = false; } });
                     $(document).on('keydown.gg_modal', function (e) { if (e.key === 'Escape') { overlay.remove(); $(document).off('keydown.gg_modal'); $(document).off('click.gg_card'); isOpening = false; } });
-                    $(document).off('click.gg_card').on('click.gg_card', '.gg-choice-card', function(e) { e.preventDefault(); e.stopPropagation(); const $cb = $(this).find('input'); $cb.prop('checked', !$cb.prop('checked')); });
+                    $(document).off('click.gg_card').on('click.gg_card', '.gg-choice-card', function(e) {
+                        // ✅ Fix: If the input itself is clicked, let the browser handle it natively
+                        if ($(e.target).is('input')) return;
+
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const $cb = $(this).find('input');
+                        $cb.prop('checked', !$cb.prop('checked'));
+                    });
                     $('#gg_modal_save').on('click', function () {
                         const selected = [];
                         $('.gg-auto-sum-table-select-modal:checked').each(function () { selected.push(parseInt($(this).val())); });
@@ -11450,9 +11533,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>新增：</strong>新增记忆插件总开关，长按图标即可一键开关</li>
-                        <li><strong>优化：</strong>优化保存逻辑，避免表格内容丢失</li>
-                        <li><strong>修复：</strong>优化记忆表格图标</li>
+                        <li><strong>新增：</strong>新增记忆表格搜索及折叠面板功能</li>
                     </ul>
                 </div>
 
