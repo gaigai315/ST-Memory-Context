@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.8.9
+// 记忆表格 v1.9.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.8.9 启动');
+    console.log('🚀 记忆表格 v1.9.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -23,8 +23,11 @@
     // ===== 防止配置恢复期间触发保存的标志 (修复移动端竞态条件) =====
     let isRestoringSettings = false;
 
+    // ===== Swipe操作标志 (用于区分用户主动Swipe和普通消息处理) =====
+    window.Gaigai.isSwiping = false;
+
     // ==================== 全局常量定义 ====================
-    const V = 'v1.8.9';
+    const V = 'v1.9.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1704,6 +1707,25 @@
     }
 
     // ✅✅ 快照管理系统（在类外面）
+
+    /**
+     * 计算表格内容的哈希值（用于深度内容比较）
+     * @param {Array} sheets - 表格数组
+     * @returns {number} - 32位整数哈希值
+     */
+    function calculateTableHash(sheets) {
+        // 只对数据行(r)进行哈希，忽略UI状态如宽度/高度
+        const dataString = JSON.stringify(sheets.map(s => s.r || []));
+        let hash = 0, i, chr;
+        if (dataString.length === 0) return hash;
+        for (i = 0; i < dataString.length; i++) {
+            chr = dataString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + chr;
+            hash |= 0; // 转换为32位整数
+        }
+        return hash;
+    }
+
     function saveSnapshot(msgIndex) {
         try {
             const snapshot = {
@@ -1846,13 +1868,14 @@
             }
 
             // 🛡️ [过期保护 - 核心逻辑]
-            // 只有在非强制模式(force=false)下才检查时间戳
-            if (!force) { // <--- 2. 这里加了判断
+            // 只有在非强制模式(force=false)下才检查时间戳和Hash
+            if (!force) {
                 const currentManualEditTime = window.lastManualEditTime || lastManualEditTime;
                 if (snapshot.timestamp < currentManualEditTime) {
-                    console.log(`🛡️ [保护] 检测到手动修改，跳过回滚。`);
+                    console.log(`🛡️ [保护] 检测到手动修改(时间戳)，跳过回滚。`);
                     return false;
                 }
+                // (Hash check logic is handled in the caller omsg/opmt, but internal timestamp check stays here)
             }
 
             // 2. 先彻底清空当前表格
@@ -1884,7 +1907,7 @@
             m.save(true, true); // 快照恢复立即保存
 
             const totalRecords = m.s.reduce((sum, s) => sum + s.r.length, 0);
-            console.log(`✅ [完美回档] 快照${key}已恢复 - 当前行数:${totalRecords}`);
+            console.log(`✅ [完美回档] 快照${key}已恢复 (Force:${force}) - 当前行数:${totalRecords}`);
 
             return true;
         } catch (e) {
@@ -9806,10 +9829,62 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 console.warn(`🛑 [智能保护] 第 ${i} 楼缺失前序快照，禁止回滚到创世快照(-1)，保留当前内存数据作为基准。`);
                                 // 不执行 restoreSnapshot，直接使用当前 m.s 中的数据
                             } else {
-                                // ⚡ 强制回档！这一步非常关键
-                                // 无论当前表格是什么样，必须先回到上一楼的样子
-                                restoreSnapshot(baseKey);
-                                console.log(`↺ [同步] 基准重置成功：已回滚至快照 [${baseKey}]`);
+                                // 🛡️ [智能保护] 深度内容比较，区分"数据加载"和"用户修改"
+                                const snapshot = snapshotHistory[baseKey];
+                                if (snapshot && snapshot.data) {
+                                    // 🚩 [Swipe模式检测] 优先检查Swipe标志
+                                    if (window.Gaigai.isSwiping) {
+                                        // Swipe操作：用户明确想要撤销，强制回滚，无视所有智能保护
+                                        console.log(`↔️ [Swipe模式] 检测到 Swipe 标志，强制对齐基准快照 [${baseKey}] (无视智能保护)`);
+                                        restoreSnapshot(baseKey, true); // Force=true 跳过时间戳保护
+                                        window.Gaigai.isSwiping = false; // 重置标志，防止影响后续正常消息
+                                    } else {
+                                        // 正常模式：应用智能保护逻辑
+                                        // 1. 计算内容哈希值
+                                        const currentHash = calculateTableHash(m.s.slice(0, -1)); // 排除总结表
+                                        const snapshotHash = calculateTableHash(snapshot.data);
+
+                                        // 2. 逻辑判断
+                                        if (currentHash === snapshotHash) {
+                                            // 情况A: 内容完全一致
+                                            // 即使行数>0，也说明当前状态与快照完全匹配
+                                            // 可以安全回滚（例如Swipe/重新生成场景）
+                                            restoreSnapshot(baseKey);
+                                            console.log(`↺ [同步] 内容一致(Hash匹配)，正常回滚至快照 [${baseKey}]`);
+                                        } else {
+                                            // 情况B: 内容不同
+                                            // 检查行数以判断用户意图
+                                            const snapshotRows = snapshot.data.reduce((acc, s) => acc + (s.r ? s.r.length : 0), 0);
+                                            const currentRows = m.s.reduce((acc, s) => acc + (s.r ? s.r.length : 0), 0);
+
+                                            if (currentRows > snapshotRows) {
+                                                // FIX: If it is a swipe (swipe_id > 0), force rollback because the extra rows are likely from the previous AI generation, not user input.
+                                                if (mg.swipe_id && mg.swipe_id > 0) {
+                                                    console.log(`↺ [同步-Swipe修正] 检测到 Swipe 重生成 (id:${mg.swipe_id})，强制回滚前次生成的数据`);
+                                                    restoreSnapshot(baseKey, true);
+                                                } else {
+                                                    // Original protection logic
+                                                    // 用户可能手动导入了数据或添加了行
+                                                    console.warn(`🛑 [智能保护] 检测到数据变更(Hash不同)且行数增加 (${currentRows} > ${snapshotRows})。视为用户手动导入，取消回滚。`);
+                                                    saveSnapshot(baseKey);
+                                                }
+                                            } else if (currentRows === snapshotRows) {
+                                                // 用户可能编辑了单元格内容
+                                                console.warn(`🛑 [智能保护] 检测到数据变更(Hash不同)但行数不变 (${currentRows} 行)。视为用户编辑单元格，取消回滚。`);
+                                                saveSnapshot(baseKey);
+                                            } else {
+                                                // 当前 < 快照（用户手动删除了行？或Swipe？）
+                                                // 为确保AI同步，允许回滚
+                                                restoreSnapshot(baseKey);
+                                                console.log(`↺ [同步] 数据减少 (${currentRows} < ${snapshotRows})，执行回滚以同步状态`);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // 快照数据不存在，执行正常回滚
+                                    restoreSnapshot(baseKey);
+                                    console.log(`↺ [同步] 基准重置成功：已回滚至快照 [${baseKey}]`);
+                                }
                             }
                         } else {
                             // [新增] 熔断机制：如果是非第一条消息且找不到基准快照，禁止继续写入
@@ -10205,6 +10280,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 console.log(`⚠️ [ochat] 未找到分支快照 [${targetKey}]，尝试使用硬盘存档数据并建立新快照`);
                 // 立即为当前状态建立一个快照，防止下次切回来又空了
                 saveSnapshot(targetKey);
+
+                // FIX: If genesis snapshot is empty but we loaded data from disk, sync genesis to prevent wipe on swipe.
+                const snapMinus1 = snapshotHistory['-1'];
+                const snapTarget = snapshotHistory[targetKey];
+                if (snapMinus1 && snapTarget && snapTarget.data) {
+                    const targetHasData = snapTarget.data.some(s => s.r && s.r.length > 0);
+                    const minus1Empty = snapMinus1.data.every(s => !s.r || s.r.length === 0);
+
+                    if (targetHasData && minus1Empty) {
+                        console.log('🛡️ [ochat-Patch] Detected imported data with empty genesis. Syncing snapshot -1.');
+                        snapshotHistory['-1'] = JSON.parse(JSON.stringify(snapTarget));
+                        snapshotHistory['-1'].timestamp = 0; // Keep it as genesis
+                    }
+                }
             }
         } else {
             // 如果是新开聊天（0楼）
@@ -10578,8 +10667,91 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (baseKey === '-1' && targetIndex > 5) {
                         console.warn(`🛑 [安全拦截] 楼层 ${targetIndex} 较高且缺失中间快照，禁止回滚到初始状态，保持当前数据。`);
                     } else {
-                        restoreSnapshot(baseKey, true); // <--- 这里加了 true (强制回滚)
-                        console.log(`↺ [opmt] 成功回档: 表格已恢复至基准 [${baseKey}]`);
+                        // 🛡️ [智能保护] 深度内容比较，区分"数据加载"和"用户修改"
+                        const snapshot = snapshotHistory[baseKey];
+                        if (snapshot && snapshot.data) {
+                            // 1. 计算内容哈希值
+                            const currentHash = calculateTableHash(m.s.slice(0, -1)); // 排除总结表
+                            const snapshotHash = calculateTableHash(snapshot.data);
+
+                            // 2. 🆕 检查"目标快照"（当前消息上一次生成后的状态）
+                            // 如果我们正在重新生成消息N，检查当前表格是否与快照N一致
+                            const targetSnapshot = snapshotHistory[targetKey];
+                            let isCleanAIOutput = false;
+                            if (targetSnapshot && targetSnapshot.data) {
+                                const targetHash = calculateTableHash(targetSnapshot.data);
+                                if (currentHash === targetHash) {
+                                    isCleanAIOutput = true;
+                                    console.log(`♻️ [opmt] 检测到当前状态与目标快照 [${targetKey}] 一致 (未被用户修改)，允许回滚。`);
+                                }
+                            }
+
+                            // 3. 逻辑判断
+                            if (currentHash === snapshotHash) {
+                                // 情况A: 与基准快照一致（安全）
+                                restoreSnapshot(baseKey, true);
+                                console.log(`↺ [opmt] 内容一致(Hash匹配)，正常回滚至基准 [${baseKey}]`);
+                                // FIX: Immediately refresh UI when rolling back state in opmt
+                                if ($('#gai-main-pop').length > 0) {
+                                    const activeTab = $('.g-t.act').data('i');
+                                    if (activeTab !== undefined) {
+                                        refreshTable(activeTab);
+                                        console.log('🔄 [opmt] Visual state refreshed immediately.');
+                                    }
+                                }
+                            } else if (isCleanAIOutput) {
+                                // 情况B: 与上一轮AI输出一致（安全，可以撤销）
+                                restoreSnapshot(baseKey, true);
+                                console.log(`↺ [opmt] 撤销上一轮AI生成内容，回滚至基准 [${baseKey}]`);
+                                // FIX: Immediately refresh UI when rolling back state in opmt
+                                if ($('#gai-main-pop').length > 0) {
+                                    const activeTab = $('.g-t.act').data('i');
+                                    if (activeTab !== undefined) {
+                                        refreshTable(activeTab);
+                                        console.log('🔄 [opmt] Visual state refreshed immediately.');
+                                    }
+                                }
+                            } else {
+                                // 情况C: 被用户修改（保护）
+                                const snapRows = snapshot.data.reduce((acc, s) => acc + (s.r ? s.r.length : 0), 0);
+                                const currentRows = m.s.reduce((acc, s) => acc + (s.r ? s.r.length : 0), 0);
+
+                                if (currentRows > snapRows) {
+                                    // 用户可能手动导入了数据或添加了行
+                                    console.warn(`🛑 [智能保护/opmt] 检测到用户手动修改(Hash不同且非AI原样)。保留当前数据，更新基准快照。`);
+                                    saveSnapshot(baseKey);
+                                } else if (currentRows === snapRows) {
+                                    // 用户可能编辑了单元格内容
+                                    console.warn(`🛑 [智能保护/opmt] 检测到单元格编辑。保留当前数据，更新基准快照。`);
+                                    saveSnapshot(baseKey);
+                                } else {
+                                    // 当前 < 快照（用户手动删除了行？或Swipe？）
+                                    // 为确保AI同步，允许回滚
+                                    restoreSnapshot(baseKey, true);
+                                    console.log(`↺ [opmt] 数据减少 (${currentRows} < ${snapRows})，执行回滚以同步状态`);
+                                    // FIX: Immediately refresh UI when rolling back state in opmt
+                                    if ($('#gai-main-pop').length > 0) {
+                                        const activeTab = $('.g-t.act').data('i');
+                                        if (activeTab !== undefined) {
+                                            refreshTable(activeTab);
+                                            console.log('🔄 [opmt] Visual state refreshed immediately.');
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // 快照数据不存在，执行正常回滚
+                            restoreSnapshot(baseKey, true);
+                            console.log(`↺ [opmt] 成功回档: 表格已恢复至基准 [${baseKey}]`);
+                            // FIX: Immediately refresh UI when rolling back state in opmt
+                            if ($('#gai-main-pop').length > 0) {
+                                const activeTab = $('.g-t.act').data('i');
+                                if (activeTab !== undefined) {
+                                    refreshTable(activeTab);
+                                    console.log('🔄 [opmt] Visual state refreshed immediately.');
+                                }
+                            }
+                        }
                     }
                 } else if (baseIndex === -1 && snapshotHistory['-1']) {
                     // 🛡️ [终极防御] 检查当前内存中是否已有数据
@@ -10604,6 +10776,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         } else {
                             restoreSnapshot('-1', true);
                             console.log(`↺ [opmt] 成功回档: 表格已恢复至创世状态`);
+                            // FIX: Immediately refresh UI when rolling back state in opmt
+                            if ($('#gai-main-pop').length > 0) {
+                                const activeTab = $('.g-t.act').data('i');
+                                if (activeTab !== undefined) {
+                                    refreshTable(activeTab);
+                                    console.log('🔄 [opmt] Visual state refreshed immediately.');
+                                }
+                            }
                         }
                     }
                 } else {
@@ -11134,6 +11314,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 x.eventSource.on(x.event_types.MESSAGE_SWIPED, function (id) {
                     console.log(`↔️ [Swipe触发] 第 ${id} 楼正在切换分支...`);
 
+                    // 🚩 设置Swipe标志，通知后续的omsg跳过智能保护
+                    window.Gaigai.isSwiping = true;
+
                     const key = id.toString();
 
                     // 1. 🛑 [第一步：立即刹车] 清除该楼层正在进行的任何写入计划
@@ -11144,45 +11327,111 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
 
                     // 2. ⏪ [第二步：时光倒流] 强制回滚到上一楼的状态
-                    // 无论之前表格里是什么，必须先回到这一楼还没发生时的样子！
                     const prevKey = (id - 1).toString();
+
+                    // Determine the base snapshot to rollback to
+                    let targetBaseKey = null;
                     if (snapshotHistory[prevKey]) {
-                        restoreSnapshot(prevKey, true); // ✅ 强制回档，忽略手动编辑保护
-                        console.log(`↺ [Swipe] 成功回档至基准线: 快照 [${prevKey}]`);
-                    } else if (id === 0) {
-                        restoreSnapshot('-1', true); // ✅ 强制回档，忽略手动编辑保护
-                        console.log(`↺ [Swipe] 第0楼回档至创世快照`);
-                    } else if (id === 1) {
-                        // 🆕 [修复2] 第 1 楼特殊处理：如果找不到第 0 楼快照，强制回滚到空表
-                        console.warn(`⚠️ [Swipe] 第 1 楼找不到第 0 楼快照 [${prevKey}]`);
-                        if (snapshotHistory['-1']) {
-                            restoreSnapshot('-1', true); // ✅ 强制回档，忽略手动编辑保护
-                            console.log(`↺ [Swipe] 第 1 楼强制回档至创世快照（空表状态），防止数据重复`);
-                        } else {
-                            console.error(`❌ [Swipe] 严重错误：连创世快照都不存在！`);
-                        }
-                    } else {
-                        // ✅ [安全补丁] 找不到上一楼快照时，检查是否是高楼层刷新后的情况
-                        if (id > 5 && snapshotHistory['-1']) {
-                            console.warn(`🛑 [安全拦截] 第 ${id} 楼缺失中间快照（可能是刷新后），禁止回滚到初始状态，保持当前数据。`);
-                        } else {
-                            console.warn(`⚠️ [Swipe] 警告: 找不到上一楼 [${prevKey}] 的快照，跳过回滚以保护数据。`);
-                        }
+                        targetBaseKey = prevKey;
+                    } else if (id === 0 && snapshotHistory['-1']) {
+                        targetBaseKey = '-1';
                     }
 
-                    // 3. 🗑️ [第三步：清理现场] 销毁当前楼层的旧快照
-                    // 因为这个快照属于"上一个分支"，现在已经作废了
+                    if (targetBaseKey) {
+                        // ✅ 强制回滚 (Force=true)，无视智能保护
+                        // Swipe 意味着用户明确想要撤销，所以必须强制执行
+                        restoreSnapshot(targetBaseKey, true);
+                        console.log(`↺ [Swipe] 成功强制回档至基准线: 快照 [${targetBaseKey}]`);
+                    } else {
+                        console.warn(`⚠️ [Swipe] 警告: 找不到上一楼的快照，无法回滚。`);
+                    }
+
+                    // 3. 🗑️ [第三步：清理现场] 销毁当前楼层的旧快照 (Dirty Snapshot)
+                    // 这迫使 omsg 重新计算并保存新的快照
                     if (snapshotHistory[key]) {
                         delete snapshotHistory[key];
                         console.log(`🗑️ [Swipe] 已销毁第 ${id} 楼的旧分支快照`);
                     }
 
-                    // 4. ▶️ [第四步：重新开始] 触发读取逻辑
-                    // 此时表格已经是干净的上一楼状态，omsg 会把当前显示的新分支当作"新消息"写入
+                    // 4. 💾 [第四步：立即持久化]
+                    m.save(true, true);
+                    console.log(`💾 [Swipe] 已立即保存回滚后的状态到 localStorage`);
+
+                    // 5. 🔄 [第五步：立即刷新 UI]
+                    if ($('#gai-main-pop').length > 0) {
+                        const activeTab = $('.g-t.act').data('i');
+                        if (activeTab !== undefined) {
+                            refreshTable(activeTab);
+                            console.log(`🔄 [Swipe] 已刷新活动标签页 [${activeTab}]`);
+                        }
+                        // Update tab counts
+                        m.s.slice(0, -1).forEach((_, i) => updateTabCount(i));
+                        console.log(`🔄 [Swipe] 已更新所有标签页计数`);
+                    }
+
+                    // 6. ▶️ [第六步：重新读取当前分支]
+                    // 关键！延迟一小段时间后，重新读取当前显示的 Swipe 内容并执行。
+                    // 如果是新生成(Regenerate)，这里读到的可能是空，但在生成结束后会有 CHARACTER_MESSAGE_RENDERED 再次触发。
+                    // 如果是切回旧分支(Swap)，这里会读到旧分支的内容并恢复表格。
                     setTimeout(() => {
-                        console.log(`▶️ [Swipe] 开始读取新分支内容...`);
+                        console.log(`▶️ [Swipe] 重新计算当前分支内容...`);
                         omsg(id);
-                    }, 50);
+                    }, 200); // 给 200ms 缓冲，确保 DOM 已经切换完成
+
+                    console.log(`✅ [Swipe] 回滚流程执行完毕，等待新生成...`);
+                });
+
+                // ✅✅✅ [暴力修复] 直接监听 DOM 点击事件，确保 Swipe 立即触发回滚
+                $(document).on('click', '.swipe_left, .swipe_right', function(e) {
+                    console.log('🖱️ [DOM监听] 检测到 Swipe 按钮点击，强制启动回滚流程...');
+
+                    // 1. 设置全局标志位，通知后续的 omsg 不要拦截
+                    window.Gaigai.isSwiping = true;
+
+                    // 2. 获取当前上下文
+                    const ctx = m.ctx();
+                    if (!ctx || !ctx.chat || ctx.chat.length === 0) return;
+
+                    // 3. 确定要回滚的目标（通常是当前最后一条消息的上一楼）
+                    // Swipe 实际上是重写最后一条消息，所以我们要让表格回到 "最后一条消息还没发生时" 的状态
+                    const currentId = ctx.chat.length - 1;
+                    const prevKey = (currentId - 1).toString();
+
+                    // 查找基准快照
+                    let targetBaseKey = null;
+                    if (snapshotHistory[prevKey]) {
+                        targetBaseKey = prevKey;
+                    } else if (currentId === 0 && snapshotHistory['-1']) {
+                        targetBaseKey = '-1';
+                    }
+
+                    // 4. 立即执行回滚
+                    if (targetBaseKey) {
+                        // Force = true (无视智能保护)
+                        const success = restoreSnapshot(targetBaseKey, true);
+                        if (success) {
+                            console.log(`↺ [DOM Swipe] 已强制回滚至快照 [${targetBaseKey}]`);
+                        }
+                    } else {
+                         console.warn(`⚠️ [DOM Swipe] 找不到上一楼 [${prevKey}] 的快照，无法回滚`);
+                    }
+
+                    // 5. 立即清理当前楼层的脏快照
+                    const currentKey = currentId.toString();
+                    if (snapshotHistory[currentKey]) {
+                        delete snapshotHistory[currentKey];
+                    }
+
+                    // 6. 立即保存并刷新 UI
+                    m.save(true, true);
+
+                    if ($('#gai-main-pop').length > 0) {
+                        const activeTab = $('.g-t.act').data('i');
+                        if (activeTab !== undefined) {
+                            refreshTable(activeTab);
+                            console.log('🔄 [DOM Swipe] UI 已刷新');
+                        }
+                    }
                 });
 
                 // 🗑️ [已删除] 自动回档监听器 (MESSAGE_DELETED) 已移除，防止重Roll时数据错乱。
@@ -11533,7 +11782,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>新增：</strong>新增记忆表格搜索及折叠面板功能</li>
+                        <li><strong>修复：</strong>修复实时填表因为快照回档错误而导致存档内容丢失的bug.</li>
                     </ul>
                 </div>
 
