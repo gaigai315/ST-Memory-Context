@@ -7123,6 +7123,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             console.log('📦 [Gemini反代] 使用非流式模式，解析 JSON...');
                             const data = await proxyResponse.json();
 
+                            // 🔍 优先检查安全阻断 (Gemini 2.0 特性)
+                            if (data.candidates && data.candidates[0] && !data.candidates[0].content) {
+                                const reason = data.candidates[0].finishReason;
+                                if (reason === 'SAFETY' || reason === 'safety' || reason === 'RECITATION' || reason === 'OTHER') {
+                                    throw new Error(`Google 安全策略拦截 (finishReason: ${reason})。\n\n💡 建议：\n1. 请尝试更换模型 (如 gemini-1.5-pro)\n2. 或者修改"优化建议"，避免敏感词。`);
+                                }
+                            }
+
                             // 兼容多种格式提取文本
                             let text = '';
                             if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
@@ -12073,7 +12081,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>修复：</strong>修复实时填表因为快照回档错误而导致存档内容丢失的bug.</li>
+                        <li><strong>新增：</strong>新增行数支持移动到其他表格的功能.</li>
+                        <li><strong>优化：</strong>优化表格搜索功能.</li>
                     </ul>
                 </div>
 

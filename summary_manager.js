@@ -454,6 +454,21 @@
                     console.log('🔄 [界面恢复] 检测到表格总结正在执行');
                 }
 
+                // ✅✅✅ [新增] 检测优化任务状态，恢复按钮
+                if (window.Gaigai.isOptimizationRunning) {
+                    const $btn = $('#gg_opt_run');
+                    if ($btn.length > 0) {
+                        $btn.text('⏳ 正在后台优化...')
+                            .prop('disabled', true)
+                            .css('opacity', 0.7);
+                    }
+                    const $status = $('#gg_opt_status');
+                    if ($status.length > 0) {
+                        $status.text('任务正在后台运行，请稍候...').css('color', '#17a2b8');
+                    }
+                    console.log('🔄 [界面恢复] 检测到总结优化正在执行');
+                }
+
                 // ✨ 修正进度按钮点击事件
                 $('#gg_save_sum_pointer_btn').on('click', async function() {
                     const API_CONFIG = window.Gaigai.config;
@@ -1719,15 +1734,27 @@
          * @param {string} rangeInput - 范围输入（如 "1" 或 "2-5"）
          */
         async optimizeSummary(target, userPrompt, rangeInput = "1") {
-            const m = window.Gaigai.m;
-            const ctx = m.ctx();
+            // 1. 确保配置最新
+            const loadConfig = window.Gaigai.loadConfig || (() => Promise.resolve());
+            await loadConfig();
 
-            // 读取总结表（动态获取最后一个表格）
-            const summaryTable = m.s[m.s.length - 1];
-            if (!summaryTable || summaryTable.r.length === 0) {
-                await window.Gaigai.customAlert('⚠️ 总结表为空，无内容可优化！', '提示');
+            // ✅ 2. 上锁（防止重复点击）
+            if (window.Gaigai.isOptimizationRunning) {
+                console.log('⚠️ [总结优化] 任务正在执行中，忽略重复点击');
                 return;
             }
+            window.Gaigai.isOptimizationRunning = true;
+
+            try {
+                const m = window.Gaigai.m;
+                const ctx = m.ctx();
+
+                // 读取总结表（动态获取最后一个表格）
+                const summaryTable = m.s[m.s.length - 1];
+                if (!summaryTable || summaryTable.r.length === 0) {
+                    await window.Gaigai.customAlert('⚠️ 总结表为空，无内容可优化！', '提示');
+                    return;
+                }
 
             // 1. 解析目标索引
             let targetIndices = [];
@@ -1798,11 +1825,17 @@
             });
 
             // 3. 构建 Prompt 指令
-            let baseInstruction = window.Gaigai.PromptManager.get('summaryPromptChat');
-            if (!baseInstruction || !baseInstruction.trim()) {
-                baseInstruction = '请对上述内容进行润色和优化。';
+            let coreInstruction = "";
+            if (userPrompt && userPrompt.trim()) {
+                // 如果用户提供了建议，使用用户的建议作为核心指令
+                coreInstruction = userPrompt.trim();
+            } else {
+                // 如果用户没有提供建议，使用默认指令
+                coreInstruction = "请对上述内容进行精简的同时保留所有关键剧情信息。";
             }
-            baseInstruction = window.Gaigai.PromptManager.resolveVariables(baseInstruction, ctx);
+
+            // 应用变量替换（支持 {{char}} 等变量）
+            coreInstruction = window.Gaigai.PromptManager.resolveVariables(coreInstruction, ctx);
 
             // ✨ 核心修改：如果是多段优化，强制注入分隔符指令
             let formatInstruction = "";
@@ -1810,15 +1843,9 @@
                 formatInstruction = `\n\n⚠️⚠️⚠️ 【重要格式要求】 ⚠️⚠️⚠️\n你正在同时优化 ${targetIndices.length} 个独立的页面。请务必保持它们的独立性！\n在输出时，不同页面的优化结果之间**必须**使用 \`---分隔线---\` 进行分割。\n严禁将它们合并成一段！请严格按照原文顺序输出。`;
             }
 
-            // 用户自定义要求
-            let customReq = "";
-            if (userPrompt && userPrompt.trim()) {
-                customReq = `\n\n💬 【用户特殊要求】\n${userPrompt}\n请优先遵循此要求。`;
-            }
-
             messages.push({
                 role: 'user',
-                content: baseInstruction + customReq + formatInstruction
+                content: coreInstruction + formatInstruction
             });
 
             // 4. 调用 API
@@ -1890,6 +1917,18 @@
 
             } else {
                 await window.Gaigai.customAlert(`生成失败: ${result?.error}`, '错误');
+            }
+            } finally {
+                // ✅ 无论成功还是失败，最后都要解锁
+                window.Gaigai.isOptimizationRunning = false;
+
+                // 如果界面还开着，恢复按钮状态
+                const $btn = $('#gg_opt_run');
+                if ($btn.length > 0) {
+                    $btn.text('✨ 开始优化').prop('disabled', false).css('opacity', 1);
+                    $('#gg_opt_status').text('');
+                }
+                console.log('🔓 [总结优化] 任务结束，已解锁');
             }
         }
 
@@ -2025,11 +2064,17 @@
                         let finalContent = $('#gg_opt_result_editor').val().trim();
                         if (!finalContent) return;
 
-                        // ✅ 清理优化提示词残留
+                        // ✅ 1. 文本标准化：统一换行符（防止 Windows/Linux 差异）
+                        finalContent = finalContent.replace(/\r\n/g, '\n');
+
+                        // ✅ 新增：移除 AI 自动生成的页码标题行，防止干扰分隔符识别
+                        // 匹配类似 "【优化后内容 - 第 2 页】" 或 "【第 X 页】" 的行
+                        finalContent = finalContent.replace(/^\s*【.*?第\s*\d+\s*页.*?】\s*$/gm, '');
+
+                        // ✅ 清理优化提示词残留（但保留分隔线！）
                         finalContent = finalContent
                             .replace(/^【待优化内容.*?】\s*/gm, '')
                             .replace(/^剧情总结 \d+\s*/gm, '')
-                            .replace(/^---+分隔线---+\s*/gm, '')
                             .trim();
 
                         // 🔒 安全检查1：验证会话ID是否一致
@@ -2060,34 +2105,62 @@
                             }
                         }
 
-                        // ✅ 智能拆分：根据优化的总结数量决定拆分策略
+                        // ✅ 2. 增强分隔符正则：智能拆分（终极版）
                         let segments = [];
 
                         if (targetIndices.length > 1) {
-                            // 多个总结：按分隔线拆分
-                            segments = finalContent.split(/\n*---+分隔线---+\n*/);
+                            // 多个总结：使用增强正则拆分（兼容各种 AI 输出格式）
+                            // 匹配：换行 + (可选空格) + 至少3个符号 + (可选空格) + 分隔线 + (可选空格) + 至少3个符号 + 换行
+                            segments = finalContent.split(/\n+\s*[-*=_]{3,}\s*分隔线\s*[-*=_]{3,}\s*\n+/);
 
-                            // 如果拆分后的段落数量与目标索引不匹配，尝试其他分隔符
-                            if (segments.length !== targetIndices.length) {
-                                // 尝试按 \n\n\n（三个换行）拆分
-                                segments = finalContent.split(/\n\n\n+/);
-                            }
+                            // 过滤空串
+                            segments = segments.map(s => s.trim()).filter(s => s.length > 0);
 
-                            // 如果还是不匹配，说明AI没按格式返回，将所有内容写入第一个索引
-                            if (segments.length !== targetIndices.length) {
-                                console.warn(`⚠️ AI返回段落数(${segments.length})与目标数(${targetIndices.length})不匹配，将全部内容写入第一个总结`);
-                                segments = [finalContent];
-                                // 只覆盖第一个索引
-                                targetIndices = [targetIndices[0]];
+                            // 兜底策略增强：纯符号分隔符 (如 --- 或 ***)
+                            if (segments.length < targetIndices.length) {
+                                console.log('⚠️ [智能拆分] 标准分隔线未匹配，尝试纯符号分隔...');
+                                // 正则解释：必须是独占一行的至少3个符号，前后有换行
+                                const backupSegments = finalContent.split(/\n+\s*[-*=_]{3,}\s*\n+/)
+                                    .map(s => s.trim())
+                                    .filter(s => s.length > 0);
+
+                                // 只有在备用方案更好时才使用
+                                if (backupSegments.length > segments.length) {
+                                    console.log(`✅ [智能拆分] 纯符号分隔成功，识别到 ${backupSegments.length} 段`);
+                                    segments = backupSegments;
+                                }
                             }
                         } else {
                             // 单个总结：整体处理
                             segments = [finalContent];
                         }
 
-                        // 覆盖该行逻辑 - 修正版
+                        // ✅ 3. 修复交互逻辑：使用 customConfirm（确保有取消按钮）
+                        if (segments.length !== targetIndices.length) {
+                            const segCount = segments.length;
+                            const targetCount = targetIndices.length;
+
+                            const userConfirmed = await window.Gaigai.customConfirm(
+                                `⚠️ 识别到 ${segCount} 段，目标 ${targetCount} 页。\n\n点击确定将按顺序覆盖前 ${Math.min(segCount, targetCount)} 页，多余/不足的将忽略。`,
+                                '段落数量不匹配',
+                                '确定',
+                                '取消'
+                            );
+
+                            if (!userConfirmed) {
+                                console.log('用户取消了覆盖操作');
+                                return;
+                            }
+                        }
+
+                        // ✅ 4. 修正写入与统计
+                        let realUpdateCount = 0;
+
                         targetIndices.forEach((idx, i) => {
-                            let segment = (segments[i] || '').trim();
+                            // 没内容就不覆盖
+                            if (i >= segments.length) return;
+
+                            let segment = segments[i].trim();
                             if (!segment) return;
 
                             // ✅ 清理优化提示词残留（针对每个段落）
@@ -2097,23 +2170,25 @@
                                 .replace(/^---+分隔线---+\s*/gm, '')
                                 .trim();
 
-                            // ✨✨✨ 核心修复：不再尝试拆分标题和正文 ✨✨✨
-                            // 1. 获取原标题 (保留原标题，防止元数据丢失)（动态获取总结表）
+                            if (!segment) return;
+
+                            // 获取原标题 (保留原标题，防止元数据丢失)
                             let originalTitle = '';
                             if (m.s[summaryTableIndex] && m.s[summaryTableIndex].r[idx]) {
                                 originalTitle = m.s[summaryTableIndex].r[idx][0];
                             }
 
-                            // 2. 如果原标题为空，给个默认值
+                            // 如果原标题为空，给个默认值
                             const newTitle = originalTitle || '剧情总结 (优化版)';
 
-                            // 3. 将 AI 返回的全部内容放入正文 (Content)，不进行切割
+                            // 将 AI 返回的全部内容放入正文
                             const newContent = segment;
 
-                            // 4. 执行写入
+                            // 执行写入
                             if (m.s[summaryTableIndex].r[idx]) {
                                 m.s[summaryTableIndex].r[idx][0] = newTitle;   // 第0列：标题
                                 m.s[summaryTableIndex].r[idx][1] = newContent; // 第1列：正文
+                                realUpdateCount++; // 统计实际更新数量
                             }
                         });
 
@@ -2125,14 +2200,14 @@
                             return;
                         }
 
-                        console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 覆盖 ${targetIndices.length} 页内容`);
+                        console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 实际覆盖 ${realUpdateCount} 页内容`);
 
                         m.save(false, true); // 总结优化后立即保存
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
 
-                        await window.Gaigai.customAlert(`✅ 已覆盖 ${targetIndices.length} 页内容！`, '成功');
+                        await window.Gaigai.customAlert(`✅ 已成功覆盖 ${realUpdateCount} 页内容！`, '成功');
                         $o.remove();
 
                         // 刷新UI
