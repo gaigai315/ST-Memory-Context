@@ -2899,34 +2899,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         strTable += '【记忆档案结束】\n';
 
         // 2. 新逻辑：按表拆分 (SYSTEM 完整单词 + 强力防重演)
-        if (C.tableInj) {
-            m.s.slice(0, -1).forEach((sheet, i) => {
-                if (sheet.r.length > 0) {
-                    const sheetName = sheet.n || `表${i}`;
-                    const sheetContent = sheet.txt(i);
+        // ✅ [修复] 无条件构建 tableMessages，确保变量锚点始终有数据可注入
+        m.s.slice(0, -1).forEach((sheet, i) => {
+            if (sheet.r.length > 0) {
+                const sheetName = sheet.n || `表${i}`;
+                const sheetContent = sheet.txt(i);
 
-                    tableMessages.push({
-                        role: 'system',
-                        // 1. 名字：保持你要求的 SYSTEM (表名)
-                        name: `SYSTEM (${sheetName})`,
-
-                        // 2. 内容：标题改为“已归档”，并加上防重演指令
-                        content: `【记忆只读数据库：已归档历史 - ${sheetName}】\n(⚠️已归档内容，仅供参考，严禁重演)\n${sheetContent}`,
-
-                        isGaigaiData: true
-                    });
-                }
-            });
-
-            // 兜底 (全空时)
-            if (tableMessages.length === 0) {
                 tableMessages.push({
                     role: 'system',
-                    name: 'SYSTEM (系统提示)',
-                    content: '【记忆只读数据库】\n（暂无详细记录）',
+                    // 1. 名字：保持你要求的 SYSTEM (表名)
+                    name: `SYSTEM (${sheetName})`,
+
+                    // 2. 内容：标题改为"已归档"，并加上防重演指令
+                    content: `【记忆只读数据库：已归档历史 - ${sheetName}】\n(⚠️已归档内容，仅供参考，严禁重演)\n${sheetContent}`,
+
                     isGaigaiData: true
                 });
             }
+        });
+
+        // 兜底 (全空时)
+        if (tableMessages.length === 0) {
+            tableMessages.push({
+                role: 'system',
+                name: 'SYSTEM (系统提示)',
+                content: '【记忆只读数据库】\n（暂无详细记录）',
+                isGaigaiData: true
+            });
         }
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
@@ -3135,29 +3134,36 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (tableMessages.length > 0) {
             let tablePos = -1;
             let tableStrategy = '';
+            let shouldInject = false; // ✅ [修复] 是否应该注入的标志
 
             // Priority 1: {{MEMORY_TABLE}} 专属变量
             if (idxTableVar !== -1) {
                 tablePos = idxTableVar;
                 tableStrategy = `⚓ 专属变量 {{MEMORY_TABLE}} (位置 #${idxTableVar})`;
+                shouldInject = true; // 有变量锚点，强制注入
             }
             // Priority 2: {{MEMORY}} 智能变量 (仅当 Prompt Manager 开启且允许锚点模式)
             else if (allowAnchorMode && idxSmartVar !== -1) {
                 tablePos = idxSmartVar;
                 tableStrategy = `⚓ 智能变量 {{MEMORY}} (位置 #${idxSmartVar})`;
+                shouldInject = true; // 有变量锚点，强制注入
             }
-            // Priority 3: 默认位置
-            else {
+            // Priority 3: 默认位置 (✅ [修复] 仅当 C.tableInj 开启时)
+            else if (C.tableInj) {
                 tablePos = getDefaultPosition();
                 tableStrategy = `📍 默认位置 (Start a new Chat 前，#${tablePos})`;
+                shouldInject = true;
             }
 
-            insertionOps.push({
-                index: tablePos,
-                messages: tableMessages,
-                type: 'Table',
-                strategy: tableStrategy
-            });
+            // ✅ [修复] 只有当 shouldInject 为 true 时才添加到插入队列
+            if (shouldInject) {
+                insertionOps.push({
+                    index: tablePos,
+                    messages: tableMessages,
+                    type: 'Table',
+                    strategy: tableStrategy
+                });
+            }
         }
 
         // ✨ C. 处理提示词 (strPrompt) - 整合进插入队列
