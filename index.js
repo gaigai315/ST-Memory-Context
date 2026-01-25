@@ -3038,16 +3038,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     idxSmartVar = i;
                     console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
                 }
-                // 无论是否启用锚点，都要先把这个变量文本洗掉
+
+                // 清洗变量文本
                 msgContent = msgContent.replace(varSmart, '');
 
-                if (allowAnchorMode) {
-                    // 只有允许锚点模式时，才记录这个位置用于后续判断
-                    if (anchorIndex === -1) anchorIndex = i;
-                    foundAnchor = true;
-                } else {
-                    console.log(`🧹 [变量扫描] 清洗变量 ${varSmart} | 忽略位置 (开关关或批量模式)`);
-                }
+                // ✅ [修复]：只要检测到标签，就强制记录锚点位置。
+                // 逻辑：标签存在说明用户开启了预设开关，必须在此处插入表格。
+                // 如果预设关闭，代码根本跑不到这里，会自动回落到默认位置。
+                if (anchorIndex === -1) anchorIndex = i;
+                foundAnchor = true;
+
                 modified = true;
             }
 
@@ -3292,87 +3292,63 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     // 终极修复：使用 TreeWalker 精准替换文本节点，绝对不触碰图片/DOM结构
+    // ⚡ [性能优化] 智能渲染清洗：使用 requestIdleCallback 在 CPU 空闲时执行，避免阻塞 UI
     function hideMemoryTags() {
         // 🔴 全局主开关守卫
         if (!C.masterSwitch) return;
-
         if (!C.hideTag) return;
 
-        // 1. 立即注入 CSS 规则，确保即使在防抖延迟期间也能隐藏标准元素
-        // 这是最安全的隐藏方式，不会与其他脚本冲突
+        // 1. 注入 CSS 依然保留 (最高效的隐藏方式)
         if (!document.getElementById('gaigai-hide-style')) {
             $('<style id="gaigai-hide-style">memory, gaigaimemory, tableedit { display: none !important; }</style>').appendTo('head');
         }
 
-        // 2. ✅ [防抖策略] 清除之前的定时器，防止在 Regex 脚本快速切换时重复执行
-        if (hideTagDebounceTimer) {
-            clearTimeout(hideTagDebounceTimer);
+        // 2. 性能策略：如果是"批量填表"模式且没开启"实时填表"，
+        // 说明聊天记录里基本没有标签，不需要频繁扫描，直接返回（除非强制刷新）
+        // 注意：这里要确保不是在初始化阶段
+        if (C.autoBackfill && !C.enabled && !window.Gaigai.isInitializing) {
+            // 偶尔执行一次即可，不用每次消息都扫
+            if (Math.random() > 0.1) return;
         }
 
-        // 3. ✅ [防抖策略] 设置新的定时器，等待 1200ms 确保 DOM 完全稳定
-        // 只有在 1200ms 内没有新的调用时，才会真正执行 DOM 操作
-        // ⚠️ 1200ms 是为了应对多个 Regex 脚本（4+）的"渲染风暴"，确保所有脚本都完成后再执行
+        // 3. 清除旧定时器
+        if (hideTagDebounceTimer) clearTimeout(hideTagDebounceTimer);
+
+        // 4. 使用 requestIdleCallback (兼容性写法)
+        const runTask = window.requestIdleCallback || function(cb) { setTimeout(cb, 500); };
+
         hideTagDebounceTimer = setTimeout(() => {
-            // 4. ✅ [移动端优化] 使用 requestIdleCallback 确保在 CPU 空闲时执行
-            // 这样可以避免在移动设备上与 Regex 脚本等其他插件的 DOM 操作冲突
-            // 如果浏览器不支持 requestIdleCallback，则回退到 requestAnimationFrame
-            const scheduleWork = window.requestIdleCallback || requestAnimationFrame;
-            scheduleWork(() => {
-                // ✅ 性能优化：只查找没有打过标记的元素，极大减少遍历数量
+            runTask(() => {
+                // ✅ 关键优化：只处理未被标记为 'processed' 的气泡
                 $('.mes_text:not([data-gaigai-processed="true"])').each(function () {
                     const root = this;
-                    // 标记已处理，防止重复扫描
+
+                    // 标记已处理
                     root.dataset.gaigaiProcessed = 'true';
 
-                    // 策略 A: 如果 <Memory> 被浏览器识别为标签，直接用 CSS 隐藏 (不通过 JS 修改)
+                    // 快速检查：如果 innerHTML 里根本没有 Memory 关键字，直接跳过 TreeWalker
+                    if (root.innerHTML.indexOf('Memory') === -1 && root.innerHTML.indexOf('tableEdit') === -1) {
+                        return;
+                    }
+
+                    // 只有确实包含关键字时，才动用昂贵的 TreeWalker
                     $(root).find('memory, gaigaimemory, tableedit').hide();
 
-                    // 策略 B: 如果 <Memory> 是纯文本，使用 TreeWalker 精准查找
-                    // 这种方式只会修改文字节点，旁边的 <img src="..."> 绝对不会被重置！
-                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-                    let node;
-                    const nodesToReplace = [];
-
-                    while (node = walker.nextNode()) {
-                        if (MEMORY_TAG_REGEX.test(node.nodeValue)) {
-                            nodesToReplace.push(node);
+                    try {
+                        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                        let node;
+                        while (node = walker.nextNode()) {
+                            // 只有匹配正则才修改 DOM
+                            if (MEMORY_TAG_REGEX.test(node.nodeValue)) {
+                                node.nodeValue = node.nodeValue.replace(MEMORY_TAG_REGEX, '');
+                            }
                         }
-                    }
-
-                    if (nodesToReplace.length > 0) {
-                        nodesToReplace.forEach(textNode => {
-                            // ✅ [双重安全检查] 防止操作已被其他脚本(如Regex)移除的节点
-                            // 检查节点本身和根容器是否仍然连接到文档
-                            // 这是"被动防御"策略的核心：只操作确认安全的节点
-                            if (!textNode.isConnected || !root.isConnected) {
-                                return; // 跳过已分离的节点或容器
-                            }
-
-                            // ✅ [安全检查] 防止操作已被其他脚本(如Regex)移除的节点
-                            // 如果节点已经从 DOM 树中分离，跳过处理
-                            if (!textNode.parentNode || !textNode.parentNode.isConnected) {
-                                return; // 跳过已分离的节点
-                            }
-
-                            try {
-                                // 🔥 [Text Mutation] 直接修改文本内容，不改变 DOM 结构
-                                // 这样可以避免与 Regex 脚本等其他插件的 DOM 操作冲突
-                                const originalText = textNode.nodeValue;
-                                const newText = originalText.replace(MEMORY_TAG_REGEX, '');
-
-                                if (originalText !== newText) {
-                                    textNode.nodeValue = newText;
-                                }
-                            } catch (e) {
-                                // ✅ [容错处理] 如果修改失败（如节点在操作过程中被移除），静默失败
-                                // 避免影响整个聊天界面的正常运行
-                                console.warn('⚠️ [hideMemoryTags] 文本修改失败（可能与其他脚本冲突）:', e);
-                            }
-                        });
+                    } catch (e) {
+                        // 忽略 DOM 变动导致的错误
                     }
                 });
-            });
-        }, 1200); // 1200ms 防抖延迟，确保多个 Regex 脚本完全停止后再执行（被动防御策略）
+            }, { timeout: 2000 }); // 2秒超时强制执行
+        }, 1000); // 1秒防抖
     }
 
     // ========================================================================
