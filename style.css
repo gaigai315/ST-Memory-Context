@@ -323,16 +323,18 @@
 }
 
 /* 极度危险 - 深红 */
-#gai-btn-clear { 
+/* 🚀 移动行 - 蓝紫色渐变 */
+#gai-btn-move {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-weight: 500;
+}
+
+/* 🗑️ 清理数据 - 红色渐变（危险操作） */
+#gai-btn-cleanup {
     background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
     color: #fff;
     font-weight: 600;  /* ✅ 最危险的按钮，字体加粗 */
-}
-
-/* ⭐ 警告操作 - 橙色（原来的粉色改成橙色） */
-#gai-btn-clean { 
-    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
-    color: #fff;
 }
 
 /* 视图设置 - 琥珀色 */

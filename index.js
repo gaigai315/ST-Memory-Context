@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.0
+// 记忆表格 v1.9.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.0 启动');
+    console.log('🚀 记忆表格 v1.9.1 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.0';
+    const V = 'v1.9.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1497,13 +1497,11 @@
             let localData = null;
             if (C.cloudSync) { try { const ctx = this.ctx(); if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) cloudData = ctx.chatMetadata.gaigai; } catch (e) { } }
 
-            // 🛡️ [数据迁移修复] 检查云端数据 (支持重命名、分支迁移)
+            // 🛡️ [数据隔离] 严格检查云端数据 ID
             if (cloudData) {
-                // 只要数据存在于当前 chatMetadata 中，我们就认为是合法的，允许迁移
                 if (cloudData.id !== id) {
-                    console.log(`🔄 [数据迁移] 检测到 ID 变更 (可能是重命名或分支)，自动迁移数据。 (原ID: ${cloudData.id} -> 新ID: ${id})`);
-                    // 强制更新内存对象中的 ID，确保后续保存时使用新 ID
-                    cloudData.id = id;
+                    console.warn(`🛑 [数据隔离] 拦截到 ID 不匹配的云端数据 (Cloud: ${cloudData.id} vs Curr: ${id})。可能是分支或复制存档，已忽略旧数据以防止串味。`);
+                    cloudData = null; // ❌ 彻底丢弃不匹配的数据，防止污染
                 } else {
                     console.log(`✅ [数据验证] ID 匹配: ${id}`);
                 }
@@ -4516,11 +4514,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <button id="gai-btn-toggle" title="切换选中行的已总结状态">👻 显/隐</button>
                 <button id="gai-btn-sum" title="AI智能总结">📝 总结</button>
                 <button id="gai-btn-back" title="追溯历史剧情填表">⚡ 追溯</button>
+                <button id="gai-btn-move" title="移动选中行到其他表格">🚀 移动</button>
                 <button id="gai-btn-export" title="导出JSON备份">📥 导出</button>
                 <button id="gai-btn-import" title="从JSON恢复数据">📤 导入</button>
                 <button id="gai-btn-view" title="视图设置">📏 视图</button>
-                <button id="gai-btn-clean" title="保留总结，清空详情">🧹 清表</button>
-                <button id="gai-btn-clear" title="清空所有数据">💥 全清</button>
+                <button id="gai-btn-cleanup" title="清理数据选项">🗑️ 清理</button>
                 <button id="gai-btn-theme" title="设置外观">🎨 主题</button>
                 <button id="gai-btn-config" title="插件设置">⚙️ 配置</button>
             </div>
@@ -4859,9 +4857,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('.g-row-select').prop('checked', false);
             $('.g-select-all').prop('checked', false);
 
-            // 清空搜索框并重置过滤
-            $('#gai-search-input').val('');
-            $('.g-row').show();
+            // 保持搜索词并应用到新表格
+            // 触发 input 事件，复用搜索逻辑
+            $('#gai-search-input').trigger('input');
         });
 
         // =========================================================
@@ -5888,18 +5886,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         });
         $('#gai-btn-view').off('click').on('click', showViewSettings);
         // ✅✅✅ [升级版] 清空表格（带指针控制选项）
-        $('#gai-btn-clean').off('click').on('click', function () {
-            const hasSummary = m.sm.has();
-            const tableCount = m.all().length - 1; // 排除总结表
+        // =========================================================
+        // 🚀 移动选中行到其他表格
+        // =========================================================
+        $('#gai-btn-move').off('click').on('click', async function () {
+            // 1. 检查是否有选中行
+            if (!selectedRows || selectedRows.length === 0) {
+                await customAlert('⚠️ 请先选中要移动的行', '提示');
+                return;
+            }
 
-            // 1. 准备弹窗样式变量
+            // 2. 获取当前源表格
+            const sourceTableIndex = selectedTableIndex !== null ? selectedTableIndex : parseInt($('.g-t.act').data('i'));
+            const sourceSheet = m.get(sourceTableIndex);
+            if (!sourceSheet) {
+                await customAlert('⚠️ 无法获取源表格', '错误');
+                return;
+            }
+
+            // 3. 准备样式变量
             const isDark = UI.darkMode;
             const bgColor = isDark ? '#1e1e1e' : '#fff';
             const txtColor = isDark ? '#e0e0e0' : UI.tc;
             const borderColor = isDark ? 'rgba(255,255,255,0.15)' : '#ddd';
+            const hoverBg = isDark ? 'rgba(102, 126, 234, 0.2)' : 'rgba(102, 126, 234, 0.1)';
 
-            // 2. 创建弹窗 DOM
-            const id = 'clear-options-' + Date.now();
+            // 4. 创建弹窗 DOM
+            const id = 'move-rows-' + Date.now();
             const $overlay = $('<div>', {
                 id: id,
                 css: {
@@ -5920,72 +5933,365 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
 
-            // 3. 提示文案
-            let tipText = `⚠️ <strong>确定要清空 ${tableCount} 个详细表格吗？</strong><br><br>`;
-            if (hasSummary) {
-                tipText += `<span style="color:#28a745">✅ 记忆总结将会保留</span><br>`;
+            // 5. 标题
+            $box.append(`<div style="font-size:16px; font-weight:bold; margin-bottom:4px;">🚀 移动选中行</div>`);
+            $box.append(`<div style="font-size:13px; opacity:0.9; line-height:1.5;">已选中 <strong>${selectedRows.length}</strong> 行，请选择目标表格：</div>`);
+
+            // 6. 列出所有表格（排除当前源表格和总结表）
+            const allSheets = m.all();
+            const $tableList = $('<div>', {
+                css: {
+                    display: 'flex', flexDirection: 'column', gap: '8px',
+                    maxHeight: '300px', overflowY: 'auto'
+                }
+            });
+
+            let hasValidTarget = false;
+            allSheets.forEach((sheet, idx) => {
+                // 排除源表格和总结表（最后一个表格）
+                if (idx === sourceTableIndex || idx === allSheets.length - 1) return;
+
+                hasValidTarget = true;
+                const $tableBtn = $('<button>', {
+                    text: `${sheet.n} (${sheet.r.length} 行)`,
+                    css: {
+                        padding: '12px', border: '1px solid ' + borderColor, borderRadius: '6px',
+                        background: 'transparent', color: txtColor, cursor: 'pointer',
+                        textAlign: 'left', transition: 'all 0.2s'
+                    }
+                }).hover(
+                    function () { $(this).css({ background: hoverBg, borderColor: '#667eea' }); },
+                    function () { $(this).css({ background: 'transparent', borderColor: borderColor }); }
+                ).click(async function () {
+                    // 执行移动操作
+                    const targetSheet = m.get(idx);
+                    if (!targetSheet) {
+                        await customAlert('⚠️ 无法获取目标表格', '错误');
+                        return;
+                    }
+
+                    // 获取选中行的数据（按行索引排序，从大到小，以便删除时不影响索引）
+                    const sortedRows = [...selectedRows].sort((a, b) => b - a);
+                    const rowsData = sortedRows.map(rowIdx => {
+                        const sourceRow = sourceSheet.r[rowIdx];
+                        if (!sourceRow) return null;
+
+                        const newRow = {}; // Use object to match internal data structure
+
+                        // 核心修复：严格按照【目标表格】的列数进行复刻
+                        // 1. 如果目标表列少：源数据多余的列会被自动丢弃 (Truncate)
+                        // 2. 如果目标表列多：源数据没有的列会自动填空 (Pad)
+                        // 3. 严格索引对齐：0对0，1对1
+                        for (let i = 0; i < targetSheet.c.length; i++) {
+                            newRow[i] = sourceRow[i] || '';
+                        }
+
+                        return newRow;
+                    }).filter(r => r !== null);
+
+                    if (rowsData.length === 0) {
+                        await customAlert('⚠️ 未能获取有效的行数据', '错误');
+                        return;
+                    }
+
+                    // 插入到目标表格
+                    rowsData.reverse().forEach(rowData => {
+                        targetSheet.ins(rowData);
+                    });
+
+                    // 从源表格删除（使用 delMultiple）
+                    if (typeof sourceSheet.delMultiple === 'function') {
+                        sourceSheet.delMultiple(sortedRows);
+                    } else {
+                        // 如果没有 delMultiple 方法，逐个删除
+                        sortedRows.forEach(rowIdx => {
+                            sourceSheet.r.splice(rowIdx, 1);
+                        });
+                    }
+
+                    // 清空选中状态
+                    selectedRows = [];
+                    selectedRow = null;
+
+                    // 保存数据
+                    m.save(true, true);
+
+                    // 关闭弹窗
+                    $overlay.remove();
+
+                    // 刷新界面 (同时刷新源表格和目标表格)
+                    if (typeof refreshTable === 'function') {
+                        // 1. 刷新源表格 (移除了行)
+                        refreshTable(sourceTableIndex);
+                        updateTabCount(sourceTableIndex);
+
+                        // 2. 刷新目标表格 (增加了行) - 这里的 idx 是 forEach 循环中的目标表格索引
+                        refreshTable(idx);
+                        updateTabCount(idx);
+                    } else {
+                        shw(); // 兜底：重绘整个界面
+                    }
+
+                    // 显示成功消息
+                    const msg = `✅ 已成功移动 ${rowsData.length} 行到「${sheet.n}」`;
+                    if (typeof toastr !== 'undefined') toastr.success(msg);
+                    else await customAlert(msg, '成功');
+                });
+
+                $tableList.append($tableBtn);
+            });
+
+            if (!hasValidTarget) {
+                $box.append(`<div style="color:#dc3545; font-size:13px; padding:12px; text-align:center;">⚠️ 没有可用的目标表格</div>`);
+            } else {
+                $box.append($tableList);
             }
-            tipText += `此操作将永久删除详情表内容。<br><br>请选择对<strong>【批量填表进度指针】</strong>的处理方式：`;
 
-            $box.append(`<div style="font-size:16px; font-weight:bold; margin-bottom:4px;">🧹 清空表格选项</div>`);
-            $box.append(`<div style="font-size:13px; opacity:0.9; line-height:1.5;">${tipText}</div>`);
+            // 7. 取消按钮
+            const $btnCancel = $('<button>', {
+                text: '取消',
+                css: {
+                    padding: '10px', border: '1px solid ' + borderColor, borderRadius: '6px',
+                    background: 'transparent', color: txtColor, cursor: 'pointer', marginTop: '8px'
+                }
+            }).click(() => $overlay.remove());
 
-            // 4. 定义执行函数
-            const executeClear = async (resetPointer) => {
-                // A. 清空数据表
+            $box.append($btnCancel);
+            $overlay.append($box);
+            $('body').append($overlay);
+        });
+
+        // =========================================================
+        // 🗑️ 清理数据（整合原来的清表和全清功能）
+        // =========================================================
+        $('#gai-btn-cleanup').off('click').on('click', async function () {
+            const hasSummary = m.sm.has();
+            const tableCount = m.all().length - 1; // 排除总结表
+
+            // 1. 准备弹窗样式变量
+            const isDark = UI.darkMode;
+            const bgColor = isDark ? '#1e1e1e' : '#fff';
+            const txtColor = isDark ? '#e0e0e0' : UI.tc;
+            const borderColor = isDark ? 'rgba(255,255,255,0.15)' : '#ddd';
+
+            // 2. 创建弹窗 DOM
+            const id = 'cleanup-options-' + Date.now();
+            const $overlay = $('<div>', {
+                id: id,
+                css: {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    width: '100vw', height: '100vh',
+                    background: 'rgba(0,0,0,0.6)', zIndex: 10000020,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }
+            });
+
+            const $box = $('<div>', {
+                css: {
+                    background: bgColor, color: txtColor,
+                    borderRadius: '12px', padding: '12px',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.4)', width: '320px', maxWidth: '85vw',
+                    maxHeight: '80vh', overflowY: 'auto',
+                    border: '1px solid ' + borderColor,
+                    display: 'flex', flexDirection: 'column', gap: '6px'
+                }
+            });
+
+            // 3. 标题
+            $box.append(`<div style="font-size:16px; font-weight:bold; margin-bottom:4px;">🗑️ 清理数据选项</div>`);
+            $box.append(`<div style="font-size:13px; opacity:0.9; line-height:1.5;">请选择清理方式：</div>`);
+
+            // 4. 选项1：仅清空当前表（保留进度）
+            const currentTableIndex = selectedTableIndex !== null ? selectedTableIndex : parseInt($('.g-t.act').data('i'));
+            const currentSheet = m.get(currentTableIndex);
+            const isLastTable = currentTableIndex === m.all().length - 1;
+
+            const $btnOption1 = $('<button>', {
+                html: '<span style="font-size:13px;">🧹 <strong>仅清空当前表 (保留进度)</strong></span><br><span style="font-size:10px; opacity:0.8;">清空「' + (currentSheet ? currentSheet.n : '当前表') + '」的所有行，不重置追溯进度指针</span>',
+                css: {
+                    padding: '6px', border: '1px solid #4fc3f7', borderRadius: '6px',
+                    background: 'transparent', color: UI.tc, cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.2s', lineHeight: '1.4'
+                }
+            }).hover(
+                function () { $(this).css({ borderColor: '#29b6f6', background: 'rgba(79, 195, 247, 0.1)', transform: 'translateY(-2px)' }); },
+                function () { $(this).css({ borderColor: '#4fc3f7', background: 'transparent', transform: 'translateY(0)' }); }
+            ).click(async function () {
+                if (!currentSheet) {
+                    await customAlert('⚠️ 无法获取当前表格', '错误');
+                    return;
+                }
+
+                const confirmMsg = `确定清空「${currentSheet.n}」的所有 ${currentSheet.r.length} 行数据吗？\n\n⚠️ 此操作不可恢复！`;
+                if (!await customConfirm(confirmMsg, '确认清空')) return;
+
+                // 清空当前表
+                currentSheet.clear();
+                if (currentTableIndex < m.all().length - 1) {
+                    // 不是总结表，清除已总结标记
+                    const key = `gg_summarized_${currentTableIndex}`;
+                    if (summarizedRows[key]) {
+                        delete summarizedRows[key];
+                        localStorage.setItem(SK, JSON.stringify(summarizedRows));
+                    }
+                }
+                lastManualEditTime = Date.now();
+
+                // 保存数据（不重置进度指针）
+                m.save(true, true);
+
+                // 关闭弹窗并刷新
+                $overlay.remove();
+                shw();
+
+                const msg = `✅ 已清空「${currentSheet.n}」`;
+                if (typeof toastr !== 'undefined') toastr.success(msg);
+                else await customAlert(msg, '完成');
+            });
+
+            // 5. 选项2：清空所有详细表（保留总结和进度）
+            const $btnOption2 = $('<button>', {
+                html: '<span style="font-size:13px;">📋 <strong>清空所有详细表 (保留总结)</strong></span><br><span style="font-size:10px; opacity:0.8;">清空所有 ' + tableCount + ' 个详细表格，保留总结表和追溯进度指针</span>',
+                css: {
+                    padding: '6px', border: '1px solid #66bb6a', borderRadius: '6px',
+                    background: 'transparent', color: UI.tc, cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.2s', lineHeight: '1.4'
+                }
+            }).hover(
+                function () { $(this).css({ borderColor: '#4caf50', background: 'rgba(102, 187, 106, 0.1)', transform: 'translateY(-2px)' }); },
+                function () { $(this).css({ borderColor: '#66bb6a', background: 'transparent', transform: 'translateY(0)' }); }
+            ).click(async function () {
+                const confirmMsg = `确定清空所有 ${tableCount} 个详细表格吗？\n\n✅ 记忆总结将会保留\n✅ 所有进度指针保留\n\n⚠️ 此操作不可恢复！`;
+                if (!await customConfirm(confirmMsg, '确认清空')) return;
+
+                // 清空所有详细表（填表指针不归零+保留总结表）
                 m.all().slice(0, -1).forEach(s => s.clear());
                 clearSummarizedMarks();
                 lastManualEditTime = Date.now();
 
-                // B. 处理指针
-                let msg = '';
-                if (resetPointer) {
-                    API_CONFIG.lastBackfillIndex = 0;
-                    msg = '✅ 表格已清空，进度指针已重置为 0。';
-                } else {
-                    // 保持原样
-                    msg = `✅ 表格已清空，进度指针保留在第 ${API_CONFIG.lastBackfillIndex} 层。`;
+                // 保存数据（不重置进度指针）
+                m.save(true, true);
+
+                // 关闭弹窗并刷新
+                $overlay.remove();
+                shw();
+
+                const msg = `✅ 已清空所有详细表格，总结和进度已保留`;
+                if (typeof toastr !== 'undefined') toastr.success(msg);
+                else await customAlert(msg, '完成');
+            });
+
+            // 6. 选项3：清空所有详细表（填表内容+指针进度）
+            const $btnOption3 = $('<button>', {
+                html: '<span style="font-size:13px;">🔄 <strong>重置所有详细表 (清空+归零)</strong></span><br><span style="font-size:10px; opacity:0.8;">清空所有 ' + tableCount + ' 个详细表格，保留总结表，重置填表进度指针为 0</span>',
+                css: {
+                    padding: '6px', border: '1px solid #ffa726', borderRadius: '6px',
+                    background: 'transparent', color: UI.tc, cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.2s', lineHeight: '1.4'
                 }
+            }).hover(
+                function () { $(this).css({ borderColor: '#ff9800', background: 'rgba(255, 167, 38, 0.1)', transform: 'translateY(-2px)' }); },
+                function () { $(this).css({ borderColor: '#ffa726', background: 'transparent', transform: 'translateY(0)' }); }
+            ).click(async function () {
+                const confirmMsg = `确定重置所有 ${tableCount} 个详细表格吗？\n\n将执行：\n✓ 清空所有详细表格数据\n✓ 保留记忆总结\n✓ 重置填表进度指针为 0\n\n⚠️ 此操作不可恢复！`;
+                if (!await customConfirm(confirmMsg, '确认重置')) return;
 
-                // C. 保存配置和数据
-                try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
+                // 清空所有详细表（除总结表）
+                m.all().slice(0, -1).forEach(s => s.clear());
+                clearSummarizedMarks();
+                lastManualEditTime = Date.now();
 
-                // 同步到云端 (保存配置变更)
+                // 重置填表进度指针（不重置总结指针）
+                API_CONFIG.lastBackfillIndex = 0;
+                localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                // 同步到云端
                 if (typeof saveAllSettingsToCloud === 'function') {
                     await saveAllSettingsToCloud();
                 }
 
-                // 强制保存数据到当前会话 (支持会话隔离)
-                m.save(true, true); // 删除详情表立即保存
+                // 保存数据
+                m.save(true, true);
 
-                // D. 刷新界面
+                // 关闭弹窗并刷新
                 $overlay.remove();
-                if (typeof shw === 'function') shw();
+                shw();
 
+                const msg = `✅ 已重置所有详细表格，总结已保留，填表进度指针已归零`;
                 if (typeof toastr !== 'undefined') toastr.success(msg);
-                else alert(msg);
-            };
+                else await customAlert(msg, '完成');
+            });
 
-            // 5. 按钮组
-            // 按钮A：保留指针 (推荐用于清理已总结内容)
-            const $btnKeep = $('<button>', {
-                html: '📉 <strong>保留进度 (仅清数据)</strong><br><span style="font-size:10px; opacity:0.8">适合清理旧数据，AI 将继续往后填表</span>',
+            // 7. 选项4：删除所有数据（全清）
+            const $btnOption4 = $('<button>', {
+                html: '<span style="font-size:13px;">💥 <strong>删除所有数据 (全清)</strong></span><br><span style="font-size:10px; opacity:0.8;">清空所有表格（包括总结表）并重置所有指针</span>',
                 css: {
-                    padding: '10px', border: 'none', borderRadius: '6px',
-                    background: '#17a2b8', color: '#fff', cursor: 'pointer', textAlign: 'left'
+                    padding: '6px', border: '1px solid #e53935', borderRadius: '6px',
+                    background: 'transparent', color: UI.tc, cursor: 'pointer', textAlign: 'left',
+                    transition: 'all 0.2s', lineHeight: '1.4'
                 }
-            }).click(() => executeClear(false));
+            }).hover(
+                function () { $(this).css({ borderColor: '#d32f2f', background: 'rgba(229, 57, 53, 0.1)', transform: 'translateY(-2px)' }); },
+                function () { $(this).css({ borderColor: '#e53935', background: 'transparent', transform: 'translateY(0)' }); }
+            ).click(async function () {
+                let confirmMsg = '⚠️⚠️⚠️ 危险操作 ⚠️⚠️⚠️\n\n确定清空所有数据吗？\n\n';
 
-            // 按钮B：重置指针 (完全重开)
-            const $btnReset = $('<button>', {
-                html: '🔄 <strong>完全重置 (清数据+归零)</strong><br><span style="font-size:10px; opacity:0.8">适合想要彻底重新开始追溯</span>',
-                css: {
-                    padding: '10px', border: 'none', borderRadius: '6px',
-                    background: '#dc3545', color: '#fff', cursor: 'pointer', textAlign: 'left'
+                if (hasSummary) {
+                    confirmMsg += '🗑️ 将删除所有详细表格\n';
+                    confirmMsg += '🗑️ 将删除记忆总结\n';
+                    confirmMsg += '🗑️ 将重置所有标记\n\n';
+                } else {
+                    confirmMsg += '🗑️ 将删除所有表格数据\n\n';
                 }
-            }).click(() => executeClear(true));
 
-            // 按钮C：取消
+                confirmMsg += '此操作不可恢复！强烈建议先导出备份！';
+
+                if (!await customConfirm(confirmMsg, '⚠️ 全部清空')) return;
+
+                // 1. 清空所有表格（包括总结）
+                m.all().forEach(s => s.clear());
+                clearSummarizedMarks();
+                lastManualEditTime = Date.now();
+
+                // 2. 重置总结进度
+                API_CONFIG.lastSummaryIndex = 0;
+                API_CONFIG.lastBackfillIndex = 0;
+                localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                // 异步触发云端同步
+                saveAllSettingsToCloud().catch(err => {
+                    console.warn('⚠️ [全清] 后台云端同步失败 (不影响本地清空):', err);
+                });
+
+                // 强制保存数据
+                m.save(true, true);
+
+                // 强制告诉酒馆保存当前状态
+                if (m.ctx() && typeof m.ctx().saveChat === 'function') {
+                    m.ctx().saveChat();
+                    console.log('💾 [全清] 已强制触发酒馆保存，防止数据复活。');
+                }
+
+                // 彻底销毁所有历史快照
+                snapshotHistory = {};
+
+                // 重建一个空白的创世快照(-1)
+                snapshotHistory['-1'] = {
+                    data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))),
+                    summarized: {},
+                    timestamp: 0
+                };
+
+                console.log('💥 [全清执行] 所有数据已销毁，无法回档。');
+
+                // 关闭弹窗并刷新
+                $overlay.remove();
+                shw();
+
+                await customAlert('✅ 所有数据已清空（包括总结）', '完成');
+            });
+
+            // 7. 取消按钮
             const $btnCancel = $('<button>', {
                 text: '取消',
                 css: {
@@ -5994,70 +6300,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             }).click(() => $overlay.remove());
 
-            $box.append($btnKeep, $btnReset, $btnCancel);
+            // 8. 添加按钮到弹窗
+            $box.append($btnOption1, $btnOption2, $btnOption3, $btnOption4, $btnCancel);
             $overlay.append($box);
             $('body').append($overlay);
         });
 
-        // ✅✅ 修改：全部清空（含总结）
-        $('#gai-btn-clear').off('click').on('click', async function () {
-            const hasSummary = m.sm.has();
-            let confirmMsg = '⚠️⚠️⚠️ 危险操作 ⚠️⚠️⚠️\n\n确定清空所有数据吗？\n\n';
-
-            if (hasSummary) {
-                confirmMsg += '🗑️ 将删除所有详细表格\n';
-                confirmMsg += '🗑️ 将删除记忆总结\n';
-                confirmMsg += '🗑️ 将重置所有标记\n\n';
-                confirmMsg += '💡 提示：如果想保留总结，请使用"清表格"按钮\n\n';
-            } else {
-                confirmMsg += '🗑️ 将删除所有表格数据\n\n';
-            }
-
-            confirmMsg += '此操作不可恢复！强烈建议先导出备份！';
-
-            if (!await customConfirm(confirmMsg, '⚠️ 全部清空')) return;
-
-            // 1. 清空所有表格（包括总结）
-            m.all().forEach(s => s.clear());
-            clearSummarizedMarks();
-            lastManualEditTime = Date.now();
-
-            // 2. 重置总结进度
-            API_CONFIG.lastSummaryIndex = 0;
-            API_CONFIG.lastBackfillIndex = 0;  // ✅ 修复：同时重置批量填表进度
-            localStorage.setItem(AK, JSON.stringify(API_CONFIG));
-
-            // ⚡ 异步触发云端同步，不阻塞 UI 线程
-            saveAllSettingsToCloud().catch(err => {
-                console.warn('⚠️ [全清] 后台云端同步失败 (不影响本地清空):', err);
-            });
-
-            // ✨✨✨ 关键修改：传入 true, true，强制突破熔断保护并立即保存 ✨✨✨
-            m.save(true, true); // 清空所有表格立即保存
-
-            // ✨✨✨ 强制告诉酒馆保存当前状态 ✨✨✨
-            if (m.ctx() && typeof m.ctx().saveChat === 'function') {
-                m.ctx().saveChat();
-                console.log('💾 [全清] 已强制触发酒馆保存，防止数据复活。');
-            }
-
-            // 3. 🛑 核心修复：彻底销毁所有历史快照，防止数据复活
-            snapshotHistory = {};
-
-            // 4. 重建一个空白的创世快照(-1)，确保系统知道现在是空的
-            snapshotHistory['-1'] = {
-                data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))), // 只保存数据表
-                summarized: {},
-                timestamp: 0
-            };
-
-            console.log('💥 [全清执行] 所有数据已销毁，无法回档。');
-
-            await customAlert('✅ 所有数据已清空（包括总结）', '完成');
-
-            $('#gai-main-pop').remove();
-            shw();
-        });
         $('#gai-btn-theme').off('click').on('click', () => navTo('主题设置', shtm));
         $('#gai-btn-back').off('click').on('click', () => navTo('⚡ 剧情追溯填表', () => window.Gaigai.BackfillManager.showUI()));
         $('#gai-btn-config').off('click').on('click', () => navTo('配置', shcf));
@@ -6803,71 +7051,114 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     !apiUrl.includes('/v1');
 
                 if (isProxyGemini) {
-                    // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 修复逻辑) ===
+                    // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 修复逻辑 + 自动降级) ===
                     console.log('🔧 [智能修正] 命中网页端 Gemini 反代，使用 Makersuite 协议...');
 
                     // 1. URL 清洗：只留 Base URL
                     let cleanBaseUrl = apiUrl.replace(/\/v1(\/|$)/, '').replace(/\/chat\/completions(\/|$)/, '').replace(/\/+$/, '');
 
-                    // 2. 构造 Makersuite Payload (你验证通过的满分答案)
-                    const proxyPayload = {
-                        chat_completion_source: "makersuite",
-                        reverse_proxy: cleanBaseUrl,
-                        proxy_password: apiKey,
-                        model: model,
-                        messages: cleanMessages,
-                        temperature: temperature,
-                        max_tokens: maxTokens,
-                        stream: true, // ✅ 启用流式响应（Claude等提供商要求）
-                        custom_prompt_post_processing: "strict",
-                        use_makersuite_sysprompt: true,
-                        // ✅ 标准 Gemini 格式
-                        safetySettings: [
-                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                        ]
-                    };
+                    // 2. 封装请求逻辑（支持流式/非流式切换）
+                    async function tryRequest(isStreaming) {
+                        const proxyPayload = {
+                            chat_completion_source: "makersuite",
+                            reverse_proxy: cleanBaseUrl,
+                            proxy_password: apiKey,
+                            model: model,
+                            messages: cleanMessages,
+                            temperature: temperature,
+                            max_tokens: maxTokens,
+                            stream: isStreaming, // 🔄 根据参数动态设置
+                            custom_prompt_post_processing: "strict",
+                            use_makersuite_sysprompt: true,
+                            // ✅ 标准 Gemini 格式
+                            safetySettings: [
+                                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            ]
+                        };
 
-                    // ✨ [双重保险] 同时注入 OpenAI 格式的安全设置
-                    // 防止某些魔改的 Makersuite 反代其实底层是 OpenAI 接口
-                    proxyPayload.safety_settings = proxyPayload.safetySettings;
-                    proxyPayload.gemini_safety_settings = proxyPayload.safetySettings;
+                        // ✨ [双重保险] 同时注入 OpenAI 格式的安全设置
+                        proxyPayload.safety_settings = proxyPayload.safetySettings;
+                        proxyPayload.gemini_safety_settings = proxyPayload.safetySettings;
 
-                    const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify(proxyPayload),
-                        credentials: 'include'
-                    });
+                        const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                            body: JSON.stringify(proxyPayload),
+                            credentials: 'include'
+                        });
 
-                    // ✅ [强制流式] 无论 content-type 如何，都使用流式读取（零延迟）
-                    if (proxyResponse.ok && proxyResponse.body) {
-                        console.log('🌊 [Gemini反代] 开始流式读取（强制模式）...');
+                        if (!proxyResponse.ok) {
+                            const errText = await proxyResponse.text();
+                            throw new Error(`反代修复模式报错 (HTTP ${proxyResponse.status}): ${errText.substring(0, 1000)}`);
+                        }
 
-                        const { fullText, fullReasoning, isTruncated } = await readUniversalStream(
-                            proxyResponse.body,
-                            '[Gemini反代]'
-                        );
+                        if (isStreaming) {
+                            // 流式处理
+                            if (proxyResponse.body) {
+                                console.log('🌊 [Gemini反代] 开始流式读取...');
+                                const { fullText, fullReasoning, isTruncated } = await readUniversalStream(
+                                    proxyResponse.body,
+                                    '[Gemini反代]'
+                                );
 
-                        // 🛑 [强力防空回] 如果内容为空，且没有思考过程，直接抛出错误进入 catch
-                        if (!fullText || !fullText.trim()) {
-                            if (!fullReasoning || !fullReasoning.trim()) {
-                                throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
+                                if (!fullText || !fullText.trim()) {
+                                    if (!fullReasoning || !fullReasoning.trim()) {
+                                        throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
+                                    }
+                                }
+
+                                if (isTruncated) {
+                                    console.warn('⚠️ [Gemini反代] 检测到输出因 Max Tokens 限制被截断');
+                                }
+
+                                console.log('✅ [Gemini反代-流式] 成功');
+                                return { success: true, summary: fullText || '' };
                             }
-                        }
+                            throw new Error('流式响应缺少 body');
+                        } else {
+                            // 非流式处理
+                            console.log('📦 [Gemini反代] 使用非流式模式，解析 JSON...');
+                            const data = await proxyResponse.json();
 
-                        if (isTruncated) {
-                            console.warn('⚠️ [Gemini反代] 检测到输出因 Max Tokens 限制被截断');
-                        }
+                            // 兼容多种格式提取文本
+                            let text = '';
+                            if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+                                // Google 原生格式
+                                text = data.candidates[0].content.parts[0].text;
+                            } else if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                                // OpenAI 格式
+                                text = data.choices[0].message.content;
+                            } else if (typeof data === 'string') {
+                                // 纯文本
+                                text = data;
+                            }
 
-                        console.log('✅ [Gemini反代] 成功');
-                        return { success: true, summary: fullText || '' };
+                            if (!text || !text.trim()) {
+                                throw new Error('非流式响应返回内容为空');
+                            }
+
+                            console.log('✅ [Gemini反代-非流式] 成功');
+                            return { success: true, summary: text };
+                        }
                     }
 
-                    const errText = await proxyResponse.text();
-                    throw new Error(`反代修复模式报错: ${errText.substring(0, 1000)}`);
+                    // 3. 实现自动降级（流式 → 非流式）
+                    try {
+                        // 第一次尝试：流式请求
+                        return await tryRequest(true);
+                    } catch (error) {
+                        console.warn('⚠️ [Gemini反代] 流式请求失败，尝试非流式降级...', error.message);
+                        try {
+                            // 第二次尝试：非流式请求
+                            return await tryRequest(false);
+                        } catch (fallbackError) {
+                            // 两次都失败，抛出最终错误
+                            throw new Error(`Gemini 反代请求失败（已尝试流式和非流式）: ${fallbackError.message}`);
+                        }
+                    }
 
                 } else {
 
