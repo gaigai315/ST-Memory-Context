@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.1
+// 记忆表格 v1.9.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.1 启动');
+    console.log('🚀 记忆表格 v1.9.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.1';
+    const V = 'v1.9.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1727,8 +1727,8 @@
     function saveSnapshot(msgIndex) {
         try {
             const snapshot = {
-                data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))), // ✅ 只保存数据表，不保存总结表
-                summarized: JSON.parse(JSON.stringify(summarizedRows)),
+                data: m.all().slice(0, -1).map(sh => structuredClone(sh.json())), // ✅ 只保存数据表，不保存总结表
+                summarized: structuredClone(summarizedRows),
                 timestamp: Date.now()
             };
 
@@ -3040,7 +3040,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 // 清洗变量文本
-                msgContent = msgContent.replace(varSmart, '');
+                // msgContent = msgContent.replace(varSmart, ''); // ✅ [修复] 注释掉：扫描阶段不删除标签
 
                 // ✅ [修复]：只要检测到标签，就强制记录锚点位置。
                 // 逻辑：标签存在说明用户开启了预设开关，必须在此处插入表格。
@@ -3116,8 +3116,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 summaryPos = idxSmartVar;
                 summaryStrategy = `⚓ 智能变量 {{MEMORY}} (位置 #${idxSmartVar})`;
             }
-            // Priority 3: 默认位置
-            else {
+            // Priority 3: 默认位置 (✅ [修复] 仅当 C.tableInj 开启时)
+            else if (C.tableInj) {
                 summaryPos = getDefaultPosition();
                 summaryStrategy = `📍 默认位置 (Start a new Chat 前，#${summaryPos})`;
             }
@@ -4498,10 +4498,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <button id="gai-btn-sum" title="AI智能总结">📝 总结</button>
                 <button id="gai-btn-back" title="追溯历史剧情填表">⚡ 追溯</button>
                 <button id="gai-btn-move" title="移动选中行到其他表格">🚀 移动</button>
-                <button id="gai-btn-export" title="导出JSON备份">📥 导出</button>
-                <button id="gai-btn-import" title="从JSON恢复数据">📤 导入</button>
+                <button id="gai-btn-export" title="导出JSON备份">📤 导出</button>
+                <button id="gai-btn-import" title="从JSON恢复数据">📥 导入</button>
                 <button id="gai-btn-view" title="视图设置">📏 视图</button>
-                <button id="gai-btn-cleanup" title="清理数据选项">🗑️ 清理</button>
+                <button id="gai-btn-cleanup" title="清理数据选项">🧹 清表</button>
                 <button id="gai-btn-theme" title="设置外观">🎨 主题</button>
                 <button id="gai-btn-config" title="插件设置">⚙️ 配置</button>
             </div>
