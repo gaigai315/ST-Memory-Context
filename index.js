@@ -2989,47 +2989,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
             let modified = false;
 
-            // 处理 {{MEMORY}} (智能变量)
-            if (msgContent.includes(varSmart)) {
-                // 记录第一次出现的位置
-                if (idxSmartVar === -1) {
-                    idxSmartVar = i;
-                    console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
-                }
-                // 无论是否启用锚点，都要先把这个变量文本洗掉
-                msgContent = msgContent.replace(varSmart, '');
-
-                if (allowAnchorMode) {
-                    // 只有允许锚点模式时，才记录这个位置用于后续判断
-                    if (anchorIndex === -1) anchorIndex = i;
-                    foundAnchor = true;
-                } else {
-                    console.log(`🧹 [变量扫描] 清洗变量 ${varSmart} | 忽略位置 (开关关或批量模式)`);
-                }
-                modified = true;
-            }
-
-            // 处理 {{MEMORY_SUMMARY}} (总结专属变量)
-            if (msgContent.includes(varSum)) {
-                if (idxSummaryVar === -1) {
-                    idxSummaryVar = i;
-                    console.log(`🎯 [变量扫描] 发现 ${varSum} | 位置: #${i}`);
-                }
-                msgContent = msgContent.replace(varSum, '');
-                modified = true;
-            }
-
-            // 处理 {{MEMORY_TABLE}} (表格专属变量)
-            if (msgContent.includes(varTable)) {
-                if (idxTableVar === -1) {
-                    idxTableVar = i;
-                    console.log(`🎯 [变量扫描] 发现 ${varTable} | 位置: #${i}`);
-                }
-                msgContent = msgContent.replace(varTable, '');
-                modified = true;
-            }
-
-            // 处理 {{MEMORY_PROMPT}} (特殊逻辑：根据条件决定锚点替换或清洗)
+            // 1️⃣ 优先处理长变量：{{MEMORY_PROMPT}} (特殊逻辑：根据条件决定锚点替换或清洗)
             if (msgContent.includes(varPrompt)) {
                 // 检查是否满足锚点替换条件：提示词存在 且 提示词管理开关已开启
                 if (strPrompt && isPromptManagerOn) {
@@ -3047,6 +3007,46 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     msgContent = msgContent.replace(varPrompt, '');
                     // 关键：不设置 replacedPrompt = true
                     console.log(`🧹 [变量清洗] {{MEMORY_PROMPT}} 已清空 (将使用默认位置注入)`);
+                }
+                modified = true;
+            }
+
+            // 2️⃣ 处理：{{MEMORY_SUMMARY}} (总结专属变量)
+            if (msgContent.includes(varSum)) {
+                if (idxSummaryVar === -1) {
+                    idxSummaryVar = i;
+                    console.log(`🎯 [变量扫描] 发现 ${varSum} | 位置: #${i}`);
+                }
+                msgContent = msgContent.replace(varSum, '');
+                modified = true;
+            }
+
+            // 3️⃣ 处理：{{MEMORY_TABLE}} (表格专属变量)
+            if (msgContent.includes(varTable)) {
+                if (idxTableVar === -1) {
+                    idxTableVar = i;
+                    console.log(`🎯 [变量扫描] 发现 ${varTable} | 位置: #${i}`);
+                }
+                msgContent = msgContent.replace(varTable, '');
+                modified = true;
+            }
+
+            // 4️⃣ 最后处理短变量：{{MEMORY}} (智能变量) —— 必须放最后，防止误伤上面的变量
+            if (msgContent.includes(varSmart)) {
+                // 记录第一次出现的位置
+                if (idxSmartVar === -1) {
+                    idxSmartVar = i;
+                    console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
+                }
+                // 无论是否启用锚点，都要先把这个变量文本洗掉
+                msgContent = msgContent.replace(varSmart, '');
+
+                if (allowAnchorMode) {
+                    // 只有允许锚点模式时，才记录这个位置用于后续判断
+                    if (anchorIndex === -1) anchorIndex = i;
+                    foundAnchor = true;
+                } else {
+                    console.log(`🧹 [变量扫描] 清洗变量 ${varSmart} | 忽略位置 (开关关或批量模式)`);
                 }
                 modified = true;
             }
@@ -12083,6 +12083,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
                         <li><strong>新增：</strong>新增行数支持移动到其他表格的功能.</li>
                         <li><strong>优化：</strong>优化表格搜索功能.</li>
+                        <li><strong>优化：</strong>优化变量的容错问题.</li>
                     </ul>
                 </div>
 
