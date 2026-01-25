@@ -10903,7 +10903,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 必须在所有处理逻辑之前执行，确保后续操作不会影响 ev.detail.chat
             if (data.chat && Array.isArray(data.chat)) {
                 try {
-                    const copiedChat = JSON.parse(JSON.stringify(data.chat));
+                    // ⚡ [性能优化] 使用 structuredClone 代替 JSON 序列化，大幅提升手机端发送速度
+                    let copiedChat;
+                    try {
+                        copiedChat = structuredClone(data.chat);
+                    } catch (e) {
+                        // 兜底兼容旧浏览器或特殊对象
+                        copiedChat = JSON.parse(JSON.stringify(data.chat));
+                    }
                     data.chat.splice(0, data.chat.length, ...copiedChat);
                     console.log(`🔒 [opmt] 已深拷贝 chat 数组，防止引用污染`);
                 } catch (e) {
