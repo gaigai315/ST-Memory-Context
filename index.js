@@ -2977,9 +2977,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ✅ 2. 判定是否启用锚点模式
-        // 只要 [提示词管理开启]，就允许使用变量作为锚点
-        // 即使开启批量填表(autoBackfill)，也可以通过 {{MEMORY}} 变量控制插入位置
-        const allowAnchorMode = isPromptManagerOn;
+        // 【最终修复】强制设为 true。
+        // 这确保了只要预设中写了 {{MEMORY}}，插件就一定会把表格插在这个位置。
+        // 这不会影响 {{MEMORY_PROMPT}} 的清洗逻辑（它由 strPrompt 变量独立控制）。
+        const allowAnchorMode = true;
 
         // 记录被删除的消息数量，用于修正锚点索引
         let deletedCountBeforeAnchor = 0;
