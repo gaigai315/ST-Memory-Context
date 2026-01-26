@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.3
+// 记忆表格 v1.9.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.3 启动');
+    console.log('🚀 记忆表格 v1.9.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.3';
+    const V = 'v1.9.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -3275,26 +3275,52 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     function getInjectionPosition(pos, posType, depth, chat) {
-        // ✅ 优化逻辑：优先插入到 "[Start a new Chat]" 分隔符之前，作为背景设定铺垫
         if (!chat || chat.length === 0) return 0;
 
+        // 🎯 新逻辑：如果 depth 为 0（默认），智能注入到最后一条 User 消息之前
+        // 这样可以将记忆表格放在当前上下文附近（帮助 Gemini 回忆），但不会破坏顶部的越狱设置
+        if (depth === 0) {
+            // 从末尾向前查找最后一条 User 消息
+            for (let i = chat.length - 1; i >= 0; i--) {
+                const msg = chat[i];
+                if (!msg) continue;
+
+                // 找到最后一条 User 消息
+                if (msg.role === 'user') {
+                    console.log(`💡 [注入位置] 智能模式：在最后一条 User 消息之前注入 (索引: ${i})`);
+                    return i;
+                }
+            }
+        }
+
+        // 🔄 兜底逻辑：保持原有行为
+        // 1. 优先：插入到 "[Start a new Chat]" 分隔符之前
         for (let i = 0; i < chat.length; i++) {
             const msg = chat[i];
             if (!msg) continue;
 
-            // 1. 优先：插入到 "[Start a new Chat]" 分隔符之前
-            // 注意：要判断 content 是否存在，防止报错
             if (msg.role === 'system' && msg.content && msg.content.includes('[Start a new Chat]')) {
+                console.log(`💡 [注入位置] 找到分隔符，在其之前注入 (索引: ${i})`);
                 return i;
             }
 
-            // 2. 兜底：插入到第一条用户/AI消息之前 (保持原有逻辑)
+            // 2. 兜底：插入到第一条用户/AI消息之前
             if (msg.role === 'user' || msg.role === 'assistant') {
+                console.log(`💡 [注入位置] 兜底模式：在第一条对话之前注入 (索引: ${i})`);
                 return i;
             }
         }
 
-        // 全是 System 且没找到特定标记，插到最后
+        // 全是 System 且没找到特定标记，插到最后（但避免在 Prefill 之后）
+        // 🛡️ 检查最后一条是否是 Assistant prefill，避免破坏它
+        if (chat.length > 0) {
+            const lastMsg = chat[chat.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+                console.log(`💡 [注入位置] 避免破坏 Prefill，在倒数第二个位置注入`);
+                return Math.max(0, chat.length - 1);
+            }
+        }
+
         return chat.length;
     }
 
@@ -10693,7 +10719,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         chat.forEach((msg, index) => {
             // 条件A: 不能是 System (系统指令)
             // 条件B: 不能是 Last Message (预设 Prefill / 正在进行的对话)
-            if (msg.role !== 'system' && index !== lastMsgIndex) {
+            // 条件C: 不能是前2条消息 (越狱握手/触发消息，如 Kemini 的 Handshake)
+            if (msg.role !== 'system' && index !== lastMsgIndex && index > 1) {
                 dialogueMsgIndices.push(index);
             }
         });
@@ -10821,8 +10848,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (userQuery.trim()) {
                     console.log(`🔍 [向量检索] 正在检索: "${userQuery.substring(0, 20)}..."`);
 
-                    // 异步检索
-                    const results = await window.Gaigai.VM.search(userQuery);
+                    // 🛡️ 创建超时 Promise (10秒宽限期，考虑 Rerank 和网络延迟)
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('向量检索超时 (10秒)')), 10000);
+                    });
+
+                    let results;
+                    try {
+                        // 使用 Promise.race 增加超时保护，防止无限等待
+                        results = await Promise.race([
+                            window.Gaigai.VM.search(userQuery),
+                            timeoutPromise
+                        ]);
+                    } catch (searchError) {
+                        // 🛡️ 关键：静默处理，不影响主聊天流程
+                        console.warn('⚠️ [向量检索] 执行异常或超时，已跳过，不影响聊天:', searchError);
+                        return ''; // 直接返回空字符串，让聊天继续
+                    }
 
                     // ==================== 💎 名称匹配加权 (Re-ranking) ====================
                     if (results && results.length > 0) {
@@ -10886,17 +10928,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             return vectorContent;
 
         } catch (e) {
-            // 🛡️ 优雅降级：如果向量检索失败，只记录错误，不影响正常流程
-            console.error('❌ [向量检索] 运行出错 (非阻断):', e);
+            // 🛡️ 静默降级：向量检索失败不影响主聊天流程
+            console.warn('⚠️ [向量检索] 执行异常或超时，已跳过，不影响聊天:', e);
 
-            // 用户友好提示
-            if (typeof toastr !== 'undefined') {
-                const errorMsg = e.message || '未知错误';
-                toastr.error(`向量检索失败: ${errorMsg}，但这不影响聊天`, '非阻断错误', { timeOut: 4000 });
-            }
-
-            // 即使出错也返回空字符串
-            return vectorContent;
+            // 不显示错误提示，避免干扰用户体验
+            // 即使出错也返回空字符串，让聊天继续
+            return '';
         }
     }
 
