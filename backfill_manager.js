@@ -252,7 +252,13 @@
                     try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
 
                     // ✅ 关键步骤：立即同步到聊天记录元数据
-                    m.save(false, true);
+                    m.save(true, true);
+
+                    // ✅ 强制同步当前快照，确保进度修正后数据一致
+                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                        window.Gaigai.updateCurrentSnapshot();
+                        console.log('📸 [进度修正] 快照已同步');
+                    }
 
                     // ✅ 同步到云端服务器 (确保多设备一致性)
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
@@ -790,7 +796,7 @@ ${lastError.message}
                 // 保存最终状态
                 if (successCount > 0) {
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
-                    window.Gaigai.m.save(false, true); // 批量任务完成后立即保存
+                    window.Gaigai.m.save(true, true); // 批量任务完成后立即保存
 
                     // ✅✅✅ 批量任务完成后，强制更新快照，确保与实时填表同步
                     if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
@@ -1202,7 +1208,7 @@ ${lastError.message}
                             window.Gaigai.config.lastBackfillIndex = end;
                             try { localStorage.setItem('gg_api', JSON.stringify(window.Gaigai.config)); } catch (e) { }
                             if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud().catch(e => { });
-                            m.save(false, true); // 批量填表后立即保存
+                            m.save(true, true); // 批量填表后立即保存
                             if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                                 window.Gaigai.updateCurrentSnapshot();
                             }
@@ -1609,7 +1615,7 @@ ${lastError.message}
 
             // 3. 保存
             window.lastManualEditTime = Date.now();
-            m.save(false, true); // 表格优化后立即保存
+            m.save(true, true); // 表格优化后立即保存
             if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                 window.Gaigai.updateCurrentSnapshot();
             }
@@ -1995,7 +2001,7 @@ ${lastError.message}
 
                         console.log(`🔒 [最终验证通过] 会话ID: ${saveSessionId}, 准备保存数据`);
 
-                        m.save(false, true); // 批量填表后立即保存
+                        m.save(true, true); // 批量填表后立即保存
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
