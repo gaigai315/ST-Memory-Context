@@ -2911,7 +2911,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     name: `SYSTEM (${sheetName})`,
 
                     // 2. 内容：标题改为"已归档"，并加上防重演指令
-                    content: `【记忆只读数据库：已归档历史 - ${sheetName}】\n(⚠️已归档内容，仅供参考，严禁重演)\n${sheetContent}`,
+                    content: `【记忆只读数据库 - ${sheetName}】\n(历史存档 (已完结剧情)，仅作背景参考)\n${sheetContent}`,
 
                     isGaigaiData: true
                 });
@@ -10677,63 +10677,61 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     // ✨✨✨ 核心逻辑：智能切分法 (防呆增强版) ✨✨✨
     function applyContextLimit(chat) {
-        // 1. 安全检查：如果参数不对，或者没开开关，直接原样返回
-        // 强制把 limit 转为数字，防止它是字符串导致计算错误
+        // 1. 安全检查
         const limit = parseInt(C.contextLimitCount) || 30;
-
         if (!C.contextLimit || !chat || chat.length <= limit) return chat;
 
-        console.log(`✂️ [隐藏楼层] 开始计算: 当前总楼层 ${chat.length}, 限制保留 ${limit} 层`);
+        console.log(`✂️ [隐藏楼层] 智能裁剪开始，目标保留: ${limit} 条`);
 
-        // 2. 统计需要保留的“非系统消息”数量
-        // 我们只切 User 和 Assistant 的水楼，绝不切 System (人设/世界书)
+        // 2. 识别"受保护区域" (Protected Zone)
+        // 逻辑：酒馆的 Prefill (Assistant起手式) 永远位于 Prompt 的【最后一条】。
+        // 我们强制把最后一条消息排除在"可裁剪名单"之外，无论它是谁，无论它说什么。
+        const lastMsgIndex = chat.length - 1;
+
+        // 3. 筛选可裁剪的索引
         let dialogueMsgIndices = [];
         chat.forEach((msg, index) => {
-            if (msg.role !== 'system') {
+            // 条件A: 不能是 System (系统指令)
+            // 条件B: 不能是 Last Message (预设 Prefill / 正在进行的对话)
+            if (msg.role !== 'system' && index !== lastMsgIndex) {
                 dialogueMsgIndices.push(index);
             }
         });
 
-        // 3. 计算需要切掉多少条
+        // 4. 计算需要移除的数量
         const totalDialogue = dialogueMsgIndices.length;
-        const toKeep = limit;
-        const toSkip = Math.max(0, totalDialogue - toKeep);
+        const toKeep = limit; // 用户设置的保留条数
+        const toSkip = Math.max(0, totalDialogue - toKeep); // 需要删掉多少条旧的
 
         if (toSkip === 0) return chat;
 
-        // 4. 确定哪些索引(Index)是“老旧消息”，需要被切掉
-        // slice(0, toSkip) 拿到的就是“最前面”的几条旧对话的索引
+        // 5. 确定移除名单
         const indicesToRemove = new Set(dialogueMsgIndices.slice(0, toSkip));
 
-        // 🛑【三重保险】绝对保护最后 2 条消息，无论算法怎么算，最后2条打死不能切！
-        // 防止因为计算误差导致AI看不到你刚才发的那句话
-        const lastIndex = chat.length - 1;
-        if (indicesToRemove.has(lastIndex)) indicesToRemove.delete(lastIndex);
-        if (indicesToRemove.has(lastIndex - 1)) indicesToRemove.delete(lastIndex - 1);
-
-        // ✅ [首楼保护] 智能识别真实的开场白位置
-        // 开场白是 dialogueMsgIndices 数组中的第一个元素（即整个聊天记录中第一条非System消息）
-        if (C.protectGreeting && dialogueMsgIndices.length > 0) {
-            const greetingIndex = dialogueMsgIndices[0]; // 获取开场白的真实索引
-            if (indicesToRemove.has(greetingIndex)) {
-                indicesToRemove.delete(greetingIndex);
-                console.log(`🛡️ [隐藏楼层] 已强制保护第 ${greetingIndex} 楼 (开场白/Greeting)`);
+        // [额外保险]：如果倒数第二条也是 Assistant（罕见情况），也保下来
+        if (chat.length > 1) {
+            const secondLastIndex = chat.length - 2;
+            const secondLastMsg = chat[secondLastIndex];
+            if (secondLastMsg.role === 'assistant' || secondLastMsg.role === 'model') {
+                 if (indicesToRemove.has(secondLastIndex)) {
+                     indicesToRemove.delete(secondLastIndex);
+                     console.log('🛡️ [隐藏楼层] 额外保护倒数第二条 Assistant 消息');
+                 }
             }
         }
 
-        console.log(`   - 计划切除 ${indicesToRemove.size} 条旧对话，保留最近 ${toKeep} 条`);
-
-        // 5. 生成新数组
-        const newChat = chat.filter((msg, index) => {
-            // 如果这个索引在“移除名单”里，就不要了
-            if (indicesToRemove.has(index)) {
-                return false;
+        // [开场白保护] (保持原有逻辑)
+        if (C.protectGreeting && dialogueMsgIndices.length > 0) {
+            const greetingIndex = dialogueMsgIndices[0];
+            if (indicesToRemove.has(greetingIndex)) {
+                indicesToRemove.delete(greetingIndex);
             }
-            // 其他的（System消息 + 最近的对话）全部保留
-            return true;
-        });
+        }
 
-        console.log(`   - 清洗完毕，剩余 ${newChat.length} 条消息发送给AI`);
+        // 6. 执行裁剪
+        const newChat = chat.filter((msg, index) => !indicesToRemove.has(index));
+
+        console.log(`✅ [隐藏楼层] 裁剪完成。原始: ${chat.length}, 剩余: ${newChat.length} (已严格保护末尾 Prefill)`);
         return newChat;
     }
 
@@ -10914,25 +10912,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (!data) return;
             if (data.dryRun || data.isDryRun || data.quiet || data.bg || data.no_update) return;
             if (isSummarizing || window.isSummarizing) return;
-
-            // ✅ [关键修复] 立即深拷贝 data.chat，防止修改原始引用导致 UI 刷新时数据污染
-            // 必须在所有处理逻辑之前执行，确保后续操作不会影响 ev.detail.chat
-            if (data.chat && Array.isArray(data.chat)) {
-                try {
-                    // ⚡ [性能优化] 使用 structuredClone 代替 JSON 序列化，大幅提升手机端发送速度
-                    let copiedChat;
-                    try {
-                        copiedChat = structuredClone(data.chat);
-                    } catch (e) {
-                        // 兜底兼容旧浏览器或特殊对象
-                        copiedChat = JSON.parse(JSON.stringify(data.chat));
-                    }
-                    data.chat.splice(0, data.chat.length, ...copiedChat);
-                    console.log(`🔒 [opmt] 已深拷贝 chat 数组，防止引用污染`);
-                } catch (e) {
-                    console.warn('⚠️ [opmt] 深拷贝失败，将直接使用原始数据:', e);
-                }
-            }
 
             // 1. 使用全局索引计算 (解决 Prompt 截断导致找不到快照的问题)
             const globalCtx = m.ctx();
@@ -11273,7 +11252,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             class: 'drawer' // 关键：使用 drawer 类名，让 CSS 自动继承主题样式
         });
 
-        // 2. 注入图标样式（流光扫过动画）
+        // 2. 注入图标样式
         if (!$('#gg-status-dot-style').length) {
             $('<style id="gg-status-dot-style">').text(`
     /* 基础设置：完全融入酒馆顶栏 */
@@ -11292,38 +11271,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     #gaigai-top-btn.gg-enabled {
         filter: none !important;
         text-shadow: none !important;
-    }
-
-    /* 定义流光动画：紧凑的行程，实现无缝循环 */
-    @keyframes gg-shine-sweep {
-        0% { left: -80%; }
-        100% { left: 120%; }
-    }
-
-    /* 开启状态：丝滑匀速流光 */
-    #gaigai-top-btn.gg-enabled::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -80%;
-        width: 60%;
-        height: 100%;
-
-        /* 柔和的白光渐变 */
-        background: linear-gradient(
-            to right,
-            transparent 0%,
-            rgba(255, 255, 255, 0.3) 20%,
-            rgba(255, 255, 255, 0.75) 50%,
-            rgba(255, 255, 255, 0.3) 80%,
-            transparent 100%
-        );
-
-        transform: skewX(-25deg);
-        /* 关键：3.5s 慢速 + linear 匀速 = 丝滑不间断 */
-        animation: gg-shine-sweep 3.5s infinite linear;
-        pointer-events: none;
-        z-index: 10;
     }
 `).appendTo('head');
         }
