@@ -7104,31 +7104,49 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         } else {
                             // 非流式处理
                             console.log('📦 [Gemini反代] 使用非流式模式，解析 JSON...');
-                            const data = await proxyResponse.json();
+
+                            // ✅ 1. 获取原始文本 (防止 JSON.parse 报错)
+                            const rawText = await proxyResponse.text();
+                            let data;
+                            try {
+                                data = JSON.parse(rawText);
+                            } catch (e) {
+                                console.warn('⚠️ [Gemini反代] JSON解析失败，尝试作为纯文本处理');
+                                data = { candidates: [], text: rawText }; // 构造伪对象
+                            }
 
                             // 🔍 优先检查安全阻断 (Gemini 2.0 特性)
-                            if (data.candidates && data.candidates[0] && !data.candidates[0].content) {
+                            if (data.candidates && data.candidates[0] && data.candidates[0].finishReason) {
                                 const reason = data.candidates[0].finishReason;
-                                if (reason === 'SAFETY' || reason === 'safety' || reason === 'RECITATION' || reason === 'OTHER') {
-                                    throw new Error(`Google 安全策略拦截 (finishReason: ${reason})。\n\n💡 建议：\n1. 请尝试更换模型 (如 gemini-1.5-pro)\n2. 或者修改"优化建议"，避免敏感词。`);
+                                if (['SAFETY', 'safety', 'RECITATION', 'OTHER'].includes(reason) && !data.candidates[0].content) {
+                                    throw new Error(`Google 安全策略拦截 (finishReason: ${reason})。\n\n💡 建议：更换模型或修改"优化建议"。`);
                                 }
                             }
 
-                            // 兼容多种格式提取文本
+                            // ✅ 2. 强力双重解析 (不使用 else if，而是谁有值取谁)
                             let text = '';
-                            if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
-                                // Google 原生格式
-                                text = data.candidates[0].content.parts[0].text;
-                            } else if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
-                                // OpenAI 格式
-                                text = data.choices[0].message.content;
-                            } else if (typeof data === 'string') {
-                                // 纯文本
+
+                            // 尝试 A: Google 原生格式 (使用 Optional Chaining 防止报错)
+                            const googleText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (googleText) text = googleText;
+
+                            // 尝试 B: OpenAI 兼容格式 (如果 Google 格式没取到，或者虽然有 candidates 但内容为空，就尝试 OpenAI)
+                            if (!text) {
+                                const openAIText = data.choices?.[0]?.message?.content;
+                                if (openAIText) {
+                                    console.log('🔧 [兼容模式] 检测到 OpenAI 格式响应，已自动适配');
+                                    text = openAIText;
+                                }
+                            }
+
+                            // 尝试 C: 兜底纯文本
+                            if (!text && typeof data === 'string') {
                                 text = data;
                             }
 
                             if (!text || !text.trim()) {
-                                throw new Error('非流式响应返回内容为空');
+                                console.error('❌ [反代响应内容] ', rawText.substring(0, 500));
+                                throw new Error('非流式响应返回内容为空 (已尝试 Google 和 OpenAI 格式)');
                             }
 
                             console.log('✅ [Gemini反代-非流式] 成功');
