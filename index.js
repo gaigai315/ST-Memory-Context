@@ -3054,9 +3054,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 更新消息内容 & 标记幽灵气泡
             if (modified) {
                 ev.chat[i].content = msgContent;
-                // 👻 幽灵气泡判定：如果替换后内容为空，标记为待删除
-                if (msgContent.trim() === '') {
+
+                // ✅ [修复] 判定当前消息是否为锚点 (刚刚是否发现了变量)
+                // 只要该消息触发了任意一个变量索引记录，就视为锚点，必须保留
+                const isAnchor = (i === idxTableVar) || (i === idxSmartVar) || (i === idxSummaryVar) || (i === anchorIndex);
+
+                // 👻 幽灵气泡判定：只有当内容为空 且 不是锚点消息时，才删除
+                if (msgContent.trim() === '' && !isAnchor) {
                     ev.chat[i]._toDelete = true;
+                } else if (msgContent.trim() === '' && isAnchor) {
+                    // 调试日志
+                    console.log(`🛡️ [锚点保护] 第 ${i} 楼是变量锚点，虽然内容为空但予以保留，等待注入。`);
                 }
             }
         }
