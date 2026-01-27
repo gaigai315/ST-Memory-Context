@@ -11302,14 +11302,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('<style id="gg-status-dot-style">').text(`
     /* 基础设置：完全融入酒馆顶栏 */
     #gaigai-top-btn {
-        position: relative !important;
-        overflow: hidden !important;
+        position: relative;
+        /* overflow: hidden; 已移除，允许用户自定义更大的图标 */
         transition: opacity 0.3s ease;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        width: 100% !important;
-        height: 100% !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
     }
 
     #gaigai-top-btn:hover,
