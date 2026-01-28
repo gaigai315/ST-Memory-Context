@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.4
+// 记忆表格 v1.9.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.4 启动');
+    console.log('🚀 记忆表格 v1.9.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.4';
+    const V = 'v1.9.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1473,10 +1473,14 @@
         // ✨✨✨ 核心修复：从角色存档恢复进度指针 (含分支继承补丁)
         load() {
             const id = this.gid();
-            if (!id) return;
+            if (!id) {
+                console.warn('⚠️ [M.load] 无法获取有效的会话 ID，跳过加载');
+                return;
+            }
 
             if (this.id !== id) {
                 // 🔄 检测到会话切换
+                console.log(`🔄 [M.load] 检测到会话切换: ${this.id || 'null'} → ${id}`);
                 this.id = id;
                 const tableDef = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
                     ? C.customTables
@@ -1495,25 +1499,53 @@
 
             let cloudData = null;
             let localData = null;
+            let needMigrationSave = false; // 标记是否需要迁移保存
+
             if (C.cloudSync) { try { const ctx = this.ctx(); if (ctx && ctx.chatMetadata && ctx.chatMetadata.gaigai) cloudData = ctx.chatMetadata.gaigai; } catch (e) { } }
 
-            // 🛡️ [数据隔离] 严格检查云端数据 ID
+            // 🛡️♻️ [智能数据迁移] 检查云端数据 ID
             if (cloudData) {
-                if (cloudData.id !== id) {
-                    console.warn(`🛑 [数据隔离] 拦截到 ID 不匹配的云端数据 (Cloud: ${cloudData.id} vs Curr: ${id})。可能是分支或复制存档，已忽略旧数据以防止串味。`);
-                    cloudData = null; // ❌ 彻底丢弃不匹配的数据，防止污染
+                if (!cloudData.id) {
+                    console.warn(`🛑 [数据校验] 云端数据缺少 ID 字段，已忽略`);
+                    cloudData = null;
+                } else if (cloudData.id !== id) {
+                    // ♻️ 关键修复：不丢弃数据，而是执行智能迁移
+                    // 由于 ochat 已经清空了内存，此时的 cloudData 一定来自当前文件
+                    // 如果 ID 不匹配，说明是改名/分支操作，应该继承数据而非丢弃
+                    console.log(`♻️ [数据迁移] 检测到会话改名或分支操作`);
+                    console.log(`   - 原始 ID: ${cloudData.id}`);
+                    console.log(`   - 当前 ID: ${id}`);
+                    console.log(`   - 处理方式: 自动迁移数据到新 ID`);
+
+                    // 更新数据中的 ID 为当前 ID
+                    cloudData.id = id;
+                    needMigrationSave = true; // 标记需要保存
+
+                    console.log(`✅ [数据迁移] ID 已更新，将在加载完成后持久化`);
                 } else {
-                    console.log(`✅ [数据验证] ID 匹配: ${id}`);
+                    console.log(`✅ [数据校验] 云端数据 ID 校验通过: ${id}`);
                 }
             }
 
             try { const sv = localStorage.getItem(`${SK}_${id}`); if (sv) localData = JSON.parse(sv); } catch (e) { }
 
-            // 🛡️ [防串味修复] 检查本地数据
+            // 🛡️♻️ [智能数据迁移] 检查本地数据 ID
             if (localData) {
-                if (localData.id !== id) {
-                    console.warn(`🔴 [数据隔离] 本地数据 ID 不匹配，已忽略。`);
+                if (!localData.id) {
+                    console.warn(`🛑 [数据校验] 本地数据缺少 ID 字段，已忽略`);
                     localData = null;
+                } else if (localData.id !== id) {
+                    // ♻️ 本地数据也可能需要迁移（例如从旧版本升级）
+                    console.log(`♻️ [数据迁移] 本地数据 ID 不匹配，执行迁移`);
+                    console.log(`   - 原始 ID: ${localData.id}`);
+                    console.log(`   - 当前 ID: ${id}`);
+
+                    localData.id = id;
+                    needMigrationSave = true;
+
+                    console.log(`✅ [数据迁移] 本地数据 ID 已更新`);
+                } else {
+                    console.log(`✅ [数据校验] 本地数据 ID 校验通过: ${id}`);
                 }
             }
 
@@ -1642,35 +1674,61 @@
 
                 lastInternalSaveTime = finalData.ts;
             }
+
+            // ♻️ [数据迁移] 如果执行了 ID 迁移，立即保存以持久化新 ID
+            if (needMigrationSave) {
+                console.log('💾 [数据迁移] 正在持久化迁移后的数据...');
+                setTimeout(() => {
+                    this.save(true); // 强制保存
+                    console.log('✅ [数据迁移] 迁移完成，新 ID 已写入存储');
+                }, 100); // 短暂延迟，确保数据加载完成
+            }
         }
 
         gid() {
             try {
                 const x = this.ctx();
-                if (!x) return null;
+                if (!x) {
+                    console.log('🔍 [gid] 无法获取上下文，返回 null');
+                    return null;
+                }
 
                 // 1. 获取聊天文件 ID (时间线标识)
                 // 诊断显示 file_name 为 undefined，但 chatId 有值，所以必须做兼容
                 const chatId = x.chatMetadata?.file_name || x.chatId;
-                if (!chatId) return null;
+                if (!chatId) {
+                    console.log('🔍 [gid] chatId 不存在，返回 null');
+                    return null;
+                }
 
                 // 2. ✅【群聊模式核心修复】
                 // 诊断显示 groupName 为 undefined，但 groupId (如 1767964998110) 存在。
                 // 只要存在 groupId，就强制锁定为群聊存档，忽略当前发言角色。
                 if (x.groupId) {
-                    return `Group_${x.groupId}_${chatId}`;
+                    const generatedId = `Group_${x.groupId}_${chatId}`;
+                    console.log(`🔍 [gid] 群聊模式 - 生成 ID: ${generatedId}`);
+                    return generatedId;
                 }
 
                 // 3. 单人角色模式 (保持原逻辑)
                 if (C.pc) {
                     const charId = x.characterId || x.name2;
-                    if (!charId) return null;
-                    return `${charId}_${chatId}`;
+                    if (!charId) {
+                        console.log('🔍 [gid] 单人模式但 charId 不存在，返回 null');
+                        return null;
+                    }
+                    const generatedId = `${charId}_${chatId}`;
+                    console.log(`🔍 [gid] 单人角色模式 - 生成 ID: ${generatedId}`);
+                    return generatedId;
                 }
 
                 // 4. 纯聊天文件模式 (兜底)
+                console.log(`🔍 [gid] 纯聊天文件模式 - 生成 ID: ${chatId}`);
                 return chatId;
-            } catch (e) { return null; }
+            } catch (e) {
+                console.error('❌ [gid] 生成 ID 时发生错误:', e);
+                return null;
+            }
         }
 
         ctx() { return (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null; }
@@ -7407,8 +7465,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 通道 B: 浏览器直连 (compatible, deepseek, gemini)
         // ==========================================
         if (useDirect) {
-            try {
-                console.log('🌍 [浏览器直连模式] 直接请求目标 API...');
+            // ♻️ [自动降级] 封装请求逻辑，支持流式/非流式切换
+            async function attemptDirectRequest(enableStream) {
+                console.log(`🌍 [浏览器直连模式] ${enableStream ? '流式' : '非流式'}请求...`);
 
                 // 构造直连 URL（智能拼接 endpoint）
                 let directUrl = apiUrl;
@@ -7442,7 +7501,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     model: model,
                     messages: cleanMessages,
                     temperature: temperature,
-                    stream: true,  // ✅ 启用流式响应
+                    stream: enableStream,  // ♻️ 根据参数动态设置
                     stop: []  // ✅ 清空停止符
                 };
 
@@ -7459,43 +7518,44 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     };
 
-                    // ✅ 仅当模型名包含 'gemini' 时才添加安全设置
-                    if (modelLower.includes('gemini')) {
-                        requestBody.safetySettings = [
-                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
-                        ];
-                    }
+                    // 🛡️ [强制注入] 无论模型名是否包含 gemini，都注入安全设置（防止中转商改名）
+                    requestBody.safetySettings = [
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+                    ];
 
                     // Gemini 不支持标准流式，强制改回非流式
                     delete requestBody.stream;
                 } else {
                     // 其他 Provider 添加 max_tokens
                     requestBody.max_tokens = maxTokens;
-                }
 
-                // ✅ 针对 Gemini 代理/兼容模式的特殊处理
-                if (provider !== 'gemini' && modelLower.includes('gemini')) {
-                    console.log('🔧 [Gemini 代理模式] 检测到模型名包含 gemini，强制注入安全设置');
+                    // 🛡️🛡️🛡️ [Critical Fix] 强制注入 Gemini 安全设置
+                    // 只要模型名包含 gemini（不区分大小写），就注入双格式安全设置
+                    if (modelLower.includes('gemini')) {
+                        console.log('🔧 [Gemini 安全补丁] 检测到模型名包含 gemini，强制注入双格式安全设置');
 
-                    // OpenAI 格式的安全设置（部分代理可能支持）
-                    requestBody.safety_settings = [
-                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                    ];
+                        // OpenAI 格式（蛇形命名）- 部分中转商支持
+                        requestBody.safety_settings = [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                        ];
 
-                    // Gemini 原生格式的安全设置（备用）
-                    requestBody.safetySettings = [
-                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                    ];
+                        // Gemini 原生格式（驼峰命名）- Google 官方格式
+                        requestBody.safetySettings = [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                        ];
+
+                        console.log('✅ [Gemini 安全补丁] 已同时注入 safety_settings 和 safetySettings');
+                    }
                 }
 
                 // 🔧 [Gemini 官方直连修复] 如果是官方域名，将 API Key 添加到 URL 参数
@@ -7766,16 +7826,47 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 console.error('   3. API 服务器返回了空响应');
                 console.error('   4. 请检查浏览器控制台中的 [流式调试] 日志');
                 throw new Error(`Error: Stream response content is empty.\n\nContent Length: ${fullText.length}\nReasoning Length: ${typeof fullReasoning !== 'undefined' ? fullReasoning.length : 0}\n\n💡 可能的原因：\n1. API 返回的流式格式不符合 OpenAI 标准\n2. 网络问题导致响应不完整\n3. API 服务器配置问题\n\n请检查浏览器控制台中的详细日志`);
+            } // attemptDirectRequest 函数结束
 
+            // ♻️♻️♻️ [自动降级核心逻辑] ♻️♻️♻️
+            try {
+                // 第一次尝试：流式请求
+                console.log('🚀 [自动降级] 第 1 次尝试：流式请求');
+                return await attemptDirectRequest(true);
+            } catch (firstError) {
+                console.error('❌ [自动降级] 流式请求失败:', firstError.message);
 
-            } catch (e) {
-                console.error('❌ [浏览器直连] 失败:', e);
+                // 判断是否应该降级重试
+                const shouldRetry =
+                    firstError.message.includes('Stream response content is empty') ||
+                    firstError.message.includes('JSON parsing failed') ||
+                    firstError.message.includes('流式读取失败') ||
+                    firstError.message.includes('流式解析失败');
 
-                // 返回原始错误信息
-                return {
-                    success: false,
-                    error: e.message // 原始错误信息
-                };
+                if (shouldRetry) {
+                    console.warn('⚠️ [自动降级] 检测到流式请求问题，正在自动降级为非流式 (Non-Stream) 重试...');
+
+                    try {
+                        // 第二次尝试：非流式请求
+                        console.log('🔄 [自动降级] 第 2 次尝试：非流式请求');
+                        return await attemptDirectRequest(false);
+                    } catch (secondError) {
+                        console.error('❌ [自动降级] 非流式请求也失败:', secondError.message);
+
+                        // 两次都失败，返回最后一次的错误
+                        return {
+                            success: false,
+                            error: `流式和非流式请求均失败\n\n第1次(流式): ${firstError.message}\n\n第2次(非流式): ${secondError.message}`
+                        };
+                    }
+                } else {
+                    // 不是流式问题，直接返回错误
+                    console.error('❌ [浏览器直连] 失败（非流式问题，不重试）:', firstError.message);
+                    return {
+                        success: false,
+                        error: firstError.message
+                    };
+                }
             }
         }
 
@@ -10552,161 +10643,200 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             window.Gaigai.WI.resetState();
         }
 
-        // 加载全局配置
-        try { await loadConfig(); } catch (e) { }
+        // 🛡️🛡️🛡️ [防串味核心修复] 强制清空所有运行时状态
+        // 不依赖 m.load() 内部判断，直接在入口处暴力重置
+        console.log('🧹 [防串味] 正在强制清空当前会话数据，防止残留...');
 
         // 1. 💾 [暂存旧会话] 切换前，把旧会话的快照存入仓库
         if (m.id) {
             window.GaigaiSnapshotStore[m.id] = snapshotHistory;
+            console.log(`💾 [防串味] 已暂存旧会话 [${m.id}] 的快照`);
         }
 
-        // 2. 🔄 [加载新会话]
-        m.load(); // 这会更新 m.id 和从硬盘读取最新的 m.s 数据
-        thm();
-
-        // 重置运行时状态
-        window.Gaigai.foldOffset = 0;
-        window.Gaigai.lastRequestData = null;
+        // 2. 强制重置内存状态（防止串味的关键）
+        m.id = null;
+        const tableDef = (C.customTables && Array.isArray(C.customTables) && C.customTables.length > 0)
+            ? C.customTables
+            : DEFAULT_TABLES;
+        m.s = tableDef.map(t => new S(t.n, t.c));
+        snapshotHistory = {};
+        summarizedRows = {};
+        userColWidths = {};
+        userRowHeights = {};
+        API_CONFIG.lastSummaryIndex = 0;
+        API_CONFIG.lastBackfillIndex = 0;
         lastInternalSaveTime = 0;
-        lastProcessedMsgIndex = -1;
-        isRegenerating = false;
-        deletedMsgIndex = -1;
-        processedMessages.clear();
+        console.log('✅ [防串味] 内存状态已完全清空');
 
-        // 3. 📂 [恢复快照库] 从仓库取出新会话的快照
-        if (m.id && window.GaigaiSnapshotStore[m.id]) {
-            snapshotHistory = window.GaigaiSnapshotStore[m.id];
-            console.log(`📂 [ochat] 已恢复会话 [${m.id}] 的内存快照`);
-        } else {
-            snapshotHistory = {};
-            // 🔥 [新增] 如果内存仓库为空，尝试从 localStorage 恢复持久化的快照
-            loadSnapshots();
+        // 3. 清空 UI，显示加载状态
+        if ($('#gai-main-pop').length > 0) {
+            console.log('🎨 [防串味] 正在清空 UI，显示加载状态...');
+            shw(); // 刷新为空表格
         }
 
-        // 4. 🧹 [内存清理]
-        const allKeys = Object.keys(snapshotHistory).map(Number).filter(k => !isNaN(k)).sort((a, b) => a - b);
-        if (allKeys.length > 50) {
-            const cutoff = allKeys[allKeys.length - 50];
-            allKeys.forEach(k => {
-                if (k < cutoff && k !== -1) delete snapshotHistory[k.toString()];
-            });
-        }
+        // 4. 延迟加载，等待 SillyTavern 上下文完全切换
+        setTimeout(async () => {
+            console.log('⏳ [防串味] 延迟结束，开始加载新会话数据...');
 
-        // 5. 🛡️ [创世快照兜底]
-        if (!snapshotHistory['-1']) {
-            snapshotHistory['-1'] = {
-                data: m.all().slice(0, -1).map(sh => {
-                    let copy = JSON.parse(JSON.stringify(sh.json()));
-                    copy.r = [];
-                    return copy;
-                }),
-                summarized: {},
-                timestamp: 0
-            };
-        }
-
-        // ============================================================
-        // ⚡⚡⚡ [核心修复：分支穿越/时光机逻辑] ⚡⚡⚡
-        // ============================================================
-        const ctx = m.ctx();
-        const currentLen = ctx && ctx.chat ? ctx.chat.length : 0;
-        console.log(`📂 [ochat] 检测到聊天/分支变更 (当前楼层: ${currentLen})`);
-
-        if (currentLen > 0) {
-            // 目标：我们应该处于哪一楼的状态？
-            const targetIndex = currentLen - 1;
-            const targetKey = targetIndex.toString();
-
-            // 策略 A：如果我们有这一楼的快照（说明是切回了已存在的分支）
-            if (snapshotHistory[targetKey]) {
-                console.log(`⚡ [ochat] 检测到已知分支，正在回档至 [${targetKey}]...`);
-                // 强制回档！让表格回到那一楼的样子
-                restoreSnapshot(targetKey, true);
+            // 5. 验证上下文是否有效
+            const ctx = m.ctx();
+            if (!ctx || !ctx.chatId) {
+                console.warn('⚠️ [防串味] 上下文无效或 chatId 不存在，跳过加载');
+                isChatSwitching = false;
+                return;
             }
-            // 策略 B：如果没有这一楼的快照（说明可能是刚加载，或者快照丢了）
-            // 我们尝试找找上一楼的，或者相信 m.load() 从硬盘读出来的数据
-            else {
-                console.log(`⚠️ [ochat] 未找到分支快照 [${targetKey}]，尝试使用硬盘存档数据并建立新快照`);
-                // 立即为当前状态建立一个快照，防止下次切回来又空了
-                saveSnapshot(targetKey);
 
-                // FIX: If genesis snapshot is empty but we loaded data from disk, sync genesis to prevent wipe on swipe.
-                const snapMinus1 = snapshotHistory['-1'];
-                const snapTarget = snapshotHistory[targetKey];
-                if (snapMinus1 && snapTarget && snapTarget.data) {
-                    const targetHasData = snapTarget.data.some(s => s.r && s.r.length > 0);
-                    const minus1Empty = snapMinus1.data.every(s => !s.r || s.r.length === 0);
+            // 6. 加载全局配置
+            try { await loadConfig(); } catch (e) { }
 
-                    if (targetHasData && minus1Empty) {
-                        console.log('🛡️ [ochat-Patch] Detected imported data with empty genesis. Syncing snapshot -1.');
-                        snapshotHistory['-1'] = JSON.parse(JSON.stringify(snapTarget));
-                        snapshotHistory['-1'].timestamp = 0; // Keep it as genesis
+            // 7. 🔄 [加载新会话]
+            m.load(); // 这会更新 m.id 和从硬盘读取最新的 m.s 数据
+            thm();
+
+            // 8. 重置运行时状态
+            window.Gaigai.foldOffset = 0;
+            window.Gaigai.lastRequestData = null;
+            lastProcessedMsgIndex = -1;
+            isRegenerating = false;
+            deletedMsgIndex = -1;
+            processedMessages.clear();
+
+            // 9. 📂 [恢复快照库] 从仓库取出新会话的快照
+            if (m.id && window.GaigaiSnapshotStore[m.id]) {
+                snapshotHistory = window.GaigaiSnapshotStore[m.id];
+                console.log(`📂 [ochat] 已恢复会话 [${m.id}] 的内存快照`);
+            } else {
+                snapshotHistory = {};
+                // 🔥 [新增] 如果内存仓库为空，尝试从 localStorage 恢复持久化的快照
+                loadSnapshots();
+            }
+
+            // 10. 🧹 [内存清理]
+            const allKeys = Object.keys(snapshotHistory).map(Number).filter(k => !isNaN(k)).sort((a, b) => a - b);
+            if (allKeys.length > 50) {
+                const cutoff = allKeys[allKeys.length - 50];
+                allKeys.forEach(k => {
+                    if (k < cutoff && k !== -1) delete snapshotHistory[k.toString()];
+                });
+            }
+
+            // 11. 🛡️ [创世快照兜底]
+            if (!snapshotHistory['-1']) {
+                snapshotHistory['-1'] = {
+                    data: m.all().slice(0, -1).map(sh => {
+                        let copy = JSON.parse(JSON.stringify(sh.json()));
+                        copy.r = [];
+                        return copy;
+                    }),
+                    summarized: {},
+                    timestamp: 0
+                };
+            }
+
+            // ============================================================
+            // ⚡⚡⚡ [核心修复：分支穿越/时光机逻辑] ⚡⚡⚡
+            // ============================================================
+            const currentLen = ctx && ctx.chat ? ctx.chat.length : 0;
+            console.log(`📂 [ochat] 检测到聊天/分支变更 (当前楼层: ${currentLen})`);
+
+            if (currentLen > 0) {
+                // 目标：我们应该处于哪一楼的状态？
+                const targetIndex = currentLen - 1;
+                const targetKey = targetIndex.toString();
+
+                // 策略 A：如果我们有这一楼的快照（说明是切回了已存在的分支）
+                if (snapshotHistory[targetKey]) {
+                    console.log(`⚡ [ochat] 检测到已知分支，正在回档至 [${targetKey}]...`);
+                    // 强制回档！让表格回到那一楼的样子
+                    restoreSnapshot(targetKey, true);
+                }
+                // 策略 B：如果没有这一楼的快照（说明可能是刚加载，或者快照丢了）
+                // 我们尝试找找上一楼的，或者相信 m.load() 从硬盘读出来的数据
+                else {
+                    console.log(`⚠️ [ochat] 未找到分支快照 [${targetKey}]，尝试使用硬盘存档数据并建立新快照`);
+                    // 立即为当前状态建立一个快照，防止下次切回来又空了
+                    saveSnapshot(targetKey);
+
+                    // FIX: If genesis snapshot is empty but we loaded data from disk, sync genesis to prevent wipe on swipe.
+                    const snapMinus1 = snapshotHistory['-1'];
+                    const snapTarget = snapshotHistory[targetKey];
+                    if (snapMinus1 && snapTarget && snapTarget.data) {
+                        const targetHasData = snapTarget.data.some(s => s.r && s.r.length > 0);
+                        const minus1Empty = snapMinus1.data.every(s => !s.r || s.r.length === 0);
+
+                        if (targetHasData && minus1Empty) {
+                            console.log('🛡️ [ochat-Patch] Detected imported data with empty genesis. Syncing snapshot -1.');
+                            snapshotHistory['-1'] = JSON.parse(JSON.stringify(snapTarget));
+                            snapshotHistory['-1'].timestamp = 0; // Keep it as genesis
+                        }
                     }
                 }
+            } else {
+                // 如果是新开聊天（0楼）
+                // 🛑 【逻辑修正】绝对信任硬盘存档 (m.load)
+                // 无论刚才读出来的是有数据还是没数据(用户删空了)，那都是最新的状态。
+                // 我们必须强制让内存里的快照(-1)同步成现在的样子。
+                // 严禁在这里执行 restoreSnapshot，否则会把用户"特意删空"的状态当作"数据丢失"给回滚掉。
+
+                saveSnapshot('-1');
+                console.log(`💾 [ochat] 0楼状态同步：已将内存快照-1强制更新为硬盘存档状态`);
             }
-        } else {
-            // 如果是新开聊天（0楼）
-            // 🛑 【逻辑修正】绝对信任硬盘存档 (m.load)
-            // 无论刚才读出来的是有数据还是没数据(用户删空了)，那都是最新的状态。
-            // 我们必须强制让内存里的快照(-1)同步成现在的样子。
-            // 严禁在这里执行 restoreSnapshot，否则会把用户"特意删空"的状态当作"数据丢失"给回滚掉。
 
-            saveSnapshot('-1');
-            console.log(`💾 [ochat] 0楼状态同步：已将内存快照-1强制更新为硬盘存档状态`);
-        }
-
-        // 刷新 UI
-        setTimeout(hideMemoryTags, 500);
-        setTimeout(() => {
-            // 强制刷新表格视图
-            if ($('#gai-main-pop').length > 0) {
-                const activeTab = $('.g-t.act').data('i');
-                if (activeTab !== undefined) refreshTable(activeTab);
-            }
-        }, 650);
-
-        // ============================================================
-        // 🚑 [开场白修复补丁 - 增强版]
-        // 检查并强制处理未被快照的开场白消息
-        // ============================================================
-        if (currentLen > 0) {
-            const firstMsg = ctx.chat[0];
-
-            // 🆕 [修复1] 检查第 0 楼快照是否存在
-            if (!snapshotHistory['0']) {
-                console.log('🚑 [开场白补丁] 检测到缺失第 0 楼快照');
-
-                // 情况A：如果是新开局（只有1条消息且是AI发的）
-                if (currentLen === 1 && firstMsg && firstMsg.is_user === false) {
-                    console.log('🚑 [补丁A] 新开局场景，立即生成第 0 楼快照');
-                    // 立即调用 saveSnapshot 而不是 omsg，避免延迟
-                    saveSnapshot('0');
+            // 刷新 UI
+            setTimeout(hideMemoryTags, 500);
+            setTimeout(() => {
+                // 强制刷新表格视图
+                if ($('#gai-main-pop').length > 0) {
+                    const activeTab = $('.g-t.act').data('i');
+                    if (activeTab !== undefined) refreshTable(activeTab);
                 }
-                // 情况B：已有聊天记录但缺失快照（可能是刷新后）
-                else if (currentLen > 1) {
-                    console.log('🚑 [补丁B] 已有聊天记录但缺失第 0 楼快照，尝试补录');
+            }, 650);
 
-                    // 如果第 0 楼是 AI 发的，调用 omsg 处理
-                    if (firstMsg && firstMsg.is_user === false) {
-                        omsg(0);
+            // ============================================================
+            // 🚑 [开场白修复补丁 - 增强版]
+            // 检查并强制处理未被快照的开场白消息
+            // ============================================================
+            if (currentLen > 0) {
+                const firstMsg = ctx.chat[0];
+
+                // 🆕 [修复1] 检查第 0 楼快照是否存在
+                if (!snapshotHistory['0']) {
+                    console.log('🚑 [开场白补丁] 检测到缺失第 0 楼快照');
+
+                    // 情况A：如果是新开局（只有1条消息且是AI发的）
+                    if (currentLen === 1 && firstMsg && firstMsg.is_user === false) {
+                        console.log('🚑 [补丁A] 新开局场景，立即生成第 0 楼快照');
+                        // 立即调用 saveSnapshot 而不是 omsg，避免延迟
+                        saveSnapshot('0');
                     }
-                    // 如果第 0 楼是 User 发的，那么第 0 楼的基准应该是空表（-1）
-                    else {
-                        console.log('🚑 [补丁B] 第 0 楼是 User 发的，基准状态应为空表');
-                        // 将 -1 快照复制为 0 快照
-                        if (snapshotHistory['-1']) {
-                            snapshotHistory['0'] = JSON.parse(JSON.stringify(snapshotHistory['-1']));
-                            console.log('✅ [补丁B] 已将创世快照复制为第 0 楼快照');
+                    // 情况B：已有聊天记录但缺失快照（可能是刷新后）
+                    else if (currentLen > 1) {
+                        console.log('🚑 [补丁B] 已有聊天记录但缺失第 0 楼快照，尝试补录');
+
+                        // 如果第 0 楼是 AI 发的，调用 omsg 处理
+                        if (firstMsg && firstMsg.is_user === false) {
+                            omsg(0);
+                        }
+                        // 如果第 0 楼是 User 发的，那么第 0 楼的基准应该是空表（-1）
+                        else {
+                            console.log('🚑 [补丁B] 第 0 楼是 User 发的，基准状态应为空表');
+                            // 将 -1 快照复制为 0 快照
+                            if (snapshotHistory['-1']) {
+                                snapshotHistory['0'] = JSON.parse(JSON.stringify(snapshotHistory['-1']));
+                                console.log('✅ [补丁B] 已将创世快照复制为第 0 楼快照');
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // 解锁
-        setTimeout(() => {
-            isChatSwitching = false;
-        }, 800);
+            // 解锁
+            setTimeout(() => {
+                isChatSwitching = false;
+            }, 800);
+
+            console.log('✅ [防串味] 新会话加载完成');
+        }, 200); // 延迟 200ms，等待 SillyTavern 上下文完全切换
     }
 
     // ✨✨✨ 核心逻辑：智能切分法 (防呆增强版) ✨✨✨
@@ -12096,9 +12226,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>新增：</strong>新增行数支持移动到其他表格的功能.</li>
-                        <li><strong>优化：</strong>优化表格搜索功能.</li>
-                        <li><strong>优化：</strong>优化变量的容错问题.</li>
+                        <li><strong>修复：</strong>优化会话窗口名称表格导致数据丢失问题及切换会话窗口时因加载缓慢导致数据串味的问题。</li>
                     </ul>
                 </div>
 

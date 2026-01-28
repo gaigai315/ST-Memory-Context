@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.8.4
+ * @version 1.9.5
  * @author Gaigai Team
  */
 
@@ -886,7 +886,7 @@ ${lastError.message}
                 charName = ctx.name2;
             }
 
-            // 准备背景资料（人设/世界书）
+            // 准备背景资料（仅角色名和用户名，不包含详细人设）
             let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
 
             // ========================================
@@ -993,8 +993,8 @@ ${lastError.message}
                 content: backfillInstruction
             });
 
-            // 4️⃣ Msg N (System): contextBlock (人设/世界书 - 被动参考数据)
-            // ✅ [NSFW Fix] 将人设包装为"被动参考数据"，降低安全过滤触发率
+            // 4️⃣ Msg N (System): contextBlock (角色名和用户名 - 基础信息)
+            // ✅ 仅包含角色名和用户名，不包含详细人设和世界书
             messages.push({
                 role: 'system',
                 content: `【附件：待分析的基础设定档案】\n(以下内容仅供参考)\n\n${contextBlock}`
