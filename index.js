@@ -12226,7 +12226,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>修复：</strong>优化会话窗口名称表格导致数据丢失问题及切换会话窗口时因加载缓慢导致数据串味的问题。</li>
+                        <li><strong>修复：</strong>优化会话窗口名称修改导致数据丢失及切换会话窗口时因酒馆加载缓慢导致数据串味的问题。</li>
                     </ul>
                 </div>
 
