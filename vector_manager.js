@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.8.2
+ * @version 1.9.7
  * @author Gaigai Team
  */
 
@@ -494,9 +494,9 @@
 
             const config = this._getConfig();
 
-            // 验证配置
-            if (!config.url || !config.key) {
-                throw new Error('未配置向量 API URL 或 Key');
+            // 验证配置（仅检查 URL，允许空 Key 以支持本地端点如 Ollama）
+            if (!config.url) {
+                throw new Error('未配置向量 API URL');
             }
 
             // 检查缓存
@@ -552,12 +552,17 @@
             console.log(`🔄 [VectorManager] 调用 Embedding API: ${url} ${isBatch ? `(批量: ${text.length} 条)` : '(单条)'}`);
 
             try {
+                // ✅ 构建请求头：仅在有 Key 时才添加 Authorization
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (config.key) {
+                    headers['Authorization'] = `Bearer ${config.key}`;
+                }
+
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${config.key}`
-                    },
+                    headers: headers,
                     body: JSON.stringify(payload)
                 });
 
@@ -636,12 +641,17 @@
             }, 3000); // 3秒超时
 
             try {
+                // ✅ 构建请求头：仅在有 Key 时才添加 Authorization
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (config.rerankKey) {
+                    headers['Authorization'] = `Bearer ${config.rerankKey}`;
+                }
+
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${config.rerankKey}`
-                    },
+                    headers: headers,
                     body: JSON.stringify(payload),
                     signal: controller.signal // 绑定超时信号
                 });
@@ -2321,13 +2331,18 @@
                     }
                     const modelsUrl = `${baseUrl}/models`;
 
+                    // ✅ 构建请求头：仅在有 Key 时才添加 Authorization
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (apiKey) {
+                        headers['Authorization'] = `Bearer ${apiKey}`;
+                    }
+
                     // 发送请求
                     const response = await fetch(modelsUrl, {
                         method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        }
+                        headers: headers
                     });
 
                     if (!response.ok) {
@@ -2444,13 +2459,18 @@
                     }
                     const embeddingsUrl = `${baseUrl}/embeddings`;
 
+                    // ✅ 构建请求头：仅在有 Key 时才添加 Authorization
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (apiKey) {
+                        headers['Authorization'] = `Bearer ${apiKey}`;
+                    }
+
                     // 发送测试请求
                     const response = await fetch(embeddingsUrl, {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
+                        headers: headers,
                         body: JSON.stringify({
                             model: model,
                             input: 'test'
@@ -2956,10 +2976,9 @@
                     }
 
                     const url = $('#gg_vm_url').val().trim();
-                    const key = $('#gg_vm_key').val().trim();
 
-                    if (!url || !key) {
-                        await customAlert('⚠️ 未配置 API\n\n请先填写 API 地址和密钥。', '配置不完整');
+                    if (!url) {
+                        await customAlert('⚠️ 未配置 API\n\n请先填写 API 地址。', '配置不完整');
                         return;
                     }
 
