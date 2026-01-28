@@ -886,8 +886,11 @@ ${lastError.message}
                 charName = ctx.name2;
             }
 
+            // 准备背景资料（人设/世界书）
+            let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
+
             // ========================================
-            // 📋 消息构建（智能追加顺序）
+            // 📋 消息构建（优化顺序：规则紧邻待处理内容）
             // ========================================
             let messages = [];
 
@@ -902,57 +905,8 @@ ${lastError.message}
             const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
             const filterContentByTags = window.Gaigai.tools.filterContentByTags;
 
-            // 构建上下文 (精简版：只保留名字，防止敏感设定触发空回)
-            let contextBlock = `【背景资料】\n角色: ${charName}\n用户: ${userName}\n`;
-            // (已移除人物简介、性格、场景和世界书，仅基于聊天记录分析)
-
-            // ⚠️ contextBlock 将在 backfillInstruction 之后推送（见下方）
-
-            // 2️⃣ Msg 2 (System): backfillPrompt (填表规则 - 优先级提升！)
-            let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
-
-            // 🛡️ [Bug Fix] Loud Fallback for Missing Prompts
-            if (!rulesContent || !rulesContent.trim()) {
-                console.error('❌ [Backfill] Prompt is empty/undefined! This usually means profile data was lost.');
-                if (typeof toastr !== 'undefined') {
-                    toastr.error('⚠️ 严重警告：填表提示词丢失！\n已自动使用【默认提示词】进行修复，请务必检查您的配置！', '配置异常', { timeOut: 8000 });
-                }
-                // Force use default to prevent AI hallucination
-                rulesContent = window.Gaigai.PromptManager.DEFAULT_BACKFILL_PROMPT;
-            }
-
-            let backfillInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
-
-            // 🎯 单表模式指令追加
-            if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
-                const sheet = m.s[targetIndex];
-                const sheetName = sheet.n;
-                backfillInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注且填写【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
-                console.log(`🎯 [单表模式] 最终提醒已追加到指令末尾`);
-            }
-
-            // ✅✅✅ [新增] 重构模式指令
-            const maxDataTableIndex = m.s.length - 2;
-            if (isOverwrite && targetIndex >= 0 && targetIndex <= maxDataTableIndex) {
-                const sheet = m.s[targetIndex];
-                const sheetName = sheet.n;
-                backfillInstruction += `\n\n🔥 【重构模式启用】\n⚠️ 用户已启用「重构模式」！\n\n📌 核心要求：\n1. **忽略上述表格的所有旧数据**，它们仅供参考，不是你的填写目标。\n2. 本次追溯将完全基于聊天历史（第 ${start}-${end} 层）重新生成【表${targetIndex} - ${sheetName}】。\n3. 所有指令必须使用 **insertRow(${targetIndex}, {...})**，不要使用 updateRow。\n4. 行索引从 0 开始递增（0, 1, 2, 3...），无需考虑旧数据的索引。\n5. 请完整、系统地提取聊天记录中的所有关键信息，生成全新的表格内容。\n\n💡 提示：这是一次「全新建表」，而不是「增量填表」。`;
-                console.log(`🔥 [重构模式] 已注入特殊指令：目标表${targetIndex}，行范围 ${start}-${end}`);
-            }
-
-            // 🆕 注入用户自定义建议
-            if (customNote && customNote.trim()) {
-                backfillInstruction += `\n\n💬 【用户重点建议】\n${customNote.trim()}\n\n请优先遵循以上建议进行分析和记录。`;
-                console.log(`💬 [自定义建议] 已注入：${customNote.trim()}`);
-            }
-
-            // 2️⃣ 推送 backfillInstruction（仅包含规则和自定义建议，不含表格数据）
-            messages.push({
-                role: 'system',
-                content: backfillInstruction
-            });
-
-            // 3️⃣ Msg 3+ (System): 表格数据（每个表格一个独立消息，确保在探针中显示为独立块）
+            // 2️⃣ Msg 2-N (System): 表格数据（之前的填表内容，作为参考）
+            // ✅ 优化：将表格数据前置，作为"已归档历史"供 AI 参考
             if (targetIndex === -1) {
                 // 1. 全部表格模式（动态获取所有数据表）
                 m.s.slice(0, -1).forEach((sheet, i) => {
@@ -994,6 +948,50 @@ ${lastError.message}
                     console.log(`🎯 [单表模式] 只处理表${targetIndex} - ${sheetName}`);
                 }
             }
+
+            // 3️⃣ Msg N+1 (System): backfillPrompt (填表规则 - 紧邻待处理内容！)
+            let rulesContent = window.Gaigai.PromptManager.get('backfillPrompt');
+
+            // 🛡️ [Bug Fix] Loud Fallback for Missing Prompts
+            if (!rulesContent || !rulesContent.trim()) {
+                console.error('❌ [Backfill] Prompt is empty/undefined! This usually means profile data was lost.');
+                if (typeof toastr !== 'undefined') {
+                    toastr.error('⚠️ 严重警告：填表提示词丢失！\n已自动使用【默认提示词】进行修复，请务必检查您的配置！', '配置异常', { timeOut: 8000 });
+                }
+                // Force use default to prevent AI hallucination
+                rulesContent = window.Gaigai.PromptManager.DEFAULT_BACKFILL_PROMPT;
+            }
+
+            let backfillInstruction = window.Gaigai.PromptManager.resolveVariables(rulesContent, ctx);
+
+            // 🎯 单表模式指令追加
+            if (targetIndex >= 0 && targetIndex < m.s.length - 1 && m.s[targetIndex]) {
+                const sheet = m.s[targetIndex];
+                const sheetName = sheet.n;
+                backfillInstruction += `\n\n🎯 【单表追溯模式 - 最终提醒】\n本次追溯只关注且填写【表${targetIndex} - ${sheetName}】，请仅生成该表的 insertRow/updateRow 指令，严禁生成其他表格内容。`;
+                console.log(`🎯 [单表模式] 最终提醒已追加到指令末尾`);
+            }
+
+            // ✅✅✅ [新增] 重构模式指令
+            const maxDataTableIndex = m.s.length - 2;
+            if (isOverwrite && targetIndex >= 0 && targetIndex <= maxDataTableIndex) {
+                const sheet = m.s[targetIndex];
+                const sheetName = sheet.n;
+                backfillInstruction += `\n\n🔥 【重构模式启用】\n⚠️ 用户已启用「重构模式」！\n\n📌 核心要求：\n1. **忽略上述表格的所有旧数据**，它们仅供参考，不是你的填写目标。\n2. 本次追溯将完全基于聊天历史（第 ${start}-${end} 层）重新生成【表${targetIndex} - ${sheetName}】。\n3. 所有指令必须使用 **insertRow(${targetIndex}, {...})**，不要使用 updateRow。\n4. 行索引从 0 开始递增（0, 1, 2, 3...），无需考虑旧数据的索引。\n5. 请完整、系统地提取聊天记录中的所有关键信息，生成全新的表格内容。\n\n💡 提示：这是一次「全新建表」，而不是「增量填表」。`;
+                console.log(`🔥 [重构模式] 已注入特殊指令：目标表${targetIndex}，行范围 ${start}-${end}`);
+            }
+
+            // 🆕 注入用户自定义建议
+            if (customNote && customNote.trim()) {
+                backfillInstruction += `\n\n💬 【用户重点建议】\n${customNote.trim()}\n\n请优先遵循以上建议进行分析和记录。`;
+                console.log(`💬 [自定义建议] 已注入：${customNote.trim()}`);
+            }
+
+            // 3️⃣ 推送 backfillInstruction（填表规则）
+            messages.push({
+                role: 'system',
+                content: backfillInstruction
+            });
 
             // 4️⃣ Msg N (System): contextBlock (人设/世界书 - 被动参考数据)
             // ✅ [NSFW Fix] 将人设包装为"被动参考数据"，降低安全过滤触发率
