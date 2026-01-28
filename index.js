@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.5
+// 记忆表格 v1.9.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.5 启动');
+    console.log('🚀 记忆表格 v1.9.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.5';
+    const V = 'v1.9.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -1352,8 +1352,12 @@
                 }
             };
 
+            // ✅ 标记浏览器缓存保存是否成功
+            let saveToBrowserSuccess = false;
+
             try {
                 localStorage.setItem(`${SK}_${id}`, JSON.stringify(data));
+                saveToBrowserSuccess = true; // 主数据保存成功
 
                 // 🔥 [优化版] 自动备份机制：创建时间戳备份供"恢复数据"功能使用
                 const backupKey = `gg_data_${id}_${now}`;
@@ -1441,9 +1445,44 @@
 
             } catch (e) {
                 console.error('❌ [保存失败] localStorage写入失败:', e);
+
+                // 🔥 [关键修复] 主数据保存失败时，尝试清理后重试
+                if (e.name === 'QuotaExceededError' || e.code === 22) {
+                    console.warn('⚠️ [主数据保存失败] 触发紧急清理...');
+
+                    // 紧急清理：删除所有旧备份
+                    let cleanedCount = 0;
+                    try {
+                        Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('gg_data_')) {
+                                localStorage.removeItem(key);
+                                cleanedCount++;
+                            }
+                        });
+                        console.log(`🧹 [紧急清理] 已删除 ${cleanedCount} 个旧备份`);
+
+                        // 清理后重试主数据保存
+                        try {
+                            localStorage.setItem(`${SK}_${id}`, JSON.stringify(data));
+                            saveToBrowserSuccess = true;
+                            console.log('✅ [紧急清理] 清理后主数据保存成功');
+                        } catch (e2) {
+                            console.error('❌ [紧急清理] 清理后仍无法保存主数据:', e2);
+                            // 保存失败，显示警告并强制云端同步
+                            if (typeof toastr !== 'undefined') {
+                                toastr.warning('浏览器缓存已满，正在强制同步到酒馆文件...', '缓存警告', { timeOut: 3000 });
+                            }
+                        }
+                    } catch (cleanupError) {
+                        console.error('❌ [紧急清理] 清理过程出错:', cleanupError);
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('浏览器缓存已满，正在强制同步到酒馆文件...', '缓存警告', { timeOut: 3000 });
+                        }
+                    }
+                }
             }
 
-            // 云端同步逻辑 (保持不变)
+            // 云端同步逻辑
             if (C.cloudSync) {
                 try {
                     if (ctx && ctx.chatMetadata) {
@@ -1453,12 +1492,18 @@
                             if (saveChatDebounceTimer) {
                                 clearTimeout(saveChatDebounceTimer);
                             }
-                            // 如果 immediate 为 true，立即执行（延迟 10ms 以确保异步执行）
-                            // 否则使用 500ms 防抖（从 2000ms 缩短，减少数据丢失风险）
-                            const delay = immediate ? 10 : 500;
+                            // 🔥 [关键修复] 如果浏览器缓存保存失败，强制立即同步到酒馆文件（绕过防抖）
+                            // 否则使用正常的防抖逻辑（immediate 为 true 时 10ms，否则 500ms）
+                            const effectiveImmediate = immediate || !saveToBrowserSuccess;
+                            const delay = effectiveImmediate ? 10 : 500;
+
                             saveChatDebounceTimer = setTimeout(() => {
                                 try {
                                     ctx.saveChat();
+                                    // 如果是因为缓存失败而强制同步，显示成功提示
+                                    if (!saveToBrowserSuccess && typeof toastr !== 'undefined') {
+                                        toastr.success('数据已成功保存到酒馆文件', '云端同步', { timeOut: 2000 });
+                                    }
                                     // console.log('💾 [防抖保存] saveChat 已执行');
                                 } catch (err) {
                                     console.error('❌ saveChat 执行失败:', err);
