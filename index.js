@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.7
+// 记忆表格 v1.9.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.7 启动');
+    console.log('🚀 记忆表格 v1.9.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.7';
+    const V = 'v1.9.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -7136,9 +7136,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ]
                     };
+
+                    // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
+                    const isThinkingModel = model.toLowerCase().includes('thinking');
+                    if (isThinkingModel) {
+                        proxyPayload.thinkingConfig = {
+                            includeThoughts: true,
+                            thinkingBudget: 4096  // 填表需要深度思考
+                        };
+                        console.log('🧠 [Thinking Model] 已启用思考模式，预算: 4096');
+                    }
 
                     const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
                         method: 'POST',
@@ -7210,9 +7221,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                                 { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                             ]
                         };
+
+                        // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
+                        const isThinkingModel = model.toLowerCase().includes('thinking');
+                        if (isThinkingModel) {
+                            proxyPayload.thinkingConfig = {
+                                includeThoughts: true,
+                                thinkingBudget: 4096  // 填表需要深度思考
+                            };
+                            console.log('🧠 [Thinking Model] 已启用思考模式，预算: 4096');
+                        }
 
                         // ✨ [双重保险] 同时注入 OpenAI 格式的安全设置
                         proxyPayload.safety_settings = proxyPayload.safetySettings;
@@ -7563,6 +7585,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     };
 
+                    // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
+                    const isThinkingModel = modelLower.includes('thinking');
+                    if (isThinkingModel) {
+                        requestBody.generationConfig.thinkingConfig = {
+                            includeThoughts: true,
+                            thinkingBudget: 4096  // 填表需要深度思考
+                        };
+                        console.log('🧠 [Thinking Model] 已启用思考模式，预算: 4096');
+                    }
+
                     // 🛡️ [强制注入] 无论模型名是否包含 gemini，都注入安全设置（防止中转商改名）
                     requestBody.safetySettings = [
                         { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -7588,7 +7620,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ];
 
                         // Gemini 原生格式（驼峰命名）- Google 官方格式
@@ -7596,7 +7629,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
                         ];
 
                         console.log('✅ [Gemini 安全补丁] 已同时注入 safety_settings 和 safetySettings');
@@ -12271,7 +12305,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>修复：</strong>优化会话窗口名称修改导致数据丢失及切换会话窗口时因酒馆加载缓慢导致数据串味的问题。</li>
+                        <li><strong>优化：</strong>优化填表可能空回,增加预填充</li>
                     </ul>
                 </div>
 
