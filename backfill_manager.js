@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.9.8
+ * @version 1.9.9
  * @author Gaigai Team
  */
 
@@ -863,6 +863,9 @@ ${lastError.message}
          async handleChatBackfill(start, end, isManual = false, targetIndex = -1, customNote = '', retryCount = 0, isOverwrite = false, forceSilent = null, skipLoad = false) {
             const m = window.Gaigai.m;
 
+            // 🛡️ [Safe Guard] Capture session ID at start to prevent data bleeding
+            const initialSessionId = window.Gaigai.m.gid();
+
             // ✨✨✨ 修复：补全 ctx 定义 ✨✨✨
             const ctx = window.SillyTavern.getContext();
             if (!ctx || !ctx.chat) return { success: false, reason: 'no_context' };
@@ -1104,6 +1107,12 @@ ${lastError.message}
                 window.isSummarizing = false;
             }
 
+            // 🛡️ [Safe Guard] Check if session changed during API call
+            if (window.Gaigai.m.gid() !== initialSessionId) {
+                console.warn(`🛑 [Safe Guard] Session changed during backfill (Old: ${initialSessionId}, New: ${window.Gaigai.m.gid()}). Aborting save.`);
+                return { success: false, reason: 'session_changed' };
+            }
+
             if (result && result.success) {
                 // 🛑 [优化] 在解析和保存数据之前检查停止标志
                 if (window.Gaigai.stopBatchBackfill) {
@@ -1295,6 +1304,9 @@ ${lastError.message}
             const API_CONFIG = window.Gaigai.config;
             const C = window.Gaigai.config_obj;
 
+            // 🛡️ [Safe Guard] Capture session ID at start to prevent data bleeding
+            const initialSessionId = window.Gaigai.m.gid();
+
             // 🛑 验证：表格优化模式必须指定单个表格
             // ✅ 动态判断：targetIndex 必须在有效范围内（0 到 倒数第二个表）
             const maxDataTableIndex = m.s.length - 2; // 排除总结表
@@ -1431,6 +1443,12 @@ ${lastError.message}
                 }
             } finally {
                 window.isSummarizing = false;
+            }
+
+            // 🛡️ [Safe Guard] Check if session changed during API call
+            if (window.Gaigai.m.gid() !== initialSessionId) {
+                console.warn(`🛑 [Safe Guard] Session changed during table optimization (Old: ${initialSessionId}, New: ${window.Gaigai.m.gid()}). Aborting save.`);
+                return { success: false, reason: 'session_changed' };
             }
 
             if (result && result.success) {
@@ -1935,6 +1953,61 @@ ${lastError.message}
                         const prs = window.Gaigai.tools.prs;
                         const exe = window.Gaigai.tools.exe;
                         const cs = prs(finalContent);
+
+                        // ✨✨✨ [Key Mapping/Sanitization] Convert column names to indices
+                        // Fix: AI sometimes outputs {"Name": "Alice"} instead of {0: "Alice"}
+                        // This ensures data is visible in the table renderer
+                        cs.forEach(cm => {
+                            if (!cm || !cm.d || typeof cm.ti !== 'number') return;
+
+                            const sheet = m.s[cm.ti];
+                            if (!sheet || !sheet.c) return;
+
+                            const newData = {};
+                            let hasStringKeys = false;
+
+                            // Check if data has string keys (column names)
+                            for (const key in cm.d) {
+                                if (isNaN(parseInt(key))) {
+                                    hasStringKeys = true;
+                                    break;
+                                }
+                            }
+
+                            // If string keys found, map them to indices
+                            if (hasStringKeys) {
+                                console.log(`🔧 [Key Mapping] Detected column names in command, converting to indices...`);
+
+                                for (const key in cm.d) {
+                                    const value = cm.d[key];
+
+                                    // Try to parse as integer first
+                                    const numKey = parseInt(key);
+                                    if (!isNaN(numKey)) {
+                                        newData[numKey] = value;
+                                        continue;
+                                    }
+
+                                    // Otherwise, try to match against column names
+                                    const colIndex = sheet.c.findIndex(colName =>
+                                        colName.toLowerCase().trim() === key.toLowerCase().trim()
+                                    );
+
+                                    if (colIndex !== -1) {
+                                        newData[colIndex] = value;
+                                        console.log(`  ✅ Mapped "${key}" → Index ${colIndex}`);
+                                    } else {
+                                        // Keep original key if no match found (fallback)
+                                        console.warn(`  ⚠️ Column "${key}" not found in sheet, keeping as-is`);
+                                        newData[key] = value;
+                                    }
+                                }
+
+                                // Replace data object with sanitized version
+                                cm.d = newData;
+                            }
+                        });
+
                         if (cs.length === 0) {
                             await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
                             return;
@@ -2019,6 +2092,19 @@ ${lastError.message}
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
+
+                        // ✨ [UI Refresh] Update tab counts to reflect new row counts
+                        const affectedTables = new Set();
+                        cs.forEach(cm => {
+                            if (cm && typeof cm.ti === 'number') {
+                                affectedTables.add(cm.ti);
+                            }
+                        });
+                        affectedTables.forEach(ti => {
+                            if (typeof window.Gaigai.updateTabCount === 'function') {
+                                window.Gaigai.updateTabCount(ti);
+                            }
+                        });
 
                         // 关闭弹窗
                         $o.remove();

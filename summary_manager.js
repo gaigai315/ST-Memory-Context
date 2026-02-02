@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.8.4
+ * @version 1.9.9
  * @author Gaigai Team
  */
 
@@ -720,6 +720,9 @@
             const C = window.Gaigai.config_obj;
             const m = window.Gaigai.m;
 
+            // 🛡️ [Safe Guard] Capture session ID at start to prevent data bleeding
+            const initialSessionId = m.gid();
+
             const currentMode = forcedMode || API_CONFIG.summarySource;
             const isTableMode = currentMode !== 'chat';
 
@@ -1000,6 +1003,12 @@
                 }
             } finally {
                 window.isSummarizing = false;
+            }
+
+            // 🛡️ [Safe Guard] Check if session changed during API call
+            if (m.gid() !== initialSessionId) {
+                console.warn(`🛑 [Safe Guard] Session changed during summary. Aborting.`);
+                return { success: false, error: 'session_changed' };
             }
 
             if (result.success) {
@@ -1749,6 +1758,9 @@
                 const m = window.Gaigai.m;
                 const ctx = m.ctx();
 
+                // 🛡️ [Safe Guard] Capture session ID at start to prevent data bleeding
+                const initialSessionId = m.gid();
+
                 // 读取总结表（动态获取最后一个表格）
                 const summaryTable = m.s[m.s.length - 1];
                 if (!summaryTable || summaryTable.r.length === 0) {
@@ -1865,6 +1877,12 @@
                 return;
             } finally {
                 window.isSummarizing = false;
+            }
+
+            // 🛡️ [Safe Guard] Check if session changed during API call
+            if (m.gid() !== initialSessionId) {
+                console.warn(`🛑 [Safe Guard] Session changed during summary optimization. Aborting.`);
+                return { success: false, error: 'session_changed' };
             }
 
             // 5. 处理结果

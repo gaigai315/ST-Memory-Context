@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.8
+// 记忆表格 v1.9.9
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.8 启动');
+    console.log('🚀 记忆表格 v1.9.9 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.8';
+    const V = 'v1.9.9';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2857,33 +2857,44 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         return null;
     }
 
-    // ⚡️ 核心重写：分情况处理单双引号，绝不遗漏
+    // ✅✅✅ [Robust Version] Object Parser: Tries JSON first, falls back to Regex
     function pob(s) {
         const d = {};
-        s = s.trim().replace(/^\{|\}$/g, '').trim();
+        s = s.trim();
 
-        // 匹配模式：
-        // 1. 键：可以是数字，也可以带引号 "0" 或 '0'
-        // 2. 值：双引号包围 "..." 或 单引号包围 '...'
+        // 1. Try JSON parsing (Most reliable for nested quotes)
+        // Wrap in braces if missing
+        if (!s.startsWith('{')) s = '{' + s;
+        if (!s.endsWith('}')) s = s + '}';
 
-        // 方案 A：双引号值 (例如 0: "abc")
-        const rDouble = /(?:['"]?(\d+)['"]?)\s*:\s*"([^"]*)"/g;
+        try {
+            // Attempt to fix lazy formatting (e.g. 0: "val" -> "0": "val")
+            const jsonStr = s.replace(/([{,]\s*)(\d+)(\s*:)/g, '$1"$2"$3')
+                             .replace(/'/g, '"'); // Try replacing single quotes (risky but helpful)
 
-        // 方案 B：单引号值 (例如 0: 'abc')
-        const rSingle = /(?:['"]?(\d+)['"]?)\s*:\s*'([^']*)'/g;
-
-        let mt;
-
-        // 先扫一遍双引号的
-        while ((mt = rDouble.exec(s)) !== null) {
-            d[mt[1]] = mt[2];
+            const parsed = JSON.parse(jsonStr);
+            Object.assign(d, parsed);
+            return d;
+        } catch (e) {
+            // JSON failed, fall back to Regex
         }
 
-        // 再扫一遍单引号的
+        // 2. Regex Fallback (Improved to handle escaped quotes)
+        s = s.replace(/^\{|\}$/g, '').trim();
+
+        // Match double quotes (handles \" inside)
+        const rDouble = /(?:['"]?(\d+)['"]?)\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+
+        // Match single quotes (handles \' inside)
+        const rSingle = /(?:['"]?(\d+)['"]?)\s*:\s*'((?:[^'\\]|\\.)*)'/g;
+
+        let mt;
+        while ((mt = rDouble.exec(s)) !== null) {
+            d[mt[1]] = mt[2].replace(/\\"/g, '"'); // Unescape quotes
+        }
         while ((mt = rSingle.exec(s)) !== null) {
-            // 如果键已经存在（被双引号逻辑抓到了），就跳过，防止冲突
             if (!d[mt[1]]) {
-                d[mt[1]] = mt[2];
+                d[mt[1]] = mt[2].replace(/\\'/g, "'");
             }
         }
 
@@ -10934,10 +10945,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 3. 筛选可裁剪的索引
         let dialogueMsgIndices = [];
         chat.forEach((msg, index) => {
+            // ✅ 新增：定义过滤关键词（针对预设注入的指令）
+            const content = msg.content || msg.mes || '';
+            const isInstruction = content.includes('thinking标签') ||
+                                  content.includes('<writing-style>') ||
+                                  content.includes('<must-read-materials>');
+
             // 条件A: 不能是 System (系统指令)
             // 条件B: 不能是 Last Message (预设 Prefill / 正在进行的对话)
             // 条件C: 不能是前2条消息 (越狱握手/触发消息，如 Kemini 的 Handshake)
-            if (msg.role !== 'system' && index !== lastMsgIndex && index > 1) {
+            // ✅ 条件D: 不能是预设指令 (新增 !isInstruction)
+            if (msg.role !== 'system' && index !== lastMsgIndex && index > 1 && !isInstruction) {
                 dialogueMsgIndices.push(index);
             }
         });
@@ -12305,7 +12323,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>优化：</strong>优化填表可能空回,增加预填充</li>
+                        <li><strong>优化：</strong>加强填表解析能力</li>
+                        <li><strong>优化：</strong>优化填表/总结未完结时切换会话窗口，停止当前会话窗口的任务</li>
                     </ul>
                 </div>
 
