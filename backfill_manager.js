@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 1.9.9
+ * @version 2.0.0
  * @author Gaigai Team
  */
 
@@ -1989,8 +1989,9 @@ ${lastError.message}
                                     }
 
                                     // Otherwise, try to match against column names
+                                    // Fix: Strip '#' prefix from column definition before comparison
                                     const colIndex = sheet.c.findIndex(colName =>
-                                        colName.toLowerCase().trim() === key.toLowerCase().trim()
+                                        colName.replace(/^#/, '').toLowerCase().trim() === key.toLowerCase().trim()
                                     );
 
                                     if (colIndex !== -1) {

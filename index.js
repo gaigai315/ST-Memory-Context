@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v1.9.9
+// 记忆表格 v2.0.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v1.9.9 启动');
+    console.log('🚀 记忆表格 v2.0.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v1.9.9';
+    const V = 'v2.0.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -909,20 +909,15 @@
                     // Even if val is empty, we overwrite (clear) the cell as requested.
                     this.r[i][k] = val;
                 } else {
-                    // ➕ APPEND MODE: Smart append
+                    // ➕ APPEND MODE: Unconditional append
                     let currentVal = this.r[i][k] ? String(this.r[i][k]) : '';
 
                     if (!currentVal) {
                         // Cell is empty -> just assign
                         this.r[i][k] = val;
                     } else if (val) {
-                        // Cell has data -> Append only if not duplicate (Exact Match)
-                        // Fix: Use split to avoid substring false positives (e.g. "Unhappy" includes "Happy")
-                        const parts = currentVal.split(/[;；]/).map(s => s.trim());
-
-                        if (!parts.includes(val)) {
-                            this.r[i][k] += '；' + val;
-                        }
+                        // Cell has data -> Always append, even if duplicate
+                        this.r[i][k] += '；' + val;
                     }
                 }
             });
@@ -1420,7 +1415,7 @@
 
                 performSave();
 
-                // 🧹 [常规清理] 只保留最近 5 个备份 (优化：从10个减少到5个)
+                // 🧹 [常规清理] 只保留最近 15 个备份
                 try {
                     const allKeys = Object.keys(localStorage);
                     const backups = allKeys
@@ -1431,12 +1426,12 @@
                         })
                         .sort((a, b) => b.ts - a.ts); // 按时间戳降序排列
 
-                    // 删除超过5个的旧备份
-                    if (backups.length > 5) {
-                        backups.slice(5).forEach(backup => {
+                    // 删除超过15个的旧备份
+                    if (backups.length > 15) {
+                        backups.slice(15).forEach(backup => {
                             localStorage.removeItem(backup.key);
                         });
-                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 5} 个旧备份，保留最近5个`);
+                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 15} 个旧备份，保留最近15个`);
                     }
                 } catch (cleanupError) {
                     console.warn('⚠️ [备份清理] 清理失败:', cleanupError);
@@ -1840,7 +1835,7 @@
                 const allKeys = Object.keys(localStorage);
                 const backupKeys = allKeys.filter(k => k.startsWith('gg_data_') || k.startsWith('backup_pre_'));
 
-                if (backupKeys.length > 5) {
+                if (backupKeys.length > 15) {
                     // 按时间戳排序，删除最旧的备份
                     const sortedBackups = backupKeys
                         .map(key => {
@@ -1853,7 +1848,7 @@
                         })
                         .sort((a, b) => a.ts - b.ts); // 升序，最旧的在前
 
-                    const toDelete = sortedBackups.slice(0, sortedBackups.length - 5);
+                    const toDelete = sortedBackups.slice(0, sortedBackups.length - 15);
                     toDelete.forEach(item => {
                         try {
                             localStorage.removeItem(item.key);
@@ -1863,7 +1858,7 @@
                     });
 
                     if (toDelete.length > 0) {
-                        console.log(`🧹 [快照清理] 已删除 ${toDelete.length} 个过期备份，保留最近5个`);
+                        console.log(`🧹 [快照清理] 已删除 ${toDelete.length} 个过期备份，保留最近15个`);
                     }
                 }
             } catch (cleanupError) {
@@ -7141,9 +7136,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         messages: cleanMessages,
                         temperature: temperature,
                         max_tokens: maxTokens,
+                        maxOutputTokens: maxTokens, // ✅ Gemini严格要求的参数名
                         stream: true, // ✅ 启用流式响应（Claude等提供商要求）
                         // 🛡️ 强力注入安全设置，防止空回
                         safety_settings: [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+                        ],
+                        safetySettings: [ // ✅ CamelCase版本，确保所有后端版本兼容
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
@@ -8416,8 +8419,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <label>API提供商：</label>
             <select id="gg_api_provider" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; margin-bottom:10px;">
                 <optgroup label="━━━ 后端代理 ━━━">
-                    <option value="proxy_only" ${API_CONFIG.provider === 'proxy_only' ? 'selected' : ''}>中转/反代(如build)</option>
-                    <option value="openai" ${API_CONFIG.provider === 'openai' ? 'selected' : ''}>OpenAI 兼容模式/OpenAI 官方</option>
+                    <option value="proxy_only" ${API_CONFIG.provider === 'proxy_only' ? 'selected' : ''}>OpenAI 兼容模式/反代(如build)</option>
+                    <option value="openai" ${API_CONFIG.provider === 'openai' ? 'selected' : ''}>OpenAI 官方</option>
                     <option value="compatible" ${API_CONFIG.provider === 'compatible' ? 'selected' : ''}>兼容中转/代理</option>
                     <option value="local" ${API_CONFIG.provider === 'local' ? 'selected' : ''}>本地/内网（本地反代）</option>
                     <option value="claude" ${API_CONFIG.provider === 'claude' ? 'selected' : ''}>Claude 官方</option>
@@ -10811,16 +10814,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             // 11. 🛡️ [创世快照兜底]
+            // FIX: Always initialize Genesis snapshot with currently loaded data (m.s),
+            // ensuring it's not empty if we just reloaded an existing chat.
             if (!snapshotHistory['-1']) {
                 snapshotHistory['-1'] = {
-                    data: m.all().slice(0, -1).map(sh => {
-                        let copy = JSON.parse(JSON.stringify(sh.json()));
-                        copy.r = [];
-                        return copy;
-                    }),
-                    summarized: {},
+                    data: m.all().slice(0, -1).map(sh => JSON.parse(JSON.stringify(sh.json()))),
+                    summarized: JSON.parse(JSON.stringify(summarizedRows)),
                     timestamp: 0
                 };
+                console.log("📸 [Genesis Snapshot] Initialized with loaded data (Rows: " +
+                    m.s.reduce((acc, s) => acc + (s.r ? s.r.length : 0), 0) + ")");
             }
 
             // ============================================================
@@ -11189,7 +11192,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const globalCtx = m.ctx();
             const globalChat = globalCtx ? globalCtx.chat : null;
 
-            if (C.enabled && globalChat && globalChat.length > 0) {
+            if (C.enabled && !C.autoBackfill && globalChat && globalChat.length > 0) {
                 let targetIndex = globalChat.length;
                 const lastMsg = globalChat[globalChat.length - 1];
 
@@ -12323,9 +12326,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>⚠️提醒⚠️：</strong>一般中转或公益站优先使用中转/反代端口，若不通过则选择op兼容端口</li>
-                        <li><strong>优化：</strong>加强填表解析能力</li>
-                        <li><strong>优化：</strong>优化填表/总结未完结时切换会话窗口，停止当前会话窗口的任务</li>
-                    </ul>
+                        <li><strong>修复：</strong>修复批量填表下错误调用仅实时填表下的重roll功能。</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

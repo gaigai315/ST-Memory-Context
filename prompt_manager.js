@@ -707,6 +707,20 @@ insertRow(0, {0: "2024年3月16日", 1: "凌晨(00:10)", 2: "", 3: "在古神殿
 
         // ✅ 初始化表格结构预设
         const tablePresets = getTablePresets();
+
+        // 🛡️ Force sync "Default Structure" to match the current plugin version's hardcoded defaults.
+        // This ensures users always get the latest structure (with # prefixes) when selecting "Default Structure".
+        if (window.Gaigai.DEFAULT_TABLES) {
+            const latestDefault = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+
+            // Only save if it's different to avoid unnecessary writes
+            if (JSON.stringify(tablePresets['默认结构']) !== JSON.stringify(latestDefault)) {
+                tablePresets['默认结构'] = latestDefault;
+                saveTablePresets(tablePresets);
+                console.log('📦 [PromptManager] Force-synced "Default Structure" to latest version.');
+            }
+        }
+
         if (!tablePresets || Object.keys(tablePresets).length === 0) {
             console.log('[PromptManager] 首次加载，初始化表格结构预设...');
 
