@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.0.0
+// 记忆表格 v2.1.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.0.0 启动');
+    console.log('🚀 记忆表格 v2.1.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.0.0';
+    const V = 'v2.1.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -3069,6 +3069,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         let replacedSmart = false;
         let replacedPrompt = false;
+        let replacedSummary = false;  // ✅ 新增：标记 Summary 是否已通过变量替换
+        let replacedTable = false;    // ✅ 新增：标记 Table 是否已通过变量替换
         let foundAnchor = false;
         let anchorIndex = -1;
 
@@ -3126,7 +3128,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     idxSummaryVar = i;
                     console.log(`🎯 [变量扫描] 发现 ${varSum} | 位置: #${i}`);
                 }
-                msgContent = msgContent.replace(varSum, '');
+                // ✅ 原位替换：直接用总结内容替换变量
+                msgContent = msgContent.replace(varSum, strSummary);
+                replacedSummary = true; // 标记已替换，防止 Step 4 重复注入
+                console.log(`🎯 [原位替换] ${varSum} 已替换为总结内容`);
                 modified = true;
             }
 
@@ -3136,7 +3141,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     idxTableVar = i;
                     console.log(`🎯 [变量扫描] 发现 ${varTable} | 位置: #${i}`);
                 }
-                msgContent = msgContent.replace(varTable, '');
+                // ✅ 原位替换：直接用表格内容替换变量
+                msgContent = msgContent.replace(varTable, strTable);
+                replacedTable = true; // 标记已替换，防止 Step 4 重复注入
+                console.log(`🎯 [原位替换] ${varTable} 已替换为表格内容`);
                 modified = true;
             }
 
@@ -3148,8 +3156,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
                 }
 
-                // 清洗变量文本
-                // msgContent = msgContent.replace(varSmart, ''); // ✅ [修复] 注释掉：扫描阶段不删除标签
+                // ✅ 原位替换：直接用总结+表格内容替换智能变量
+                const smartContent = strSummary + (strSummary && strTable ? '\n' : '') + strTable;
+                msgContent = msgContent.replace(varSmart, smartContent);
+                // ✅ 关键：标记两个标志位，因为这个变量已经包含了两者
+                replacedSummary = true;
+                replacedTable = true;
+                console.log(`🎯 [原位替换] ${varSmart} 已替换为完整内容（总结+表格）`);
 
                 // ✅ [修复]：只要检测到标签，就强制记录锚点位置。
                 // 逻辑：标签存在说明用户开启了预设开关，必须在此处插入表格。
@@ -3219,7 +3232,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const insertionOps = [];
 
         // ✨ A. 处理总结消息 (summaryMessages)
-        if (summaryMessages.length > 0) {
+        // ✅ 检查是否已通过变量替换：只有未替换时才执行默认插入
+        if (summaryMessages.length > 0 && !replacedSummary) {
             let summaryPos = -1;
             let summaryStrategy = '';
 
@@ -3248,7 +3262,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ✨ B. 处理表格消息 (tableMessages)
-        if (tableMessages.length > 0) {
+        // ✅ 检查是否已通过变量替换：只有未替换时才执行默认插入
+        if (tableMessages.length > 0 && !replacedTable) {
             let tablePos = -1;
             let tableStrategy = '';
             let shouldInject = false; // ✅ [修复] 是否应该注入的标志
@@ -11808,13 +11823,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                             // 强制覆盖角色属性
                                                             msg.role = 'system';
                                                             msg.isGaigaiVector = true;
-                                                            msg.name = '向量化';
+
+                                                            // ✅ 智能命名：判断是否为合并消息
+                                                            if (content.length > vectorText.length + 500) {
+                                                                // 内容长度远大于向量文本，说明是酒馆压缩后的合并消息
+                                                                msg.name = 'SYSTEM (Merged)';
+                                                                console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (Merged) - 检测到压缩合并 (${content.length} > ${vectorText.length + 500})`);
+                                                            } else {
+                                                                // 内容长度接近向量文本，说明是纯向量消息
+                                                                msg.name = 'SYSTEM (向量化)';
+                                                                console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (向量化) - 纯向量注入`);
+                                                            }
 
                                                             // 确保没有其他角色标记
                                                             delete msg.is_user;
 
                                                             markedCount++;
-                                                            console.log(`🏷️ [探针] 消息 #${idx} 已强制标记为 SYSTEM (向量化)`);
                                                         }
                                                     });
 
@@ -12325,7 +12349,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>修复：</strong>修复批量填表下错误调用仅实时填表下的重roll功能。</li>
+                        <li><strong>优化：</strong>优化表格变量在不同预设里的兼容性</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

@@ -3,7 +3,7 @@
  *
  * 功能：提供调试和维护工具（清除缓存、重置配置等）
  *
- * @version 1.8.4
+ * @version 2.1.0
  * @author Gaigai Team
  */
 
@@ -383,7 +383,8 @@
 
                     // ✅ 新增：向量化数据识别
                     if (msg.isGaigaiVector) {
-                        roleName = 'SYSTEM (向量化)';
+                        // ✅ 优先使用动态名字 (如 SYSTEM (Merged))，没有则显示默认
+                        roleName = msg.name || 'SYSTEM (向量化)';
                         roleColor = '#e91e63'; // 使用粉色，与向量化主题一致
                         icon = '💠';
                     }
