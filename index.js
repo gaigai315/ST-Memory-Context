@@ -7103,6 +7103,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             };
         });
 
+        // 🔍 [Prefill 探针] 显示最后发送的消息结构
+        console.log('📤 [消息探针] 准备发送的消息数量:', cleanMessages.length);
+        if (cleanMessages.length > 0) {
+            const lastMsg = cleanMessages[cleanMessages.length - 1];
+            console.log('📤 [消息探针] 最后一条消息:');
+            console.log('   - 角色 (role):', lastMsg.role);
+            console.log('   - 内容长度:', (lastMsg.content || '').length);
+            console.log('   - 内容前100字符:', (lastMsg.content || '').substring(0, 100));
+
+            if (lastMsg.role === 'assistant' || lastMsg.role === 'model') {
+                console.log('✨ [Prefill 探针] 检测到预填提示词 (Assistant Prefill)');
+            }
+        }
+
         // ========================================
         // 按需鉴权：只有当 Key 不为空时才构造 Authorization Header
         // ========================================
@@ -7170,6 +7184,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         ]
                     };
 
+                    // 🔍 [后端代理 Prefill 探针] 显示发送给酒馆后端的 messages 最后一条
+                    if (proxyPayload.messages && proxyPayload.messages.length > 0) {
+                        const lastMsg = proxyPayload.messages[proxyPayload.messages.length - 1];
+                        console.log('📤 [后端代理-Gemini] 发送给酒馆的 messages 最后一条:');
+                        console.log('   - role:', lastMsg.role);
+                        console.log('   - content 前100字符:', (lastMsg.content || '').substring(0, 100));
+                        if (lastMsg.role === 'assistant' || lastMsg.role === 'model') {
+                            console.log('✨ [后端代理 Prefill 探针] 检测到 Prefill，酒馆后端将转为 Gemini 格式');
+                        }
+                    }
+
                     // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
                     const isThinkingModel = model.toLowerCase().includes('thinking');
                     if (isThinkingModel) {
@@ -7196,19 +7221,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             '[Gemini官方]'
                         );
 
-                        // 🛑 [强力防空回] 如果内容为空，且没有思考过程，直接抛出错误进入 catch
-                        if (!fullText || !fullText.trim()) {
-                            if (!fullReasoning || !fullReasoning.trim()) {
-                                throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
-                            }
+                        // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
+                        if (isTruncated && fullText && fullText.length > 0) {
+                            console.warn('⚠️ [Gemini官方] Token截断但有内容，返回部分响应');
+                            return { success: true, summary: fullText };
                         }
 
-                        if (isTruncated) {
-                            console.warn('⚠️ [Gemini官方] 检测到输出因 Max Tokens 限制被截断');
+                        // 如果有正常内容或思考内容，返回
+                        if (fullText && fullText.trim()) {
+                            console.log('✅ [Gemini官方] 成功');
+                            return { success: true, summary: fullText };
+                        }
+                        if (fullReasoning && fullReasoning.trim()) {
+                            console.warn('⚠️ [Gemini官方] 正文为空，返回思考内容');
+                            return { success: true, summary: fullReasoning };
                         }
 
-                        console.log('✅ [Gemini官方] 成功');
-                        return { success: true, summary: fullText || '' };
+                        // 真的完全没内容，抛出简洁错误
+                        throw new Error('API返回空内容');
                     }
 
                     const errText = await proxyResponse.text();
@@ -7290,18 +7320,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                     '[Gemini反代]'
                                 );
 
-                                if (!fullText || !fullText.trim()) {
-                                    if (!fullReasoning || !fullReasoning.trim()) {
-                                        throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
-                                    }
+                                // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
+                                if (isTruncated && fullText && fullText.length > 0) {
+                                    console.warn('⚠️ [Gemini反代] Token截断但有内容，返回部分响应');
+                                    return { success: true, summary: fullText };
                                 }
 
-                                if (isTruncated) {
-                                    console.warn('⚠️ [Gemini反代] 检测到输出因 Max Tokens 限制被截断');
+                                // 如果有正常内容或思考内容，返回
+                                if (fullText && fullText.trim()) {
+                                    console.log('✅ [Gemini反代-流式] 成功');
+                                    return { success: true, summary: fullText };
+                                }
+                                if (fullReasoning && fullReasoning.trim()) {
+                                    console.warn('⚠️ [Gemini反代] 正文为空，返回思考内容');
+                                    return { success: true, summary: fullReasoning };
                                 }
 
-                                console.log('✅ [Gemini反代-流式] 成功');
-                                return { success: true, summary: fullText || '' };
+                                // 真的完全没内容，抛出简洁错误
+                                throw new Error('API返回空内容');
                             }
                             throw new Error('流式响应缺少 body');
                         } else {
@@ -7478,16 +7514,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         let fullText = rawText;
 
-                        // 🛑 [强力防空回] 如果内容为空，且没有思考过程，直接抛出错误进入 catch
-                        if (!fullText || !fullText.trim()) {
-                            if (!fullReasoning || !fullReasoning.trim()) {
-                                throw new Error(`上游 API 返回内容为空 (Empty Response)。\n\n🔍 调试信息：\n- HTTP Status: 200 OK\n- 接收到的思考内容长度: ${fullReasoning ? fullReasoning.length : 0}\n- 是否截断: ${isTruncated}\n\n(请检查后台控制台日志查看完整 Stream 数据)`);
-                            }
-                        }
-
-                        // 检测异常：如果正文全空，说明 AI 仅输出了思考过程
-                        if (!fullText.trim() && fullReasoning.trim()) {
-                            throw new Error('生成失败：AI 仅输出了思考过程，未输出正文（可能是 Token 耗尽）');
+                        // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
+                        if (isTruncated && fullText && fullText.length > 0) {
+                            console.warn('⚠️ [后端代理] Token截断但有内容，返回部分响应');
+                            fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                            return { success: true, summary: fullText };
                         }
 
                         // 清洗 <think> 标签
@@ -7511,12 +7542,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             }
                         }
 
-                        if (isTruncated) {
-                            fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                        // 如果有正常内容或思考内容，返回
+                        if (fullText && fullText.trim()) {
+                            console.log('✅ [后端代理] 成功');
+                            return { success: true, summary: fullText };
+                        }
+                        if (fullReasoning && fullReasoning.trim()) {
+                            console.warn('⚠️ [后端代理] 正文为空，返回思考内容');
+                            return { success: true, summary: fullReasoning };
                         }
 
-                        console.log('✅ [后端代理] 成功');
-                        return { success: true, summary: fullText || '' };
+                        // 真的完全没内容，抛出简洁错误
+                        throw new Error('API返回空内容');
                     }
 
                     // 2. 处理错误
@@ -7613,6 +7650,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             maxOutputTokens: maxTokens
                         }
                     };
+
+                    // 🔍 [Gemini Prefill 探针] 显示转换后的 contents 最后一条
+                    if (requestBody.contents && requestBody.contents.length > 0) {
+                        const lastContent = requestBody.contents[requestBody.contents.length - 1];
+                        console.log('📤 [Gemini 探针] 转换后 contents 最后一条:');
+                        console.log('   - role:', lastContent.role);
+                        console.log('   - parts:', JSON.stringify(lastContent.parts).substring(0, 150));
+                        if (lastContent.role === 'model') {
+                            console.log('✨ [Gemini Prefill 探针] 已将 assistant 转为 model (Gemini Prefill)');
+                        }
+                    }
 
                     // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
                     const isThinkingModel = modelLower.includes('thinking');
@@ -7712,6 +7760,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // ✅ [伪流式响应处理] 实现健壮的 SSE 流式解析
                 let fullText = '';  // 累积完整文本
                 let fullReasoning = '';  // 累积思考内容（DeepSeek reasoning_content）
+                let isTruncated = false;  // 标记是否因长度限制被截断
 
                 // 判断是否为流式响应（仅根据服务器实际返回的 Content-Type 判断）
                 // ✅ 修复：移除 requestBody.stream 判断，防止"假流"模型（请求 stream:true 但返回 json）解析失败
@@ -7725,7 +7774,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const reader = directResponse.body.getReader();
                         const decoder = new TextDecoder('utf-8');
                         let buffer = '';  // 缓冲区，处理分片数据
-                        let isTruncated = false;  // 标记是否因长度限制被截断
 
                         while (true) {
                             const { done, value } = await reader.read();
@@ -7890,7 +7938,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     } catch (e) {
                         console.error('❌ [浏览器直连] JSON 解析失败:', e.message);
                         console.error('   原始响应 (前300字符):', text.substring(0, 300));
-                        throw new Error(`浏览器直连返回非JSON格式\n\n原始响应: ${text.substring(0, 150)}\n\n可能原因：API超时或返回了HTML错误页`);
+                        throw new Error(`浏览器直连返回非JSON格式\n\n${text.substring(0, 500)}`);
                     }
 
                     const result = parseApiResponse(data);
@@ -7906,8 +7954,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // ========================================
                 // 3️⃣ 最终校验与返回 (防空回增强版)
                 // ========================================
-                
-                // 1. 优先返回正常的正文
+
+                // 1. ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
+                if (isTruncated && fullText && fullText.length > 0) {
+                    console.warn('⚠️ [浏览器直连] Token截断但有内容，返回部分响应');
+                    return {
+                        success: true,
+                        summary: fullText
+                    };
+                }
+
+                // 2. 如果有正常内容，返回
                 if (fullText && fullText.trim()) {
                     console.log('✅ [浏览器直连] 成功（流式）！长度:', fullText.length);
                     return {
@@ -7916,7 +7973,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     };
                 }
 
-                // 2. ✨✨✨ 核心修复：如果正文为空，但有思考内容，拿思考内容救急！✨✨✨
+                // 3. 如果正文为空但有思考内容，返回思考内容
                 // (针对 DeepSeek R1 或 Gemini 2.0 Flash Thinking 等推理模型)
                 if (typeof fullReasoning !== 'undefined' && fullReasoning && fullReasoning.trim()) {
                     console.warn('⚠️ [流式兼容] 正文为空，降级返回思考内容 (Reasoning Content)');
@@ -7926,14 +7983,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     };
                 }
 
-                // 3. 💀 真·空回 (抛出原始错误供弹窗显示)
-                console.error('❌ [流式失败] 接收到的完整包体:', fullText);
-                console.error('💡 [诊断提示] 可能的原因：');
-                console.error('   1. API 返回的流式格式不符合 OpenAI 标准');
-                console.error('   2. 所有 SSE 数据行都被跳过或解析失败');
-                console.error('   3. API 服务器返回了空响应');
-                console.error('   4. 请检查浏览器控制台中的 [流式调试] 日志');
-                throw new Error(`Error: Stream response content is empty.\n\nContent Length: ${fullText.length}\nReasoning Length: ${typeof fullReasoning !== 'undefined' ? fullReasoning.length : 0}\n\n💡 可能的原因：\n1. API 返回的流式格式不符合 OpenAI 标准\n2. 网络问题导致响应不完整\n3. API 服务器配置问题\n\n请检查浏览器控制台中的详细日志`);
+                // 4. 真的完全没内容，抛出简洁错误
+                throw new Error('API返回空内容');
             } // attemptDirectRequest 函数结束
 
             // ♻️♻️♻️ [自动降级核心逻辑] ♻️♻️♻️
@@ -8076,6 +8127,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // ✅ 统一处理：确保 prompt 是数组格式
             if (!Array.isArray(prompt)) {
                 finalPrompt = [{ role: 'user', content: String(prompt) }];
+            }
+
+            // 🔍 [Tavern API Prefill 探针] 显示发送给酒馆的消息
+            console.log('📤 [酒馆API探针] 准备发送的消息数量:', finalPrompt.length);
+            if (finalPrompt.length > 0) {
+                const lastMsg = finalPrompt[finalPrompt.length - 1];
+                console.log('📤 [酒馆API探针] 最后一条消息:');
+                console.log('   - 角色 (role):', lastMsg.role);
+                console.log('   - 内容长度:', (lastMsg.content || '').length);
+                console.log('   - 内容前100字符:', (lastMsg.content || '').substring(0, 100));
+
+                if (lastMsg.role === 'assistant' || lastMsg.role === 'model') {
+                    console.log('✨ [酒馆API Prefill 探针] 检测到预填提示词 (Assistant Prefill)');
+                }
             }
 
             if (isGemini) {

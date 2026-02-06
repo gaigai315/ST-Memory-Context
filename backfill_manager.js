@@ -1064,14 +1064,16 @@ ${lastError.message}
             // 🛡️ 过滤空消息，防止 API 错误
             messages = messages.filter(m => m.content && m.content.trim());
 
+            // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
+            messages.push({ role: 'assistant', content: '<Memory><!--' });
+
+            // 🔍 [Debug探针] 更新 lastRequestData（在 prefill 之后，这样 debug 面板能看到完整消息）
             window.Gaigai.lastRequestData = {
                 chat: JSON.parse(JSON.stringify(messages)),
                 timestamp: Date.now(),
                 model: window.Gaigai.config.useIndependentAPI ? window.Gaigai.config.model : 'Tavern(Direct)'
             };
-
-            // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
-            messages.push({ role: 'assistant', content: '<Memory><!--' });
+            console.log('🔍 [追溯填表-聊天] lastRequestData 已更新，包含 prefill，消息数:', messages.length);
 
             let result;
             window.isSummarizing = true;
@@ -1402,15 +1404,16 @@ ${lastError.message}
                 console.log(`✅ [智能触发器-表优化] 创建新的 user 消息`);
             }
 
-            // 调用 API
+            // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
+            messages.push({ role: 'assistant', content: '<Memory><!--' });
+
+            // 🔍 [Debug探针] 更新 lastRequestData（在 prefill 之后，这样 debug 面板能看到完整消息）
             window.Gaigai.lastRequestData = {
                 chat: JSON.parse(JSON.stringify(messages)),
                 timestamp: Date.now(),
                 model: API_CONFIG.useIndependentAPI ? API_CONFIG.model : 'Tavern(Direct)'
             };
-
-            // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
-            messages.push({ role: 'assistant', content: '<Memory><!--' });
+            console.log('🔍 [追溯填表-表格] lastRequestData 已更新，包含 prefill，消息数:', messages.length);
 
             let result;
             window.isSummarizing = true;
@@ -2262,14 +2265,16 @@ ${lastError.message}
             // 🛡️ 过滤空消息，防止 API 错误
             messages = messages.filter(m => m.content && m.content.trim());
 
+            // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
+            messages.push({ role: 'assistant', content: '<Memory><!--' });
+
+            // 🔍 [Debug探针] 更新 lastRequestData（在 prefill 之后，这样 debug 面板能看到完整消息）
             window.Gaigai.lastRequestData = {
                 chat: JSON.parse(JSON.stringify(messages)),
                 timestamp: Date.now(),
                 model: window.Gaigai.config.useIndependentAPI ? window.Gaigai.config.model : 'Tavern(Direct)'
             };
-
-            // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
-            messages.push({ role: 'assistant', content: '<Memory><!--' });
+            console.log('🔍 [实时填表] lastRequestData 已更新，包含 prefill，消息数:', messages.length);
 
             // 调用 API
             let result;
