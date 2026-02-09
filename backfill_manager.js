@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 2.0.0
+ * @version 2.1.1
  * @author Gaigai Team
  */
 
@@ -1065,7 +1065,16 @@ ${lastError.message}
             messages = messages.filter(m => m.content && m.content.trim());
 
             // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
-            messages.push({ role: 'assistant', content: '<Memory><!--' });
+            // ⚠️ [DeepSeek 兼容性] DeepSeek 模型不支持 Assistant Prefill，需要跳过
+            const isDeepSeek = window.Gaigai.config.provider === 'deepseek' ||
+                               (window.Gaigai.config.model && window.Gaigai.config.model.toLowerCase().includes('deepseek'));
+
+            if (!isDeepSeek) {
+                messages.push({ role: 'assistant', content: '<Memory><!--' });
+                console.log('✅ [Prefill] 已添加 Assistant Prefill（非 DeepSeek 模型）');
+            } else {
+                console.log('⚠️ [Prefill] DeepSeek 模型检测到，已跳过 Prefill 注入');
+            }
 
             // 🔍 [Debug探针] 更新 lastRequestData（在 prefill 之后，这样 debug 面板能看到完整消息）
             window.Gaigai.lastRequestData = {
@@ -1126,8 +1135,12 @@ ${lastError.message}
                 let aiOutput = unesc(result.summary || result.text || '');
 
                 // 🔥 [Prefill 重建] 因为使用了 Assistant Prefill，AI 不会返回开头标签，需要手动补回
-                if (!aiOutput.trim().startsWith('<Memory>')) {
+                // ⚠️ [DeepSeek 兼容性] DeepSeek 不使用 Prefill，返回内容可能包含完整标签
+                if (!isDeepSeek && !aiOutput.trim().startsWith('<Memory>')) {
                     aiOutput = '<Memory><!--' + aiOutput;
+                    console.log('✅ [Prefill 重建] 已补回 <Memory><!-- 开头');
+                } else if (isDeepSeek) {
+                    console.log('⚠️ [Prefill 重建] DeepSeek 模式，保持原始输出');
                 }
 
                 // 1. 尝试匹配完整标签
@@ -1405,7 +1418,16 @@ ${lastError.message}
             }
 
             // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
-            messages.push({ role: 'assistant', content: '<Memory><!--' });
+            // ⚠️ [DeepSeek 兼容性] DeepSeek 模型不支持 Assistant Prefill，需要跳过
+            const isDeepSeek = API_CONFIG.provider === 'deepseek' ||
+                               (API_CONFIG.model && API_CONFIG.model.toLowerCase().includes('deepseek'));
+
+            if (!isDeepSeek) {
+                messages.push({ role: 'assistant', content: '<Memory><!--' });
+                console.log('✅ [Prefill] 已添加 Assistant Prefill（非 DeepSeek 模型）');
+            } else {
+                console.log('⚠️ [Prefill] DeepSeek 模型检测到，已跳过 Prefill 注入');
+            }
 
             // 🔍 [Debug探针] 更新 lastRequestData（在 prefill 之后，这样 debug 面板能看到完整消息）
             window.Gaigai.lastRequestData = {
@@ -1465,8 +1487,12 @@ ${lastError.message}
                 let aiOutput = unesc(result.summary || result.text || '').trim();
 
                 // 🔥 [Prefill 重建] 因为使用了 Assistant Prefill，AI 不会返回开头标签，需要手动补回
-                if (!aiOutput.trim().startsWith('<Memory>')) {
+                // ⚠️ [DeepSeek 兼容性] DeepSeek 不使用 Prefill，返回内容可能包含完整标签
+                if (!isDeepSeek && !aiOutput.trim().startsWith('<Memory>')) {
                     aiOutput = '<Memory><!--' + aiOutput;
+                    console.log('✅ [Prefill 重建] 已补回 <Memory><!-- 开头');
+                } else if (isDeepSeek) {
+                    console.log('⚠️ [Prefill 重建] DeepSeek 模式，保持原始输出');
                 }
 
                 // 移除思考过程 (标准成对 + 残缺开头)
@@ -2266,7 +2292,16 @@ ${lastError.message}
             messages = messages.filter(m => m.content && m.content.trim());
 
             // 🔥 [Assistant Prefill] 强制 AI 认为已经开始输出 XML 格式，绕过安全过滤
-            messages.push({ role: 'assistant', content: '<Memory><!--' });
+            // ⚠️ [DeepSeek 兼容性] DeepSeek 模型不支持 Assistant Prefill，需要跳过
+            const isDeepSeek = window.Gaigai.config.provider === 'deepseek' ||
+                               (window.Gaigai.config.model && window.Gaigai.config.model.toLowerCase().includes('deepseek'));
+
+            if (!isDeepSeek) {
+                messages.push({ role: 'assistant', content: '<Memory><!--' });
+                console.log('✅ [Prefill] 已添加 Assistant Prefill（非 DeepSeek 模型）');
+            } else {
+                console.log('⚠️ [Prefill] DeepSeek 模型检测到，已跳过 Prefill 注入');
+            }
 
             // 🔍 [Debug探针] 更新 lastRequestData（在 prefill 之后，这样 debug 面板能看到完整消息）
             window.Gaigai.lastRequestData = {
@@ -2297,8 +2332,12 @@ ${lastError.message}
                 let aiOutput = unesc(result.summary || result.text || '');
 
                 // 🔥 [Prefill 重建] 因为使用了 Assistant Prefill，AI 不会返回开头标签，需要手动补回
-                if (!aiOutput.trim().startsWith('<Memory>')) {
+                // ⚠️ [DeepSeek 兼容性] DeepSeek 不使用 Prefill，返回内容可能包含完整标签
+                if (!isDeepSeek && !aiOutput.trim().startsWith('<Memory>')) {
                     aiOutput = '<Memory><!--' + aiOutput;
+                    console.log('✅ [Prefill 重建] 已补回 <Memory><!-- 开头');
+                } else if (isDeepSeek) {
+                    console.log('⚠️ [Prefill 重建] DeepSeek 模式，保持原始输出');
                 }
 
                 // 1. 尝试匹配完整标签

@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.0
+// 记忆表格 v2.1.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.0 启动');
+    console.log('🚀 记忆表格 v2.1.1 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.0';
+    const V = 'v2.1.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -3122,33 +3122,130 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 modified = true;
             }
 
-            // 2️⃣ 处理：{{MEMORY_SUMMARY}} (总结专属变量)
+            // 2️⃣ 处理：{{MEMORY_SUMMARY}} (总结专属变量) - 原地拆分注入
             if (msgContent.includes(varSum)) {
                 if (idxSummaryVar === -1) {
                     idxSummaryVar = i;
                     console.log(`🎯 [变量扫描] 发现 ${varSum} | 位置: #${i}`);
                 }
-                // ✅ 原位替换：直接用总结内容替换变量
-                msgContent = msgContent.replace(varSum, strSummary);
-                replacedSummary = true; // 标记已替换，防止 Step 4 重复注入
-                console.log(`🎯 [原位替换] ${varSum} 已替换为总结内容`);
-                modified = true;
+
+                // ✅ 安全检查：只有当有数据时才执行拆分注入
+                if (summaryMessages.length > 0) {
+                    // ✨ 原地拆分注入逻辑
+                    const varIndex = msgContent.indexOf(varSum);
+                    const preText = msgContent.substring(0, varIndex).trim();
+                    const postText = msgContent.substring(varIndex + varSum.length).trim();
+
+                    // 构建新消息队列
+                    const newMessages = [];
+                    const originalMsg = ev.chat[i];
+
+                    // 如果变量前有内容，创建前半段消息
+                    if (preText) {
+                        newMessages.push({
+                            role: originalMsg.role,
+                            content: preText,
+                            name: originalMsg.name
+                        });
+                    }
+
+                    // 插入预构建的总结消息数组（带有 isGaigaiData 和自定义 name）
+                    newMessages.push(...summaryMessages);
+
+                    // 如果变量后有内容，创建后半段消息
+                    if (postText) {
+                        newMessages.push({
+                            role: originalMsg.role,
+                            content: postText,
+                            name: originalMsg.name
+                        });
+                    }
+
+                    // 原地替换：将 1 条消息替换为多条消息
+                    ev.chat.splice(i, 1, ...newMessages);
+
+                    // 更新循环索引：跳过刚插入的消息
+                    i += newMessages.length - 1;
+
+                    // 标记已替换，防止后续重复注入
+                    replacedSummary = true;
+
+                    console.log(`✨ [原地拆分注入] ${varSum} 已拆分为 ${newMessages.length} 条消息 (前:${preText?'有':'无'}, 数据:${summaryMessages.length}条, 后:${postText?'有':'无'})`);
+
+                    // 跳过后续的 modified 处理，因为已经完成替换
+                    continue;
+                } else {
+                    // 没有数据时，仅清除变量标签
+                    msgContent = msgContent.replace(varSum, '');
+                    replacedSummary = true;
+                    console.log(`🧹 [变量清洗] ${varSum} 已清除（无数据可注入）`);
+                    modified = true;
+                }
             }
 
-            // 3️⃣ 处理：{{MEMORY_TABLE}} (表格专属变量)
+            // 3️⃣ 处理：{{MEMORY_TABLE}} (表格专属变量) - 原地拆分注入
             if (msgContent.includes(varTable)) {
                 if (idxTableVar === -1) {
                     idxTableVar = i;
                     console.log(`🎯 [变量扫描] 发现 ${varTable} | 位置: #${i}`);
                 }
-                // ✅ 原位替换：直接用表格内容替换变量
-                msgContent = msgContent.replace(varTable, strTable);
-                replacedTable = true; // 标记已替换，防止 Step 4 重复注入
-                console.log(`🎯 [原位替换] ${varTable} 已替换为表格内容`);
-                modified = true;
+
+                // ✅ 安全检查：只有当有数据时才执行拆分注入
+                if (tableMessages.length > 0) {
+                    // ✨ 原地拆分注入逻辑
+                    const varIndex = msgContent.indexOf(varTable);
+                    const preText = msgContent.substring(0, varIndex).trim();
+                    const postText = msgContent.substring(varIndex + varTable.length).trim();
+
+                    // 构建新消息队列
+                    const newMessages = [];
+                    const originalMsg = ev.chat[i];
+
+                    // 如果变量前有内容，创建前半段消息
+                    if (preText) {
+                        newMessages.push({
+                            role: originalMsg.role,
+                            content: preText,
+                            name: originalMsg.name
+                        });
+                    }
+
+                    // 插入预构建的表格消息数组（带有 isGaigaiData 和自定义 name）
+                    newMessages.push(...tableMessages);
+
+                    // 如果变量后有内容，创建后半段消息
+                    if (postText) {
+                        newMessages.push({
+                            role: originalMsg.role,
+                            content: postText,
+                            name: originalMsg.name
+                        });
+                    }
+
+                    // 原地替换：将 1 条消息替换为多条消息
+                    ev.chat.splice(i, 1, ...newMessages);
+
+                    // 更新循环索引：跳过刚插入的消息
+                    i += newMessages.length - 1;
+
+                    // 标记已替换，防止后续重复注入
+                    replacedTable = true;
+
+                    console.log(`✨ [原地拆分注入] ${varTable} 已拆分为 ${newMessages.length} 条消息 (前:${preText?'有':'无'}, 数据:${tableMessages.length}条, 后:${postText?'有':'无'})`);
+
+                    // 跳过后续的 modified 处理，因为已经完成替换
+                    continue;
+                } else {
+                    // 没有数据时，仅清除变量标签
+                    msgContent = msgContent.replace(varTable, '');
+                    replacedTable = true;
+                    console.log(`🧹 [变量清洗] ${varTable} 已清除（无数据可注入）`);
+                    modified = true;
+                }
             }
 
-            // 4️⃣ 最后处理短变量：{{MEMORY}} (智能变量) —— 必须放最后，防止误伤上面的变量
+            // 4️⃣ 最后处理短变量：{{MEMORY}} (智能变量) - 原地拆分注入
+            // 必须放最后，防止误伤上面的变量
             if (msgContent.includes(varSmart)) {
                 // 记录第一次出现的位置
                 if (idxSmartVar === -1) {
@@ -3156,21 +3253,72 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
                 }
 
-                // ✅ 原位替换：直接用总结+表格内容替换智能变量
-                const smartContent = strSummary + (strSummary && strTable ? '\n' : '') + strTable;
-                msgContent = msgContent.replace(varSmart, smartContent);
-                // ✅ 关键：标记两个标志位，因为这个变量已经包含了两者
-                replacedSummary = true;
-                replacedTable = true;
-                console.log(`🎯 [原位替换] ${varSmart} 已替换为完整内容（总结+表格）`);
+                // ✅ 安全检查：只有当有数据时才执行拆分注入
+                const hasData = (summaryMessages.length > 0) || (C.tableInj && tableMessages.length > 0);
 
-                // ✅ [修复]：只要检测到标签，就强制记录锚点位置。
-                // 逻辑：标签存在说明用户开启了预设开关，必须在此处插入表格。
-                // 如果预设关闭，代码根本跑不到这里，会自动回落到默认位置。
-                if (anchorIndex === -1) anchorIndex = i;
-                foundAnchor = true;
+                if (hasData) {
+                    // ✨ 原地拆分注入逻辑
+                    const varIndex = msgContent.indexOf(varSmart);
+                    const preText = msgContent.substring(0, varIndex).trim();
+                    const postText = msgContent.substring(varIndex + varSmart.length).trim();
 
-                modified = true;
+                    // 构建新消息队列
+                    const newMessages = [];
+                    const originalMsg = ev.chat[i];
+
+                    // 如果变量前有内容，创建前半段消息
+                    if (preText) {
+                        newMessages.push({
+                            role: originalMsg.role,
+                            content: preText,
+                            name: originalMsg.name
+                        });
+                    }
+
+                    // 插入预构建的总结和表格消息数组（带有 isGaigaiData 和自定义 name）
+                    // 根据 C.tableInj 开关决定是否注入表格
+                    if (summaryMessages.length > 0) {
+                        newMessages.push(...summaryMessages);
+                    }
+                    if (C.tableInj && tableMessages.length > 0) {
+                        newMessages.push(...tableMessages);
+                    }
+
+                    // 如果变量后有内容，创建后半段消息
+                    if (postText) {
+                        newMessages.push({
+                            role: originalMsg.role,
+                            content: postText,
+                            name: originalMsg.name
+                        });
+                    }
+
+                    // 原地替换：将 1 条消息替换为多条消息
+                    ev.chat.splice(i, 1, ...newMessages);
+
+                    // 更新循环索引：跳过刚插入的消息
+                    i += newMessages.length - 1;
+
+                    // 标记已替换，防止后续重复注入
+                    replacedSummary = true;
+                    replacedTable = true;
+
+                    // 记录锚点位置（用于兼容旧逻辑）
+                    if (anchorIndex === -1) anchorIndex = i;
+                    foundAnchor = true;
+
+                    console.log(`✨ [原地拆分注入] ${varSmart} 已拆分为 ${newMessages.length} 条消息 (前:${preText?'有':'无'}, 总结:${summaryMessages.length}条, 表格:${tableMessages.length}条, 后:${postText?'有':'无'})`);
+
+                    // 跳过后续的 modified 处理，因为已经完成替换
+                    continue;
+                } else {
+                    // 没有数据时，仅清除变量标签
+                    msgContent = msgContent.replace(varSmart, '');
+                    replacedSummary = true;
+                    replacedTable = true;
+                    console.log(`🧹 [变量清洗] ${varSmart} 已清除（无数据可注入）`);
+                    modified = true;
+                }
             }
 
             // 更新消息内容 & 标记幽灵气泡
@@ -12414,7 +12562,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>优化：</strong>优化表格变量在不同预设里的兼容性</li>
+                        <li><strong>修复：</strong>修复ds填表报错问题</li>
+                        <li><strong>修复：</strong>修复变量在提示词上下文显示问题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

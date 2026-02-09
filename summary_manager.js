@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 1.9.9
+ * @version 2.1.1
  * @author Gaigai Team
  */
 
@@ -383,7 +383,7 @@
                 </div>
 
                 <div style="margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px;">💬 优化建议（可选）</label>
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">💬 优化建议（下方建议处留空，自动触发插件自带的总结优化提示词，若填写则使用用户输入的总结建议优化提示词。）</label>
                     <textarea id="gg_opt_prompt" placeholder="例如：把流水账改写成史诗感、精简字数到200字以内、增加情感描写、用古文风格重写..." style="width:100%; height:80px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     <div style="font-size:9px; color:${UI.tc}; opacity:0.7; margin-top:4px;">
                         💡 输入您希望AI如何优化总结的具体要求（留空则使用默认优化策略）
@@ -824,23 +824,9 @@
                     content: targetPrompt
                 });
 
-                // 3. 背景资料
-                let contextText = '';
-                let charInfo = '';
-                if (ctx.characters && ctx.characterId !== undefined && ctx.characters[ctx.characterId]) {
-                    const char = ctx.characters[ctx.characterId];
-                    // ✅ 对人设字段应用标签过滤，防止 Prompt 污染
-                    if (char.description) {
-                        const cleanedDesc = window.Gaigai.tools.filterContentByTags(char.description);
-                        if (cleanedDesc) charInfo += `[人物简介]\n${cleanedDesc}\n`;
-                    }
-                    if (char.personality) {
-                        const cleanedPers = window.Gaigai.tools.filterContentByTags(char.personality);
-                        if (cleanedPers) charInfo += `[性格/设定]\n${cleanedPers}\n`;
-                    }
-                }
-                if (charInfo) contextText += `\n【背景资料】\n角色: ${charName}\n用户: ${userName}\n\n${charInfo}\n`;
-                if (contextText) messages.push({ role: 'system', content: contextText });
+                // 3. 背景资料（仅包含角色名和用户名）
+                const contextText = `【背景资料】\n角色: ${charName}\n用户: ${userName}`;
+                messages.push({ role: 'system', content: contextText });
 
                 // 3. 世界书 - 已禁用
                 // ✅ [优化] 停止在总结时读取世界书，防止设定被错误写入总结导致双重上下文
