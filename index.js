@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.1
+// 记忆表格 v2.1.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.1 启动');
+    console.log('🚀 记忆表格 v2.1.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.1';
+    const V = 'v2.1.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -7066,7 +7066,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
        智能双通道 API 请求函数 (全面防屏蔽版)
        ========================================== */
     async function callIndependentAPI(prompt) {
-        console.log('🚀 [API-独立模式] 智能路由启动...');
+        // 🔄 如果配置为使用酒馆 API，直接调用 callTavernAPI（使用酒馆的稳定接收端）
+        if (!API_CONFIG.useIndependentAPI) {
+            console.log('🔄 [API路由] 使用酒馆API模式，转发到 callTavernAPI（使用酒馆接收端）...');
+            return await callTavernAPI(prompt);
+        }
+
+        console.log('🚀 [API-独立模式] 智能路由启动（使用自定义流式解析）...');
 
         // ========================================
         // 🔧 Helper: Unified Stream Content Extractor
@@ -8306,6 +8312,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         quiet: true,
                         dryRun: false,
                         skip_save: true,
+                        stream: false, // 🔴 关键修改：强制关闭流式，确保拿到完整 JSON
 
                         // 🛡️ 纯净模式：关闭所有干扰项
                         include_world_info: false,
@@ -8334,18 +8341,37 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
 
                     result = await context.generateRaw(generateParams);
-                    console.log('✅ [直连] 调用成功');
+                    console.log('[酒馆API调试] 原始返回:', result); // 🔴 关键修改：打印日志
                 } catch (err) {
                     console.error('❌ 酒馆API调用失败:', err);
                     return { success: false, error: err.message };
                 }
 
-                // 4. 解析结果
+                // 4. 🔴 关键修改：增强解析逻辑
                 let summary = '';
-                if (typeof result === 'string') summary = result;
-                else if (result && result.text) summary = result.text;
-                else if (result && result.content) summary = result.content;
-                else if (result && result.body && result.body.text) summary = result.body.text;
+
+                if (typeof result === 'string') {
+                    summary = result;
+                } else if (typeof result === 'object' && result !== null) {
+                    // 优先检查标准 OpenAI 结构 (Gemini/Claude 经酒馆中转后通常是这个)
+                    if (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
+                        summary = result.choices[0].message.content;
+                    }
+                    // 检查 TextGen / Ooba 结构
+                    else if (result.results && result.results[0] && result.results[0].text) {
+                        summary = result.results[0].text;
+                    }
+                    // 检查直接属性
+                    else if (result.text) {
+                        summary = result.text;
+                    }
+                    else if (result.content) {
+                        summary = result.content;
+                    }
+                    else if (result.body && result.body.text) {
+                        summary = result.body.text;
+                    }
+                }
 
                 // 移除思考过程 (带回退保护)
                 if (summary && summary.includes('</think>')) {
@@ -8359,6 +8385,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 if (summary && summary.trim()) return { success: true, summary };
+
+                console.warn('⚠️ [酒馆API] 解析后内容为空，原始对象:', result);
             }
 
             return { success: false, error: '酒馆API未返回有效文本或版本不支持数组调用' };
@@ -11755,26 +11783,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             class: 'drawer' // 关键：使用 drawer 类名，让 CSS 自动继承主题样式
         });
 
-        // 2. 注入图标样式
+        // 2. 注入图标样式（让图标完全遵循主题的 openIcon/closedIcon 规则）
         if (!$('#gg-status-dot-style').length) {
             $('<style id="gg-status-dot-style">').text(`
-    /* 基础设置：完全融入酒馆顶栏 */
-    #gaigai-top-btn {
-        position: relative;
-        /* overflow: hidden; 已移除，允许用户自定义更大的图标 */
-        transition: opacity 0.3s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100%;
-    }
-
-    #gaigai-top-btn:hover,
-    #gaigai-top-btn.gg-enabled {
-        filter: none !important;
-        text-shadow: none !important;
-    }
+    /* 不再为 .gg-enabled 添加特殊样式，让图标完全依赖主题的 openIcon/closedIcon 类 */
 `).appendTo('head');
         }
 
@@ -11782,7 +11794,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let pressTimer;
         let isLongPress = false;
 
-        // 3. 创建图标
+        // 3. 创建图标 (原生结构：Font Awesome 类直接在 div 上)
         const $icon = $('<div>', {
             id: 'gaigai-top-btn',
             class: `drawer-icon fa-solid fa-table fa-fw interactable closedIcon${C.masterSwitch ? ' gg-enabled' : ''}`,
@@ -11798,8 +11810,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         $icon.on('mousedown touchstart', function(e) {
             // 1. 按下时：重置标记，启动计时器
             isLongPress = false;
-            // 添加按压动画反馈
-            $(this).css('transform', 'scale(0.9)');
 
             pressTimer = setTimeout(() => {
                 isLongPress = true; // 标记为长按事件
@@ -11848,7 +11858,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         .on('mouseup touchend mouseleave touchcancel', function(e) {
             // 2. 松开/移出时：清除计时器
             clearTimeout(pressTimer);
-            $(this).css('transform', 'scale(1)'); // 恢复大小
 
             // 如果不是长按（即短点击）且是 mouseup/touchend 事件
             if (!isLongPress && (e.type === 'mouseup' || e.type === 'touchend')) {
@@ -12562,8 +12571,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>修复：</strong>修复ds填表报错问题</li>
-                        <li><strong>修复：</strong>修复变量在提示词上下文显示问题</li>
+                        <li><strong>优化：</strong>优化，当插件使用酒馆本地同一api下的解析问题</li>
+                        <li><strong>优化：</strong>优化txt导出导入逻辑</li>
+                        <li><strong>优化：</strong>优化记忆表格图标自定义问题，让其支持完全跟随css主题</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

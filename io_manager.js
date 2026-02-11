@@ -92,8 +92,12 @@
 
                         const pairs = [];
                         columns.forEach((colName, colIndex) => {
-                            const value = row[colIndex] || '';
+                            let value = row[colIndex] || '';
                             if (value) {
+                                // 🔴 Escape newlines and pipes to prevent parsing errors
+                                value = String(value)
+                                    .replace(/\n/g, '\\n')  // Replace actual newlines with literal \n
+                                    .replace(/\|/g, '{{PIPE}}');  // Replace pipes with placeholder
                                 pairs.push(`${colName}: ${value}`);
                             }
                         });
@@ -206,9 +210,13 @@
                             if (colonIndex === -1) return;
 
                             const key = pair.substring(0, colonIndex).trim();
-                            const value = pair.substring(colonIndex + 1).trim();
+                            let value = pair.substring(colonIndex + 1).trim();
 
                             if (key) {
+                                // 🔴 Unescape newlines and pipes during import
+                                value = value
+                                    .replace(/\\n/g, '\n')  // Replace literal \n with actual newlines
+                                    .replace(/\{\{PIPE\}\}/g, '|');  // Replace placeholder with pipes
                                 currentColumnSet.add(key); // 收集列名
                                 rowMap.set(key, value);
                             }
