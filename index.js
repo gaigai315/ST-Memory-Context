@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.2
+// 记忆表格 v2.1.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.2 启动');
+    console.log('🚀 记忆表格 v2.1.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.2';
+    const V = 'v2.1.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -12595,9 +12595,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>优化：</strong>优化，当插件使用酒馆本地同一api下的解析问题</li>
-                        <li><strong>优化：</strong>优化txt导出导入逻辑</li>
-                        <li><strong>优化：</strong>优化记忆表格图标自定义问题，让其支持完全跟随css主题</li>
+                        <li><strong>优化：</strong>优化向量化注入重复问题</li>
+                        <li><strong>优化：</strong>优化兼容op端口逻辑自动降级处理</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->
