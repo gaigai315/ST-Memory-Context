@@ -11983,33 +11983,43 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                             // 使用正则表达式匹配 [Start a new Chat]（不区分大小写）
                                             const startChatRegex = /\[Start a new chat\]/i;
 
-                                            // 递归遍历注入函数
-                                            const injectContent = (obj) => {
+                                            // 第一轮：专门替换 {{VECTOR_MEMORY}} 变量
+                                            const replaceVariable = (obj) => {
                                                 for (let key in obj) {
                                                     if (typeof obj[key] === 'string') {
-                                                        // 情况 A (最高优先级): 替换 {{VECTOR_MEMORY}} 标签
                                                         if (obj[key].includes('{{VECTOR_MEMORY}}')) {
                                                             obj[key] = obj[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
-                                                            console.log(`🎯 [智能注入] 在 ${key} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
-                                                            injected = true;
-                                                        }
-                                                        // 情况 B (兜底策略): 在 [Start a new Chat] 前插入（使用正则保留原始大小写）
-                                                        else if (!injected && startChatRegex.test(obj[key])) {
-                                                            // 使用正则替换，保留原始标签
-                                                            obj[key] = obj[key].replace(startChatRegex, (match) => {
-                                                                return vectorText + '\n\n' + match;
-                                                            });
-                                                            console.log(`🎯 [智能注入] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
+                                                            console.log(`🎯 [智能注入-变量替换] 在 ${key} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
                                                             injected = true;
                                                         }
                                                     } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                                                        injectContent(obj[key]);
+                                                        replaceVariable(obj[key]);
                                                     }
                                                 }
                                             };
 
-                                            // 执行智能注入
-                                            injectContent(bodyObj);
+                                            // 第二轮：兜底策略 - 在 [Start a new Chat] 前插入
+                                            const injectFallback = (obj) => {
+                                                for (let key in obj) {
+                                                    if (typeof obj[key] === 'string') {
+                                                        if (startChatRegex.test(obj[key])) {
+                                                            obj[key] = obj[key].replace(startChatRegex, (match) => {
+                                                                return vectorText + '\n\n' + match;
+                                                            });
+                                                            console.log(`🎯 [智能注入-兜底插入] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
+                                                            injected = true;
+                                                        }
+                                                    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                                        injectFallback(obj[key]);
+                                                    }
+                                                }
+                                            };
+
+                                            // 执行两轮扫描：先变量替换，后兜底插入
+                                            replaceVariable(bodyObj);
+                                            if (!injected) {
+                                                injectFallback(bodyObj);
+                                            }
 
                                             if (injected) {
                                                 // 更新请求体
