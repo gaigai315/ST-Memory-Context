@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.3
+// 记忆表格 v2.1.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.3 启动');
+    console.log('🚀 记忆表格 v2.1.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.3';
+    const V = 'v2.1.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -7749,7 +7749,105 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             } catch (e) {
                 console.error(`❌ [后端代理] 失败: ${e.message}`);
 
-                // 自动降级逻辑
+                // 🔄 [协议降级重试] 针对 proxy_only/compatible，尝试从 custom 模式降级到 openai 模式
+                if ((provider === 'proxy_only' || provider === 'compatible') && !e.message.includes('[已降级]')) {
+                    console.warn('⚠️ [自动降级] 后端 Custom/Proxy 协议失败，正在尝试降级为标准 OpenAI 协议重试...');
+
+                    try {
+                        // 1. 修正 URL，确保有 /v1
+                        let v1Url = apiUrl;
+                        if (!v1Url.includes('/v1') && !v1Url.includes('/chat')) {
+                            v1Url = v1Url.replace(/\/+$/, '') + '/v1';
+                        }
+
+                        // 2. 构建标准 OpenAI Payload
+                        const retryPayload = {
+                            chat_completion_source: 'openai', // 关键：强制走 openai 协议
+                            reverse_proxy: v1Url,
+                            proxy_password: apiKey,
+                            model: model,
+                            messages: cleanMessages,
+                            temperature: temperature,
+                            max_tokens: maxTokens,
+                            stream: true
+                        };
+
+                        console.log(`🌐 [后端代理-降级] 目标: ${v1Url} | 模式: openai | 模型: ${model}`);
+
+                        // 3. 再次请求酒馆后端
+                        const retryResponse = await fetch('/api/backends/chat-completions/generate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': await getCsrfToken()
+                            },
+                            body: JSON.stringify(retryPayload),
+                            credentials: 'include'
+                        });
+
+                        // 4. 处理流式响应
+                        if (retryResponse.ok && retryResponse.body) {
+                            console.log('🌊 [后端代理-降级OpenAI] 重试成功，开始流式读取...');
+
+                            const { fullText: rawText, fullReasoning, isTruncated } = await readUniversalStream(
+                                retryResponse.body,
+                                '[降级重试]'
+                            );
+
+                            let fullText = rawText;
+
+                            // ✅ 优先返回：如果截断且有内容，直接返回
+                            if (isTruncated && fullText && fullText.length > 0) {
+                                console.warn('⚠️ [降级重试] Token截断但有内容，返回部分响应');
+                                fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                                return { success: true, summary: fullText };
+                            }
+
+                            // 清洗 <think> 标签
+                            if (fullText) {
+                                const beforeClean = fullText;
+                                let cleaned = fullText
+                                    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+                                    .replace(/^[\s\S]*?<\/think>/i, '')
+                                    .trim();
+
+                                cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+
+                                if (!cleaned && beforeClean.trim().length > 0) {
+                                    console.warn('⚠️ [降级重试清洗] 清洗后内容为空，触发回退保护');
+                                    fullText = beforeClean;
+                                } else {
+                                    fullText = cleaned;
+                                    if (beforeClean.length !== cleaned.length) {
+                                        console.log(`🧹 [降级重试清洗] 已移除 <think> 标签`);
+                                    }
+                                }
+                            }
+
+                            // 如果有正常内容或思考内容，返回
+                            if (fullText && fullText.trim()) {
+                                console.log('✅ [后端代理-降级OpenAI] 成功');
+                                return { success: true, summary: fullText };
+                            }
+                            if (fullReasoning && fullReasoning.trim()) {
+                                console.warn('⚠️ [降级重试] 正文为空，返回思考内容');
+                                return { success: true, summary: fullReasoning };
+                            }
+
+                            throw new Error('API返回空内容');
+                        }
+
+                        // 处理降级重试的错误响应
+                        const retryErrText = await retryResponse.text();
+                        throw new Error(`[已降级] OpenAI协议重试失败 (${retryResponse.status}): ${retryErrText.substring(0, 500)}`);
+
+                    } catch (retryErr) {
+                        console.warn('⚠️ [自动降级] 标准 OpenAI 协议重试也失败了:', retryErr.message);
+                        // 继续向下执行原有的降级逻辑
+                    }
+                }
+
+                // 自动降级逻辑（浏览器直连）
                 if (provider === 'compatible' || provider === 'openai' || provider === 'gemini') {
                     console.warn('⚠️ [自动降级] 后端代理失败，正在尝试浏览器直连...');
                     useDirect = true;
@@ -8890,45 +8988,120 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         custom_include_headers: customHeaders
                     };
 
-                    const response = await fetch('/api/backends/chat-completions/status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                        body: JSON.stringify(proxyPayload),
-                        credentials: 'include'
-                    });
+                    try {
+                        const response = await fetch('/api/backends/chat-completions/status', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                            body: JSON.stringify(proxyPayload),
+                            credentials: 'include'
+                        });
 
-                    if (response.ok) {
-                        // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
-                        const text = await response.text();
+                        if (response.ok) {
+                            // ✅ [Bug Fix] 先获取原始文本，避免 JSON 解析崩溃
+                            const text = await response.text();
 
-                        let rawData;
-                        try {
-                            rawData = JSON.parse(text);
-                        } catch (e) {
-                            console.error('❌ [模型列表] JSON 解析失败:', e.message);
-                            console.error('   原始响应 (前200字符):', text.substring(0, 200));
-                            throw new Error(`后端返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                            let rawData;
+                            try {
+                                rawData = JSON.parse(text);
+                            } catch (e) {
+                                console.error('❌ [模型列表] JSON 解析失败:', e.message);
+                                console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                                throw new Error(`后端返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                            }
+
+                            // 尝试解析
+                            try { models = parseOpenAIModelsResponse(rawData); } catch (e) { }
+
+                            // 兜底解析
+                            if (models.length === 0) {
+                                if (rawData?.data && Array.isArray(rawData.data)) models = rawData.data;
+                                else if (rawData?.models && Array.isArray(rawData.models)) models = rawData.models;
+                                else if (Array.isArray(rawData)) models = rawData;
+                            }
+
+                            models = models.map(m => ({ id: m.id || m.model || m.name, name: m.name || m.id || m.model }));
+
+                            if (models.length > 0) {
+                                console.log(`✅ [后端代理] 成功获取 ${models.length} 个模型`);
+                                finish(models);
+                                return true;
+                            }
                         }
 
-                        // 尝试解析
-                        try { models = parseOpenAIModelsResponse(rawData); } catch (e) { }
+                        // 请求失败，抛出错误触发降级
+                        throw new Error(`后端代理请求失败: ${response.status}`);
 
-                        // 兜底解析
-                        if (models.length === 0) {
-                            if (rawData?.data && Array.isArray(rawData.data)) models = rawData.data;
-                            else if (rawData?.models && Array.isArray(rawData.models)) models = rawData.models;
-                            else if (Array.isArray(rawData)) models = rawData;
+                    } catch (firstError) {
+                        // 🔄 [协议降级重试] 针对 proxy_only/compatible，尝试从 custom 模式降级到 openai 模式
+                        if ((provider === 'proxy_only' || provider === 'compatible') && targetSource === 'custom') {
+                            console.warn('⚠️ [模型列表-自动降级] Custom 协议失败，正在尝试降级为标准 OpenAI 协议重试...');
+
+                            try {
+                                // 1. 修正 URL，确保有 /v1
+                                let v1Url = apiUrl;
+                                if (!v1Url.includes('/v1') && !v1Url.includes('/models')) {
+                                    v1Url = v1Url.replace(/\/+$/, '') + '/v1';
+                                }
+
+                                // 2. 构建标准 OpenAI Payload
+                                const retryPayload = {
+                                    chat_completion_source: 'openai', // 关键：强制走 openai 协议
+                                    reverse_proxy: v1Url,
+                                    proxy_password: apiKey
+                                };
+
+                                console.log(`🌐 [模型列表-降级] 目标: ${v1Url} | 模式: openai`);
+
+                                // 3. 再次请求酒馆后端
+                                const retryResponse = await fetch('/api/backends/chat-completions/status', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                                    body: JSON.stringify(retryPayload),
+                                    credentials: 'include'
+                                });
+
+                                if (retryResponse.ok) {
+                                    const text = await retryResponse.text();
+                                    let rawData;
+
+                                    try {
+                                        rawData = JSON.parse(text);
+                                    } catch (e) {
+                                        console.error('❌ [模型列表-降级] JSON 解析失败:', e.message);
+                                        throw new Error(`降级重试返回非JSON格式: ${text.substring(0, 100)}`);
+                                    }
+
+                                    // 尝试解析
+                                    try { models = parseOpenAIModelsResponse(rawData); } catch (e) { }
+
+                                    // 兜底解析
+                                    if (models.length === 0) {
+                                        if (rawData?.data && Array.isArray(rawData.data)) models = rawData.data;
+                                        else if (rawData?.models && Array.isArray(rawData.models)) models = rawData.models;
+                                        else if (Array.isArray(rawData)) models = rawData;
+                                    }
+
+                                    models = models.map(m => ({ id: m.id || m.model || m.name, name: m.name || m.id || m.model }));
+
+                                    if (models.length > 0) {
+                                        console.log(`✅ [模型列表-降级OpenAI] 成功获取 ${models.length} 个模型`);
+                                        finish(models);
+                                        return true;
+                                    }
+                                }
+
+                                throw new Error(`降级重试失败: ${retryResponse.status}`);
+
+                            } catch (retryError) {
+                                console.warn('⚠️ [模型列表-自动降级] OpenAI 协议重试也失败了:', retryError.message);
+                                // 抛出原始错误
+                                throw firstError;
+                            }
                         }
 
-                        models = models.map(m => ({ id: m.id || m.model || m.name, name: m.name || m.id || m.model }));
-
-                        if (models.length > 0) {
-                            console.log(`✅ [后端代理] 成功获取 ${models.length} 个模型`);
-                            finish(models);
-                            return true;
-                        }
+                        // 不符合降级条件，直接抛出原始错误
+                        throw firstError;
                     }
-                    throw new Error(`后端代理请求失败: ${response.status}`);
                 };
 
                 // ========================================
