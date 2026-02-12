@@ -7015,8 +7015,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 🔀 分支逻辑：
             // 1. 本地 build 反代 → 保留 /v1（走 custom 模式）
-            // 2. 远程中转站 → 去掉 /v1（走 MakerSuite 模式）
-            // 3. 拉取模型时 → 保留 /v1（需要访问 /v1/models）
+            // 2. 拉取模型时 → 保留 /v1（需要访问 /v1/models）
+            // 3. 远程中转站 → 保留原样，交给请求逻辑处理（三级重试）
 
             if (isLocalUrl) {
                 // 本地 build：保留 /v1，只去掉末尾斜杠
@@ -7026,14 +7026,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 拉取模型：保留 /v1
                 console.log('🔧 [反代-拉取模型] 保留 /v1 访问模型列表');
                 return cleaned.replace(/\/+$/, '');
-            } else if (cleaned.endsWith('/v1')) {
-                // 远程中转站 + 发送对话：去掉 /v1 激活 MakerSuite
-                const withoutV1 = cleaned.replace(/\/v1\/?$/, '');
-                console.log('🔧 [反代-远程] 已自动移除 /v1 后缀，激活 MakerSuite 模式');
-                return withoutV1;
             }
 
-            return cleaned.replace(/\/+$/, ''); // 只去掉末尾斜杠
+            // 远程中转站：保留原样，只去掉末尾斜杠
+            console.log('🔧 [反代-远程] 保留 URL 原样，交给请求逻辑处理');
+            return cleaned.replace(/\/+$/, '');
         }
 
 
@@ -7402,31 +7399,26 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路径
                 // ✨ 修复：排除本地地址 (127.0.0.1/localhost)。
                 // 如果用户用 gcli 等本地转接工具，应该走下面的通用 OpenAI/Custom 协议，那里有完善的安全注入。
-                // ✨✨ 修复：排除包含 /v1 的 URL，这些是标准 OpenAI 兼容端点，不应该走 MakerSuite 协议
-                const isProxyGemini = (provider === 'proxy_only') &&
+                let isProxyGemini = (provider === 'proxy_only') &&
                     model.toLowerCase().includes('gemini') &&
                     !apiUrl.includes('127.0.0.1') &&
-                    !apiUrl.includes('localhost') &&
-                    !apiUrl.includes('/v1');
+                    !apiUrl.includes('localhost');
 
                 if (isProxyGemini) {
-                    // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 修复逻辑 + 自动降级) ===
-                    console.log('🔧 [智能修正] 命中网页端 Gemini 反代，使用 Makersuite 协议...');
+                    // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 三级重试逻辑) ===
+                    console.log('🔧 [智能修正] 命中网页端 Gemini 反代，启动三级重试机制...');
 
-                    // 1. URL 清洗：只留 Base URL
-                    let cleanBaseUrl = apiUrl.replace(/\/v1(\/|$)/, '').replace(/\/chat\/completions(\/|$)/, '').replace(/\/+$/, '');
-
-                    // 2. 封装请求逻辑（支持流式/非流式切换）
-                    async function tryRequest(isStreaming) {
+                    // 封装 MakerSuite 请求函数（支持流式/非流式切换）
+                    const tryMakersuiteRequest = async (targetUrl, isStreaming) => {
                         const proxyPayload = {
                             chat_completion_source: "makersuite",
-                            reverse_proxy: cleanBaseUrl,
+                            reverse_proxy: targetUrl,
                             proxy_password: apiKey,
                             model: model,
                             messages: cleanMessages,
                             temperature: temperature,
                             max_tokens: maxTokens,
-                            stream: isStreaming, // 🔄 根据参数动态设置
+                            stream: isStreaming,
                             custom_prompt_post_processing: "strict",
                             use_makersuite_sysprompt: true,
                             // ✅ 标准 Gemini 格式
@@ -7444,7 +7436,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         if (isThinkingModel) {
                             proxyPayload.thinkingConfig = {
                                 includeThoughts: true,
-                                thinkingBudget: 4096  // 填表需要深度思考
+                                thinkingBudget: 4096
                             };
                             console.log('🧠 [Thinking Model] 已启用思考模式，预算: 4096');
                         }
@@ -7545,24 +7537,46 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             console.log('✅ [Gemini反代-非流式] 成功');
                             return { success: true, summary: text };
                         }
-                    }
+                    };
 
-                    // 3. 实现自动降级（流式 → 非流式）
+                    // 三级重试逻辑
                     try {
-                        // 第一次尝试：流式请求
-                        return await tryRequest(true);
-                    } catch (error) {
-                        console.warn('⚠️ [Gemini反代] 流式请求失败，尝试非流式降级...', error.message);
+                        // 🟢 阶段 1: 尝试干净的 URL (无 /v1)
+                        let cleanUrl = apiUrl.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '');
+                        console.log(`📡 [尝试 1] MakerSuite 协议 + 纯净 URL: ${cleanUrl}`);
+
                         try {
-                            // 第二次尝试：非流式请求
-                            return await tryRequest(false);
-                        } catch (fallbackError) {
-                            // 两次都失败，抛出最终错误
-                            throw new Error(`Gemini 反代请求失败（已尝试流式和非流式）: ${fallbackError.message}`);
+                            return await tryMakersuiteRequest(cleanUrl, true);
+                        } catch (streamError) {
+                            console.warn('⚠️ [尝试 1-流式] 失败，尝试非流式...', streamError.message);
+                            return await tryMakersuiteRequest(cleanUrl, false);
+                        }
+
+                    } catch (e1) {
+                        console.warn(`⚠️ [尝试 1 失败] ${e1.message} -> 尝试追加 /v1 重试...`);
+
+                        try {
+                            // 🟡 阶段 2: 尝试带 /v1 的 URL
+                            let v1Url = apiUrl.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '') + '/v1';
+                            console.log(`📡 [尝试 2] MakerSuite 协议 + V1 URL: ${v1Url}`);
+
+                            try {
+                                return await tryMakersuiteRequest(v1Url, true);
+                            } catch (streamError) {
+                                console.warn('⚠️ [尝试 2-流式] 失败，尝试非流式...', streamError.message);
+                                return await tryMakersuiteRequest(v1Url, false);
+                            }
+
+                        } catch (e2) {
+                            console.warn(`⚠️ [尝试 2 失败] ${e2.message} -> 降级为通用 OpenAI 协议`);
+
+                            // 🔴 阶段 3: 放弃 MakerSuite，让程序向下走去执行 else 分支
+                            isProxyGemini = false;
                         }
                     }
+                }
 
-                } else {
+                if (!isProxyGemini) {
 
                     // === 智能分流修复 (V1.3.9 核心修正) ===
 
