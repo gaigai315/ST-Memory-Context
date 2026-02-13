@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.4
+// 记忆表格 v2.1.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.4 启动');
+    console.log('🚀 记忆表格 v2.1.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.4';
+    const V = 'v2.1.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -47,7 +47,6 @@
         filterTagsWhite: '',    // 白名单标签（仅留）
         contextLimit: true,     // ✅ 默认开启隐藏楼层
         contextLimitCount: 30,  // ✅ 隐藏30楼
-        protectGreeting: false, // ❌ 默认不保护第0楼（开场白）
         tableInj: true,
         tablePos: 'system',
         tablePosType: 'system_end',
@@ -1330,7 +1329,6 @@
                     masterSwitch: C.masterSwitch,
                     contextLimit: C.contextLimit,
                     contextLimitCount: C.contextLimitCount,
-                    protectGreeting: C.protectGreeting,
                     filterTags: C.filterTags,
                     filterTagsWhite: C.filterTagsWhite,
                     syncWorldInfo: C.syncWorldInfo,
@@ -7568,10 +7566,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             }
 
                         } catch (e2) {
-                            console.warn(`⚠️ [尝试 2 失败] ${e2.message} -> 降级为通用 OpenAI 协议`);
+                            console.error(`❌ [Gemini反代] 三级重试全部失败`);
+                            console.error(`   尝试1错误: ${e1.message}`);
+                            console.error(`   尝试2错误: ${e2.message}`);
 
-                            // 🔴 阶段 3: 放弃 MakerSuite，让程序向下走去执行 else 分支
-                            isProxyGemini = false;
+                            // 🔴 阶段 3: 三级重试都失败，直接抛出错误让上层处理
+                            throw new Error(`Gemini反代三级重试失败\n\n【尝试1 - 纯净URL】\n${e1.message}\n\n【尝试2 - 带/v1】\n${e2.message}`);
                         }
                     }
                 }
@@ -9490,7 +9490,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ✅ 同步表格结构预设
             if (serverData.tablePresets) {
-                localStorage.setItem('gg_table_presets', JSON.stringify(serverData.tablePresets));
+                let syncedPresets = serverData.tablePresets;
+
+                // 🛡️ 安全检查：确保至少有"默认结构"预设
+                if (!syncedPresets['默认结构'] && window.Gaigai.DEFAULT_TABLES) {
+                    console.log('⚠️ [配置同步] 云端数据缺少默认预设，正在补充...');
+                    syncedPresets['默认结构'] = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+                }
+
+                localStorage.setItem('gg_table_presets', JSON.stringify(syncedPresets));
                 console.log('✅ [配置同步] 表格结构预设已恢复');
             }
 
@@ -9559,6 +9567,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const tp = localStorage.getItem('gg_table_presets');
                 if (tp) tablePresets = JSON.parse(tp);
             } catch (e) {}
+
+            // 🛡️ 安全检查：确保至少有"默认结构"预设再上传
+            if (!tablePresets['默认结构'] && window.Gaigai.DEFAULT_TABLES) {
+                console.log('⚠️ [配置上传] 本地缺少默认预设，正在补充...');
+                tablePresets['默认结构'] = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+                // 同时写回本地，避免下次再触发
+                try {
+                    localStorage.setItem('gg_table_presets', JSON.stringify(tablePresets));
+                } catch (e) {}
+            }
 
             const allSettings = {
                 config: C,
@@ -9854,12 +9872,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <input type="checkbox" id="gg_c_limit_on" ${C.contextLimit ? 'checked' : ''}>
                 </div>
             </div>
-            <div style="margin-top:6px; padding-top:6px; border-top:1px dashed rgba(0,0,0,0.1);">
-                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:11px;">
-                    <input type="checkbox" id="gg_c_protect_greeting" ${C.protectGreeting ? 'checked' : ''}>
-                    <span>🛡️ 总是保留开场白 (第0楼)</span>
-                </label>
-            </div>
         </div>
 
         <div style="background: rgba(255,255,255,0.92); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.4);">
@@ -9951,13 +9963,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <div style="font-size: 9px; color: #666; margin-left: 20px;">未勾选时弹窗确认</div>
                 </div>
 
-                <div style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 4px; padding: 8px;">
+                <div style="background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.2); border-radius: 4px; padding: 8px; margin-bottom: 6px;">
                     <div style="font-weight: 600; margin-bottom: 4px; color: #388e3c; font-size: 10px;">✅ 完成模式</div>
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 2px;">
                         <input type="checkbox" id="gg_c_auto_sum_silent" ${C.autoSummarySilent ? 'checked' : ''}>
                         <span>🤫 完成后静默保存 (不弹结果窗)</span>
                     </label>
                     <div style="font-size: 9px; color: #666; margin-left: 20px;">未勾选时弹窗显示总结结果</div>
+                </div>
+
+                <div style="background: rgba(255, 152, 0, 0.08); border: 1px solid rgba(255, 152, 0, 0.2); border-radius: 4px; padding: 8px;">
+                    <div style="font-weight: 600; margin-bottom: 4px; color: #f57c00; font-size: 10px;">🙈 上下文管理</div>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 2px;">
+                        <input type="checkbox" id="gg_c_auto_sum_hide" ${C.autoSummaryHideContext ? 'checked' : ''}>
+                        <span>🙈 总结后隐藏原楼层</span>
+                    </label>
+                    <div style="font-size: 9px; color: #666; margin-left: 20px;">触发总结后，发送请求时将自动剔除已总结的历史消息 (0 ~ 指针位置)</div>
+                    <div style="font-size: 9px; color: #d32f2f; margin-left: 20px; margin-top: 4px;">⚠️ 与"隐藏楼层"功能互斥，开启其中一个会自动关闭另一个</div>
                 </div>
             </div>
         </div>
@@ -10409,7 +10431,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoBackfillDelayCount = parseInt($('#gg_c_auto_bf_delay_count').val()) || 5;
                 C.contextLimit = $('#gg_c_limit_on').is(':checked');
                 C.contextLimitCount = parseInt($('#gg_c_limit_count').val());
-                C.protectGreeting = $('#gg_c_protect_greeting').is(':checked');
                 C.tableInj = $('#gg_c_table_inj').is(':checked');
                 C.autoSummary = $('#gg_c_auto_sum').is(':checked');
                 C.autoSummaryFloor = parseInt($('#gg_c_auto_floor').val());
@@ -10417,6 +10438,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoSummarySilent = $('#gg_c_auto_sum_silent').is(':checked');
                 C.autoSummaryDelay = $('#gg_c_auto_sum_delay').is(':checked');
                 C.autoSummaryDelayCount = parseInt($('#gg_c_auto_sum_delay_count').val()) || 5;
+                C.autoSummaryHideContext = $('#gg_c_auto_sum_hide').is(':checked');
                 C.filterTags = $('#gg_c_filter_tags').val();
                 C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
@@ -10521,6 +10543,37 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         console.warn('⚠️ [批量填表开关] 云端同步失败:', err);
                     });
                 }
+            });
+
+            // 🆕 隐藏楼层与总结后隐藏的互斥逻辑
+            $('#gg_c_limit_on').on('change', function() {
+                const isChecked = $(this).is(':checked');
+
+                if (isChecked) {
+                    // 开启隐藏楼层时，自动关闭总结后隐藏
+                    if ($('#gg_c_auto_sum_hide').is(':checked')) {
+                        $('#gg_c_auto_sum_hide').prop('checked', false);
+                        toastr.info('已自动关闭"总结后隐藏原楼层"功能', '互斥提示', { timeOut: 3000 });
+                    }
+                }
+
+                syncUIToConfig();
+                m.save(false, true);
+            });
+
+            $('#gg_c_auto_sum_hide').on('change', function() {
+                const isChecked = $(this).is(':checked');
+
+                if (isChecked) {
+                    // 开启总结后隐藏时，自动关闭隐藏楼层
+                    if ($('#gg_c_limit_on').is(':checked')) {
+                        $('#gg_c_limit_on').prop('checked', false);
+                        toastr.info('已自动关闭"隐藏楼层"功能', '互斥提示', { timeOut: 3000 });
+                    }
+                }
+
+                syncUIToConfig();
+                m.save(false, true);
             });
 
             $('#gg_save_cfg').on('click', async function () {
@@ -11428,14 +11481,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
         }
 
-        // [开场白保护] (保持原有逻辑)
-        if (C.protectGreeting && dialogueMsgIndices.length > 0) {
-            const greetingIndex = dialogueMsgIndices[0];
-            if (indicesToRemove.has(greetingIndex)) {
-                indicesToRemove.delete(greetingIndex);
-            }
-        }
-
         // 6. 执行裁剪
         const newChat = chat.filter((msg, index) => !indicesToRemove.has(index));
 
@@ -11857,19 +11902,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 console.log(`🖼️ [强制清洗] 已清洗历史消息中的图片数据（包括文本中的图片标签），防止请求体过大`);
             }
 
-            // 6. 隐藏楼层逻辑 (可选功能)
-            let currentChat = data.chat;
-            if (C.contextLimit && currentChat) {
-                const limitedChat = applyContextLimit(currentChat);
-                if (limitedChat.length !== currentChat.length) {
-                    data.chat.splice(0, data.chat.length, ...limitedChat);
-                    console.log(`✂️ 隐藏楼层已执行`);
-                }
-            }
+            // ⚠️ 已移除隐藏逻辑 - 现在统一在 Fetch Hijack 中执行（确保在向量检索之前）
+            // 避免重复执行和并发问题
 
             // 注意：向量检索已移至 Fetch Hijack 中处理，确保在发送请求前完成
 
-            // 7. 注入 (此时表格已是回档后的干净状态)
+            // 8. 注入 (此时表格已是回档后的干净状态)
             inj(data);
 
             // 探针
@@ -12105,6 +12143,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 监听AI消息生成完成事件（用于解析Memory标签）
                 x.eventSource.on(x.event_types.CHARACTER_MESSAGE_RENDERED, function (id) { omsg(id); });
 
+                // 🆕 监听AI消息生成完成事件（用于自动隐藏楼层）
+                // 🔥 防抖机制：避免短时间内重复触发
+                let hideDebounceTimer = null;
+                let isHiding = false; // 全局锁
+
+                x.eventSource.on(x.event_types.CHARACTER_MESSAGE_RENDERED, async function () {
+                    // ⚠️ 已移除自动隐藏逻辑 - 现在在发送前（fetch拦截时）执行无感隐藏
+                    // 避免重复执行和延迟问题
+                });
+
                 // 监听对话切换事件（用于刷新数据和UI）
                 x.eventSource.on(x.event_types.CHAT_CHANGED, function () { ochat(); });
 
@@ -12147,6 +12195,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
 
                             try {
+                                // ✅ 【关键修复】先执行隐藏，再执行向量检索
+                                if (C.contextLimit && window.Gaigai.applyContextLimitHiding) {
+                                    console.log('🔍 [Fetch Hijack] 先执行留N层隐藏...');
+                                    await window.Gaigai.applyContextLimitHiding();
+                                }
+
+                                if (C.autoSummaryHideContext && window.Gaigai.applyNativeHiding) {
+                                    console.log('🔍 [Fetch Hijack] 先执行已总结隐藏...');
+                                    await window.Gaigai.applyNativeHiding();
+                                }
+
                                 // 在发送前获取当前 chat 状态
                                 const ctx = SillyTavern.getContext();
                                 if (ctx && ctx.chat) {
@@ -12768,8 +12827,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>优化：</strong>优化向量化注入重复问题</li>
-                        <li><strong>优化：</strong>优化兼容op端口逻辑自动降级处理</li>
+                        <li><strong>优化：</strong>优化隐藏楼层功能，调用酒馆原生隐藏逻辑。</li>
+                        <li><strong>新增：</strong>新增以总结楼层的指针进度为基准，调用隐藏楼层的功能</li>
+                        <li><strong>新增：</strong>新增总结优化分批功能</li>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

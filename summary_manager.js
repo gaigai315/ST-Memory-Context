@@ -205,6 +205,411 @@
         };
     })();
 
+    // ✅ 辅助函数：检测哪些楼层已经被隐藏（基于数据检测，而非 DOM）
+    function getHiddenMessageIndices() {
+        const hiddenIndices = new Set();
+
+        // 🔥 修复：使用数据检测而非 DOM 检测
+        // SillyTavern 隐藏消息后会设置 is_system = true
+        const m = window.Gaigai.m;
+        const ctx = m.ctx();
+
+        if (!ctx || !ctx.chat) {
+            console.log(`🔍 [数据检测] 无法获取聊天数据`);
+            return hiddenIndices;
+        }
+
+        // 遍历聊天记录，检查 is_system 标记
+        for (let i = 0; i < ctx.chat.length; i++) {
+            const msg = ctx.chat[i];
+            // is_system === true 表示该消息已被隐藏
+            if (msg && msg.is_system === true) {
+                hiddenIndices.add(i);
+            }
+        }
+
+        console.log(`🔍 [数据检测] 发现 ${hiddenIndices.size} 个已隐藏的消息 (is_system=true)`);
+        if (hiddenIndices.size > 0 && hiddenIndices.size <= 20) {
+            console.log(`   已隐藏索引: ${Array.from(hiddenIndices).join(', ')}`);
+        }
+
+        return hiddenIndices;
+    }
+
+    // ✅ 辅助函数：将需要隐藏的索引列表转换为 /hide 命令
+    function buildHideCommands(indicesToHide) {
+        if (indicesToHide.length === 0) return [];
+
+        // 排序索引
+        indicesToHide.sort((a, b) => a - b);
+
+        // 合并连续的索引为范围
+        const ranges = [];
+        let rangeStart = indicesToHide[0];
+        let rangeEnd = indicesToHide[0];
+
+        for (let i = 1; i < indicesToHide.length; i++) {
+            if (indicesToHide[i] === rangeEnd + 1) {
+                // 连续，扩展范围
+                rangeEnd = indicesToHide[i];
+            } else {
+                // 不连续，保存当前范围，开始新范围
+                ranges.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}-${rangeEnd}`);
+                rangeStart = indicesToHide[i];
+                rangeEnd = indicesToHide[i];
+            }
+        }
+
+        // 保存最后一个范围
+        ranges.push(rangeStart === rangeEnd ? `${rangeStart}` : `${rangeStart}-${rangeEnd}`);
+
+        // 构建命令列表
+        return ranges.map(range => `/hide ${range}`);
+    }
+
+    // ✅ 新版本：无感隐藏函数（直接修改数据+DOM，无界面跳动）
+    async function silentHideMessages(messageIndices, logPrefix = '隐藏') {
+        if (messageIndices.length === 0) return;
+
+        console.log(`📝 [${logPrefix}] 准备无感隐藏 ${messageIndices.length} 条消息`);
+
+        const ctx = window.SillyTavern.getContext();
+        if (!ctx || !ctx.chat) {
+            console.warn(`❌ [${logPrefix}] 无法获取聊天上下文`);
+            return;
+        }
+
+        let successCount = 0;
+
+        for (const index of messageIndices) {
+            // 1. 修改数据
+            if (ctx.chat[index]) {
+                ctx.chat[index].is_system = true;
+
+                // 2. 更新DOM（如果消息在界面上）
+                const $mesDiv = $(`#chat .mes[mesid="${index}"]`);
+                if ($mesDiv.length > 0) {
+                    // 关键：修改DOM的is_system属性，CSS会自动显示幽灵图标
+                    $mesDiv.attr('is_system', 'true');
+
+                    console.log(`  ✓ [${logPrefix}] 已隐藏索引 ${index}`);
+                    successCount++;
+                } else {
+                    console.log(`  ⚠️ [${logPrefix}] 索引 ${index} 的DOM未找到（可能在屏幕外）`);
+                    successCount++; // 数据已修改，算成功
+                }
+            }
+        }
+
+        // 3. 保存到硬盘
+        try {
+            await ctx.saveChat();
+            console.log(`💾 [${logPrefix}] 已保存 ${successCount}/${messageIndices.length} 条隐藏记录`);
+        } catch (e) {
+            console.error(`❌ [${logPrefix}] 保存失败:`, e);
+        }
+
+        console.log(`✅ [${logPrefix}] 无感隐藏完成（无界面跳动）`);
+    }
+
+    // ✅ Native Hiding: 已总结隐藏（智能触发版）
+    async function applyNativeHiding() {
+        // 1. Check Config
+        const C = window.Gaigai.config_obj;
+        if (!C.autoSummaryHideContext) return;
+
+        const m = window.Gaigai.m;
+        const ctx = m.ctx();
+        if (!ctx || !ctx.chat || ctx.chat.length === 0) return;
+
+        const summaryPointer = window.Gaigai.config.lastSummaryIndex || 0;
+        if (summaryPointer <= 0) return;
+
+        // 2. 读取延迟配置（跟随自动总结的延迟设置）
+        const delayFloors = C.autoSummaryDelay ? (parseInt(C.autoSummaryDelayCount) || 0) : 0;
+
+        // 3. 计算当前楼层数（只计算对话消息）
+        let currentFloor = 0;
+        for (let i = 0; i < ctx.chat.length; i++) {
+            const msg = ctx.chat[i];
+            if (msg.role === 'system' || msg.isGaigaiPrompt || msg.isGaigaiData) continue;
+            currentFloor++;
+        }
+
+        console.log(`🔍 [已总结隐藏] 总结指针: ${summaryPointer}, 当前楼层: ${currentFloor}, 延迟: ${delayFloors}层`);
+
+        // 4. 检查是否需要触发隐藏（当前楼层必须 >= 总结指针 + 延迟楼层）
+        if (currentFloor < summaryPointer + delayFloors) {
+            console.log(`⏸️ [已总结隐藏] 当前楼层 ${currentFloor} < 总结指针+延迟 (${summaryPointer + delayFloors})，暂不触发`);
+            return;
+        }
+
+        // 5. 应该隐藏的范围：0 到 summaryPointer-1
+        const rangeEnd = summaryPointer - 1;
+        if (rangeEnd < 0) return; // 无需隐藏
+
+        // 6. 获取已隐藏的楼层
+        const alreadyHidden = getHiddenMessageIndices();
+
+        // 7. 找到"上次隐藏边界"（从0开始最后一个连续隐藏的索引）
+        let lastHiddenBoundary = -1;
+        for (let i = 0; i <= rangeEnd; i++) {
+            if (alreadyHidden.has(i)) {
+                lastHiddenBoundary = i;
+            } else {
+                // 遇到第一个未隐藏的，停止（只找连续的）
+                break;
+            }
+        }
+
+        console.log(`🔍 [已总结隐藏] 应该隐藏到: ${rangeEnd}, 上次连续隐藏边界: ${lastHiddenBoundary}`);
+
+        // 8. 分离旧区间和新区间
+        const shouldHide = [];
+
+        if (lastHiddenBoundary >= 0) {
+            // 有旧区间，检查旧区间是否已经50%隐藏
+            const oldRangeEnd = lastHiddenBoundary;
+            const oldRangeSize = oldRangeEnd + 1;
+            let oldRangeHiddenCount = 0;
+
+            for (let i = 0; i <= oldRangeEnd; i++) {
+                if (alreadyHidden.has(i)) {
+                    oldRangeHiddenCount++;
+                }
+            }
+
+            const oldRangeRatio = oldRangeHiddenCount / oldRangeSize;
+            const oldThreshold = 0.5; // 50% 阈值
+
+            console.log(`📊 [已总结隐藏-旧区间] 0-${oldRangeEnd} (共${oldRangeSize}条): 已隐藏 ${oldRangeHiddenCount} 条 (${(oldRangeRatio * 100).toFixed(1)}%)`);
+
+            if (oldRangeRatio < oldThreshold) {
+                // 旧区间未达标，需要补隐藏
+                console.log(`⚠️ [已总结隐藏-旧区间] 未达到50%，需要补充隐藏`);
+                for (let i = 0; i <= oldRangeEnd; i++) {
+                    if (!alreadyHidden.has(i)) {
+                        shouldHide.push(i);
+                    }
+                }
+            } else {
+                console.log(`✅ [已总结隐藏-旧区间] 已达到50%，跳过旧区间`);
+            }
+
+            // 新区间：上次边界+1 到 rangeEnd
+            const newRangeStart = lastHiddenBoundary + 1;
+            if (newRangeStart <= rangeEnd) {
+                const newRangeSize = rangeEnd - newRangeStart + 1;
+                console.log(`🆕 [已总结隐藏-新区间] ${newRangeStart}-${rangeEnd} (共${newRangeSize}条) 需要隐藏`);
+                for (let i = newRangeStart; i <= rangeEnd; i++) {
+                    if (!alreadyHidden.has(i)) {
+                        shouldHide.push(i);
+                    }
+                }
+            }
+        } else {
+            // 没有连续隐藏边界（可能是首次隐藏，或用户手动显示了开头的楼层）
+            // 检查整个范围的隐藏情况
+            const totalSize = rangeEnd + 1;
+            let totalHiddenCount = 0;
+
+            for (let i = 0; i <= rangeEnd; i++) {
+                if (alreadyHidden.has(i)) {
+                    totalHiddenCount++;
+                }
+            }
+
+            const totalRatio = totalHiddenCount / totalSize;
+            const threshold = 0.5; // 50% 阈值
+
+            console.log(`📊 [已总结隐藏-全范围] 0-${rangeEnd} (共${totalSize}条): 已隐藏 ${totalHiddenCount} 条 (${(totalRatio * 100).toFixed(1)}%)`);
+
+            if (totalRatio >= threshold) {
+                // 已经隐藏了一半以上，跳过（尊重用户手动操作）
+                console.log(`✅ [已总结隐藏] 已达到50%，跳过隐藏（尊重用户手动操作）`);
+                return;
+            } else {
+                // 未达到50%，需要隐藏
+                console.log(`🆕 [已总结隐藏] 未达到50%，执行隐藏 0-${rangeEnd}`);
+                for (let i = 0; i <= rangeEnd; i++) {
+                    if (!alreadyHidden.has(i)) {
+                        shouldHide.push(i);
+                    }
+                }
+            }
+        }
+
+        if (shouldHide.length === 0) {
+            console.log(`✅ [已总结隐藏] 范围内所有楼层都已隐藏，无需操作`);
+            return;
+        }
+
+        console.log(`🎯 [已总结隐藏] 需要隐藏 ${shouldHide.length} 个楼层`);
+
+        // 8. 执行无感隐藏
+        await silentHideMessages(shouldHide, '已总结隐藏');
+    }
+
+    // ✅ 暴露为全局函数，供监控系统调用
+    window.Gaigai.applyNativeHiding = applyNativeHiding;
+
+    // ✅ Context Limit Hiding: 留N层隐藏（修复索引映射版）
+    async function applyContextLimitHiding() {
+        // ⚠️ 已移除配置同步 - 发送前不需要同步，直接读取内存中的配置
+        const C = window.Gaigai.config_obj;
+        const m = window.Gaigai.m;
+
+        // 1. 检查是否启用上下文限制
+        if (!C.contextLimit) return;
+
+        const keepFloors = parseInt(C.contextLimitCount) || 30;
+
+        console.log(`🔧 [配置读取] 留${keepFloors}层`);
+
+        // 2. 获取当前聊天记录
+        const ctx = m.ctx();
+        if (!ctx || !ctx.chat || ctx.chat.length === 0) return;
+
+        // 3. 🔥 修复：建立对话楼层到原始索引的映射
+        const dialogueIndexMap = []; // 存储每条对话消息对应的原始索引
+        let dialogueCount = 0;
+
+        for (let i = 0; i < ctx.chat.length; i++) {
+            const msg = ctx.chat[i];
+            // 跳过 system 消息
+            if (msg.role === 'system' || msg.isGaigaiPrompt || msg.isGaigaiData) continue;
+
+            dialogueIndexMap.push(i); // 记录第N条对话消息对应的原始索引
+            dialogueCount++;
+        }
+
+        console.log(`🔍 [留N层隐藏] 当前对话楼层: ${dialogueCount}, 保留: ${keepFloors}`);
+
+        // 4. 如果当前楼层数不足保留数量，不执行
+        if (dialogueCount <= keepFloors) {
+            console.log(`⏸️ [留N层隐藏] 当前楼层 ${dialogueCount} <= 保留楼层 ${keepFloors}，无需隐藏`);
+            return;
+        }
+
+        // 5. 🔥 修复：计算需要隐藏到第几条对话消息
+        // 保留最后 keepFloors 条对话，所以要隐藏前 (dialogueCount - keepFloors) 条
+        const hideDialogueCount = dialogueCount - keepFloors;
+
+        if (hideDialogueCount <= 0) {
+            console.log(`⏸️ [留N层隐藏] 需要隐藏的对话数 <= 0，无需隐藏`);
+            return;
+        }
+
+        // 6. 🔥 修复：找到第 hideDialogueCount 条对话消息对应的原始索引
+        const hideRangeEnd = dialogueIndexMap[hideDialogueCount - 1];
+
+        console.log(`📊 [留N层隐藏] 需隐藏前 ${hideDialogueCount} 条对话 → 原始索引 0-${hideRangeEnd} (保留对话 ${hideDialogueCount + 1}-${dialogueCount})`);
+
+        // 7. 获取已隐藏的楼层
+        const alreadyHidden = getHiddenMessageIndices();
+
+        // 8. 找到"上次隐藏边界"（从0开始最后一个连续隐藏的索引）
+        let lastHiddenBoundary = -1;
+        for (let i = 0; i <= hideRangeEnd; i++) {
+            if (alreadyHidden.has(i)) {
+                lastHiddenBoundary = i;
+            } else {
+                // 遇到第一个未隐藏的，停止（只找连续的）
+                break;
+            }
+        }
+
+        console.log(`🔍 [留N层隐藏] 应该隐藏到: ${hideRangeEnd}, 上次连续隐藏边界: ${lastHiddenBoundary}`);
+
+        // 9. 分离旧区间和新区间
+        const shouldHide = [];
+
+        if (lastHiddenBoundary >= 0) {
+            // 有旧区间，检查旧区间是否已经90%隐藏
+            const oldRangeEnd = lastHiddenBoundary;
+            const oldRangeSize = oldRangeEnd + 1;
+            let oldRangeHiddenCount = 0;
+
+            for (let i = 0; i <= oldRangeEnd; i++) {
+                if (alreadyHidden.has(i)) {
+                    oldRangeHiddenCount++;
+                }
+            }
+
+            const oldRangeRatio = oldRangeHiddenCount / oldRangeSize;
+            const oldThreshold = 0.5; // 50% 阈值
+
+            console.log(`📊 [留N层隐藏-旧区间] 0-${oldRangeEnd} (共${oldRangeSize}条): 已隐藏 ${oldRangeHiddenCount} 条 (${(oldRangeRatio * 100).toFixed(1)}%)`);
+
+            if (oldRangeRatio < oldThreshold) {
+                // 旧区间未达标，需要补隐藏
+                console.log(`⚠️ [留N层隐藏-旧区间] 未达到50%，需要补充隐藏`);
+                for (let i = 0; i <= oldRangeEnd; i++) {
+                    if (!alreadyHidden.has(i)) {
+                        shouldHide.push(i);
+                    }
+                }
+            } else {
+                console.log(`✅ [留N层隐藏-旧区间] 已达到50%，跳过旧区间`);
+            }
+
+            // 新区间：上次边界+1 到 hideRangeEnd
+            const newRangeStart = lastHiddenBoundary + 1;
+            if (newRangeStart <= hideRangeEnd) {
+                const newRangeSize = hideRangeEnd - newRangeStart + 1;
+                console.log(`🆕 [留N层隐藏-新区间] ${newRangeStart}-${hideRangeEnd} (共${newRangeSize}条) 需要隐藏`);
+                for (let i = newRangeStart; i <= hideRangeEnd; i++) {
+                    if (!alreadyHidden.has(i)) {
+                        shouldHide.push(i);
+                    }
+                }
+            }
+        } else {
+            // 没有连续隐藏边界（可能是首次隐藏，或用户手动显示了开头的楼层）
+            // 检查整个范围的隐藏情况
+            const totalSize = hideRangeEnd + 1;
+            let totalHiddenCount = 0;
+
+            for (let i = 0; i <= hideRangeEnd; i++) {
+                if (alreadyHidden.has(i)) {
+                    totalHiddenCount++;
+                }
+            }
+
+            const totalRatio = totalHiddenCount / totalSize;
+            const threshold = 0.5; // 50% 阈值
+
+            console.log(`📊 [留N层隐藏-全范围] 0-${hideRangeEnd} (共${totalSize}条): 已隐藏 ${totalHiddenCount} 条 (${(totalRatio * 100).toFixed(1)}%)`);
+
+            if (totalRatio >= threshold) {
+                // 已经隐藏了一半以上，跳过（尊重用户手动操作）
+                console.log(`✅ [留N层隐藏] 已达到50%，跳过隐藏（尊重用户手动操作）`);
+                return;
+            } else {
+                // 未达到50%，需要隐藏
+                console.log(`🆕 [留N层隐藏] 未达到50%，执行隐藏 0-${hideRangeEnd}`);
+                for (let i = 0; i <= hideRangeEnd; i++) {
+                    if (!alreadyHidden.has(i)) {
+                        shouldHide.push(i);
+                    }
+                }
+            }
+        }
+
+        if (shouldHide.length === 0) {
+            console.log(`✅ [留N层隐藏] 所有需要隐藏的楼层都已隐藏，无需操作`);
+            return;
+        }
+
+        console.log(`🎯 [留N层隐藏] 本次需要隐藏 ${shouldHide.length} 条消息`);
+
+        // 10. 执行无感隐藏
+        await silentHideMessages(shouldHide, '留N层隐藏');
+    }
+
+    // ✅ 暴露为全局函数
+    window.Gaigai.applyContextLimitHiding = applyContextLimitHiding;
+
     class SummaryManager {
         constructor() {
             console.log('✅ [SummaryManager] 初始化完成');
@@ -390,6 +795,22 @@
                     </div>
                 </div>
 
+                <!-- 🆕 分批执行选项 -->
+                <div style="background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                    <label style="display: flex; align-items: center; cursor: pointer; font-size: 11px; color: ${UI.tc};">
+                        <input type="checkbox" id="gg_opt_batch_mode" ${C.optimizeBatchMode ? 'checked' : ''} style="margin-right: 6px; cursor: pointer;">
+                        <span style="font-weight: 600;">📦 分批执行</span>
+                    </label>
+                    <div id="gg_opt_batch_settings" style="${C.optimizeBatchMode ? '' : 'display: none;'} margin-top: 8px; padding-left: 20px;">
+                        <label style="font-size: 11px; display: block; margin-bottom: 4px; color: ${UI.tc};">每批页数：</label>
+                        <input type="number" id="gg_opt_batch_step" value="${C.optimizeBatchStep || 5}" min="1" max="50" style="width: 80px; padding: 4px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <span style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; margin-left: 6px;">页/批</span>
+                        <div style="font-size: 9px; color: ${UI.tc}; opacity: 0.6; margin-top: 4px;">
+                            💡 建议值：5页/批，避免超出Token限制
+                        </div>
+                    </div>
+                </div>
+
                 <button id="gg_opt_run" style="width:100%; padding:10px; background:#ff9800; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:13px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
                     ✨ 开始优化
                 </button>
@@ -458,13 +879,26 @@
                 if (window.Gaigai.isOptimizationRunning) {
                     const $btn = $('#gg_opt_run');
                     if ($btn.length > 0) {
-                        $btn.text('⏳ 正在后台优化...')
-                            .prop('disabled', true)
-                            .css('opacity', 0.7);
+                        // 检查是否有进度信息
+                        if (window.Gaigai.optimizeBatchProgress) {
+                            const { current, total } = window.Gaigai.optimizeBatchProgress;
+                            $btn.text(`⏳ 正在优化第 ${current}/${total} 批...`)
+                                .prop('disabled', true)
+                                .css('opacity', 0.7);
+                        } else {
+                            $btn.text('⏳ 正在后台优化...')
+                                .prop('disabled', true)
+                                .css('opacity', 0.7);
+                        }
                     }
                     const $status = $('#gg_opt_status');
                     if ($status.length > 0) {
-                        $status.text('任务正在后台运行，请稍候...').css('color', '#17a2b8');
+                        if (window.Gaigai.optimizeBatchProgress) {
+                            const { current, total } = window.Gaigai.optimizeBatchProgress;
+                            $status.text(`🔄 正在执行第 ${current}/${total} 批...`).css('color', '#17a2b8');
+                        } else {
+                            $status.text('任务正在后台运行，请稍候...').css('color', '#17a2b8');
+                        }
                     }
                     console.log('🔄 [界面恢复] 检测到总结优化正在执行');
                 }
@@ -677,6 +1111,32 @@
                     }
                 });
 
+                // 🆕 总结优化 - 分批模式切换
+                $('#gg_opt_batch_mode').on('change', function() {
+                    const isChecked = $(this).is(':checked');
+
+                    if (isChecked) {
+                        $('#gg_opt_batch_settings').slideDown(200);
+                    } else {
+                        $('#gg_opt_batch_settings').slideUp(200);
+                    }
+
+                    // 保存到配置
+                    C.optimizeBatchMode = isChecked;
+                    localStorage.setItem('gg_config', JSON.stringify(C));
+                    m.save(false, true);
+                    console.log(`💾 [分批优化配置] 已保存分批模式: ${isChecked}`);
+                });
+
+                // 🆕 总结优化 - 步长变化时保存
+                $('#gg_opt_batch_step').on('change', function() {
+                    const step = parseInt($(this).val()) || 5;
+                    C.optimizeBatchStep = step;
+                    localStorage.setItem('gg_config', JSON.stringify(C));
+                    m.save(false, true);
+                    console.log(`💾 [分批优化配置] 已保存步长: ${step}`);
+                });
+
                 // 总结优化 - 按钮点击事件
                 $('#gg_opt_run').on('click', async function() {
                     const target = $('#gg_opt_target').val();
@@ -804,7 +1264,29 @@
                     return { success: false, error: '聊天记录为空' };
                 }
 
-                endIndex = (forceEnd !== null) ? parseInt(forceEnd) : ctx.chat.length;
+                // ✅ 修复：手动输入的楼层数应该只计算对话消息（不含 System）
+                if (forceEnd !== null) {
+                    const targetDialogueCount = parseInt(forceEnd);
+                    let dialogueCount = 0;
+                    endIndex = ctx.chat.length; // 默认到末尾
+
+                    // 遍历找到第 N 条对话消息的实际索引
+                    for (let i = 0; i < ctx.chat.length; i++) {
+                        const msg = ctx.chat[i];
+                        // 跳过 System 消息
+                        if (msg.role === 'system' || msg.isGaigaiPrompt || msg.isGaigaiData) continue;
+
+                        dialogueCount++;
+                        if (dialogueCount === targetDialogueCount) {
+                            endIndex = i + 1; // +1 因为 slice 是右开区间
+                            break;
+                        }
+                    }
+                    console.log(`📍 [楼层映射] 用户输入第 ${targetDialogueCount} 楼 → 实际索引 ${endIndex - 1}（slice 到 ${endIndex}）`);
+                } else {
+                    endIndex = ctx.chat.length;
+                }
+
                 startIndex = (forceStart !== null) ? parseInt(forceStart) : (API_CONFIG.lastSummaryIndex || 0);
                 if (startIndex < 0) startIndex = 0;
                 if (startIndex >= endIndex) {
@@ -1030,10 +1512,11 @@
                 if (isSilent && endIndex !== null && endIndex !== undefined) {
                     const currentLast = API_CONFIG.lastSummaryIndex || 0;
                     // 只有当新位置比旧位置靠后时才更新
+                    // ✅ 使用原始索引，而不是对话数量，避免 System 消息导致的索引错位
                     if (endIndex > currentLast) {
                         API_CONFIG.lastSummaryIndex = endIndex;
                         localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
-                        console.log(`✅ [自动进度更新] 指针已推进至: ${endIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
+                        console.log(`✅ [自动进度更新] 指针已推进至: 原始索引 ${endIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
 
                         // ✅ 同步到云端，防止被全局配置覆盖
                         if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
@@ -1041,6 +1524,9 @@
                                 console.warn('⚠️ [指针同步] 云端同步失败:', err);
                             });
                         }
+
+                        // ✅ 触发原生隐藏命令（总结后自动隐藏已总结楼层）
+                        await applyNativeHiding();
                     }
                 }
 
@@ -1328,10 +1814,11 @@
                         // ✅✅✅ [修复] 删除 !isTableMode 限制，无论什么模式都应更新进度指针
                         if (newIndex !== null && newIndex !== undefined) {
                             const currentLast = API_CONFIG.lastSummaryIndex || 0;
+                            // ✅ 使用原始索引，而不是对话数量，避免 System 消息导致的索引错位
                             if (newIndex > currentLast) {
                                 API_CONFIG.lastSummaryIndex = newIndex;
                                 try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
-                                console.log(`✅ [进度更新] 总结进度已更新至: ${newIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
+                                console.log(`✅ [进度更新] 总结进度已更新至: 原始索引 ${newIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
                             }
                         }
 
@@ -1691,8 +2178,10 @@
 
             // 结果汇报
             if (successCount > 0) {
-                API_CONFIG.lastSummaryIndex = actualProgress; // ✅ 修复：使用实际完成的进度而不是目标 end
+                // ✅ 使用原始索引，而不是对话数量，避免 System 消息导致的索引错位
+                API_CONFIG.lastSummaryIndex = actualProgress;
                 localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                console.log(`✅ [分批总结完成] 指针已更新至: 原始索引 ${actualProgress}`);
 
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') window.Gaigai.saveAllSettingsToCloud();
 
@@ -1723,7 +2212,7 @@
         }
 
         /**
-         * 🆕 总结优化/润色功能 (重构版)
+         * 🆕 总结优化/润色功能 (重构版 - 支持分批执行)
          * @param {string} target - 目标类型：'all' | 'last' | 'specific' | 'range'
          * @param {string} userPrompt - 用户的优化建议
          * @param {string} rangeInput - 范围输入（如 "1" 或 "2-5"）
@@ -1787,6 +2276,43 @@
             }
 
             console.log(`✨ [优化] 目标索引: ${targetIndices.join(', ')}`);
+
+            // 🆕 2. 检查是否启用分批模式
+            const batchMode = $('#gg_opt_batch_mode').is(':checked');
+            const batchStep = parseInt($('#gg_opt_batch_step').val()) || 5;
+
+            if (batchMode && targetIndices.length > batchStep) {
+                // 🔄 分批执行模式
+                console.log(`📦 [分批优化] 启用分批模式，每批 ${batchStep} 页，共 ${targetIndices.length} 页`);
+                await this._optimizeSummaryBatch(targetIndices, userPrompt, batchStep, initialSessionId);
+            } else {
+                // 🚀 单次执行模式（原有逻辑）
+                console.log(`🚀 [单次优化] 一次性处理 ${targetIndices.length} 页`);
+                await this._optimizeSummarySingle(targetIndices, userPrompt, initialSessionId);
+            }
+
+            } finally {
+                // ✅ 无论成功还是失败，最后都要解锁
+                window.Gaigai.isOptimizationRunning = false;
+
+                // 如果界面还开着，恢复按钮状态
+                const $btn = $('#gg_opt_run');
+                if ($btn.length > 0) {
+                    $btn.text('✨ 开始优化').prop('disabled', false).css('opacity', 1);
+                    $('#gg_opt_status').text('');
+                }
+                console.log('🔓 [总结优化] 任务结束，已解锁');
+            }
+        }
+
+        /**
+         * 🆕 单次优化执行（原有逻辑）
+         * @private
+         */
+        async _optimizeSummarySingle(targetIndices, userPrompt, initialSessionId) {
+            const m = window.Gaigai.m;
+            const ctx = m.ctx();
+            const summaryTable = m.s[m.s.length - 1];
 
             // 2. 构建消息上下文 (分段发送)
             const messages = [];
@@ -1933,18 +2459,99 @@
             } else {
                 await window.Gaigai.customAlert(`生成失败: ${result?.error}`, '错误');
             }
-            } finally {
-                // ✅ 无论成功还是失败，最后都要解锁
-                window.Gaigai.isOptimizationRunning = false;
+        }
 
-                // 如果界面还开着，恢复按钮状态
-                const $btn = $('#gg_opt_run');
-                if ($btn.length > 0) {
-                    $btn.text('✨ 开始优化').prop('disabled', false).css('opacity', 1);
-                    $('#gg_opt_status').text('');
-                }
-                console.log('🔓 [总结优化] 任务结束，已解锁');
+        /**
+         * 🆕 分批优化执行
+         * @private
+         */
+        async _optimizeSummaryBatch(targetIndices, userPrompt, batchStep, initialSessionId) {
+            const m = window.Gaigai.m;
+            const summaryTable = m.s[m.s.length - 1];
+
+            // 将 targetIndices 按步长切分为多个 batch
+            const batches = [];
+            for (let i = 0; i < targetIndices.length; i += batchStep) {
+                batches.push(targetIndices.slice(i, i + batchStep));
             }
+
+            console.log(`📦 [分批优化] 共分为 ${batches.length} 批次`);
+
+            // 依次处理每个批次
+            for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+                const currentBatch = batches[batchIndex];
+                const batchNum = batchIndex + 1;
+                const totalBatches = batches.length;
+
+                // 🆕 更新全局进度变量（用于UI恢复）
+                window.Gaigai.optimizeBatchProgress = {
+                    current: batchNum,
+                    total: totalBatches
+                };
+
+                // 更新 UI 状态
+                const $btn = $('#gg_opt_run');
+                const $status = $('#gg_opt_status');
+                if ($btn.length > 0) {
+                    $btn.text(`⏳ 正在优化第 ${batchNum}/${totalBatches} 批...`);
+                }
+                if ($status.length > 0) {
+                    $status.text(`处理中: 第 ${currentBatch[0] + 1}-${currentBatch[currentBatch.length - 1] + 1} 页`).css('color', '#17a2b8');
+                }
+
+                console.log(`📦 [批次 ${batchNum}/${totalBatches}] 处理页码: ${currentBatch.map(i => i + 1).join(', ')}`);
+
+                try {
+                    // 调用单次优化逻辑处理当前批次
+                    await this._optimizeSummarySingle(currentBatch, userPrompt, initialSessionId);
+
+                    // 每批次成功后立即保存
+                    m.save();
+                    console.log(`✅ [批次 ${batchNum}/${totalBatches}] 完成并已保存`);
+
+                    // 批次之间增加冷却时间（除了最后一批）
+                    if (batchIndex < batches.length - 1) {
+                        console.log(`⏱️ [冷却] 等待 4 秒后继续下一批...`);
+                        if ($status.length > 0) {
+                            $status.text(`⏱️ 冷却中，4秒后继续...`).css('color', '#ff9800');
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 4000));
+                    }
+
+                } catch (error) {
+                    console.error(`❌ [批次 ${batchNum}/${totalBatches}] 失败:`, error.message);
+
+                    // 询问用户是否继续
+                    const shouldContinue = await window.Gaigai.customConfirm(
+                        `⚠️ 第 ${batchNum}/${totalBatches} 批次优化失败！\n\n错误信息: ${error.message}\n\n是否继续处理下一批次？`,
+                        '批次失败'
+                    );
+
+                    if (!shouldContinue) {
+                        console.log(`🛑 [分批优化] 用户选择停止，已完成 ${batchNum - 1}/${totalBatches} 批次`);
+
+                        // 清除进度变量
+                        delete window.Gaigai.optimizeBatchProgress;
+
+                        await window.Gaigai.customAlert(
+                            `已完成 ${batchNum - 1}/${totalBatches} 批次的优化。\n\n已优化的内容已保存。`,
+                            '任务中止'
+                        );
+                        return;
+                    }
+
+                    console.log(`⏭️ [分批优化] 用户选择继续，跳过当前批次`);
+                }
+            }
+
+            // 所有批次完成，清除进度变量
+            delete window.Gaigai.optimizeBatchProgress;
+
+            console.log(`🎉 [分批优化] 全部 ${totalBatches} 批次处理完成`);
+            await window.Gaigai.customAlert(
+                `✅ 分批优化完成！\n\n共处理 ${totalBatches} 批次，优化了 ${targetIndices.length} 页内容。`,
+                '任务完成'
+            );
         }
 
         /**
