@@ -918,7 +918,7 @@ ${lastError.message}
 
                     // 空表处理
                     if (!sheetContent || sheetContent.trim() === '') {
-                        sheetContent = `(当前暂无数据)\n列结构: ${sheet.c.join(' | ')}`;
+                        sheetContent = `(当前暂无数据)`;
                     }
 
                     // 推送独立的表格消息
@@ -938,7 +938,7 @@ ${lastError.message}
 
                     // 空表处理
                     if (!sheetContent || sheetContent.trim() === '') {
-                        sheetContent = `(当前暂无数据)\n列结构: ${sheet.c.join(' | ')}`;
+                        sheetContent = `(当前暂无数据)`;
                     }
 
                     // 推送独立的表格消息
@@ -2212,9 +2212,9 @@ ${lastError.message}
                     const sheetName = sheet.n; // 获取表名
                     let sheetContent = sheet.txt(i);
 
-                    // 🆕 空表处理：如果表格为空，手动构造列结构
+                    // 🆕 空表处理：如果表格为空，显示提示信息
                     if (!sheetContent || sheetContent.trim() === '') {
-                        sheetContent = `(当前暂无数据)\n列结构: ${sheet.c.join(' | ')}`;
+                        sheetContent = `(当前暂无数据)`;
                     }
 
                     // ✨ 修复：添加 name 和统一标题格式
@@ -2233,9 +2233,9 @@ ${lastError.message}
                     const sheetName = sheet.n;
                     let sheetContent = sheet.txt(targetIndex);
 
-                    // 🆕 空表处理：如果表格为空，手动构造列结构
+                    // 🆕 空表处理：如果表格为空，显示提示信息
                     if (!sheetContent || sheetContent.trim() === '') {
-                        sheetContent = `(当前暂无数据)\n列结构: ${sheet.c.join(' | ')}`;
+                        sheetContent = `(当前暂无数据)`;
                     }
 
                     // ✨ 修复：添加 name 和统一标题格式

@@ -2995,15 +2995,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 1. 旧逻辑：合并字符串（用于兼容旧的文本变量替换）
         const tableContent = m.s.slice(0, -1).map((s, i) => s.txt(i)).filter(t => t).join('\n');
 
-        strTable += '【⚠️ 记忆只读数据库：已归档的历史剧情 (Past Events)】\n';
-        strTable += '【指令：以下内容为绝对客观的过去事实，仅供你查阅以保持剧情连贯。❌ 严禁复述！❌ 严禁重演！】\n\n';
-
+        // ✅ [优化] 只有当表格有内容时才构建 strTable，支持"只总结，不填表"的模式
         if (tableContent) {
+            strTable += '【⚠️ 记忆只读数据库：已归档的历史剧情 (Past Events)】\n';
+            strTable += '【指令：以下内容为绝对客观的过去事实，仅供你查阅以保持剧情连贯。❌ 严禁复述！❌ 严禁重演！】\n\n';
             strTable += tableContent;
-        } else {
-            strTable += '（暂无详细记录，请根据当前剧情建立新记录）\n';
+            strTable += '\n【记忆档案结束】\n';
         }
-        strTable += '【记忆档案结束】\n';
+        // 如果 tableContent 为空，strTable 保持为空字符串，不发送任何内容
 
         // 2. 新逻辑：按表拆分 (SYSTEM 完整单词 + 强力防重演)
         // ✅ [修复] 无条件构建 tableMessages，确保变量锚点始终有数据可注入
@@ -3025,15 +3024,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
         });
 
-        // 兜底 (全空时)
-        if (tableMessages.length === 0) {
-            tableMessages.push({
-                role: 'system',
-                name: 'SYSTEM (系统提示)',
-                content: '【记忆只读数据库】\n（暂无详细记录）',
-                isGaigaiData: true
-            });
-        }
+        // ✅ [优化] 移除兜底逻辑：当所有表格都为空时，不发送任何内容
+        // 这样可以支持"只总结，不填表"的模式，保持聊天更干净
+        // if (tableMessages.length === 0) {
+        //     tableMessages.push({
+        //         role: 'system',
+        //         name: 'SYSTEM (系统提示)',
+        //         content: '【记忆只读数据库】\n（暂无详细记录）',
+        //         isGaigaiData: true
+        //     });
+        // }
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
         // 逻辑：如果开启了批量填表(autoBackfill)，强制屏蔽实时填表提示词，无论 C.enabled 是什么状态！
@@ -8417,6 +8417,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (typeof context.generateRaw === 'function') {
                 let result;
                 try {
+                    // 🆕 调用前的环境检查
+                    console.log('🔍 [酒馆API] 环境检查:');
+                    console.log('   - context.generateRaw 存在:', typeof context.generateRaw);
+                    console.log('   - 消息数量:', finalPrompt.length);
+                    console.log('   - 最大回复长度:', context.max_response_length);
+
                     // 构建生成参数
                     const generateParams = {
                         prompt: finalPrompt, // 👈 这里的格式已经根据模型自动适配了
@@ -8452,36 +8458,86 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         ];
                     }
 
+                    // 🆕 调用前打印参数（不打印完整prompt避免日志过长）
+                    console.log('📤 [酒馆API] 准备调用 generateRaw，参数:');
+                    console.log('   - quiet:', generateParams.quiet);
+                    console.log('   - stream:', generateParams.stream);
+                    console.log('   - max_tokens:', generateParams.max_tokens);
+                    console.log('   - stop数组长度:', generateParams.stop?.length || 0);
+
                     result = await context.generateRaw(generateParams);
-                    console.log('[酒馆API调试] 原始返回:', result); // 🔴 关键修改：打印日志
+                    console.log('✅ [酒馆API] generateRaw 调用完成');
+                    console.log('[酒馆API调试] 原始返回:', result);
+                    console.log('[酒馆API调试] 返回类型:', typeof result);
+                    if (typeof result === 'object' && result !== null) {
+                        console.log('[酒馆API调试] 返回结构字段:', Object.keys(result));
+                    }
                 } catch (err) {
                     console.error('❌ 酒馆API调用失败:', err);
-                    return { success: false, error: err.message };
+                    // 🆕 增强错误处理：提取有意义的错误信息
+                    let errorMsg = '酒馆API调用失败';
+                    if (err) {
+                        if (err.message) {
+                            errorMsg = err.message;
+                        } else if (typeof err === 'string') {
+                            errorMsg = err;
+                        } else if (err.error) {
+                            errorMsg = typeof err.error === 'string' ? err.error : JSON.stringify(err.error);
+                        } else if (Object.keys(err).length > 0) {
+                            errorMsg = `酒馆API调用失败: ${JSON.stringify(err)}`;
+                        }
+                    }
+                    console.error('❌ [酒馆API] 错误详情:', errorMsg);
+                    return { success: false, error: errorMsg };
                 }
 
                 // 4. 🔴 关键修改：增强解析逻辑
                 let summary = '';
+                let parseMethod = '未知';
 
                 if (typeof result === 'string') {
                     summary = result;
+                    parseMethod = '直接字符串';
+                    console.log('✅ [酒馆API] 解析成功 (直接字符串)');
                 } else if (typeof result === 'object' && result !== null) {
+                    // 🆕 优先检查是否有错误字段
+                    if (result.error) {
+                        const errorMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
+                        console.error('❌ [酒馆API] 后端返回错误:', errorMsg);
+                        return { success: false, error: errorMsg };
+                    }
+
                     // 优先检查标准 OpenAI 结构 (Gemini/Claude 经酒馆中转后通常是这个)
                     if (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
                         summary = result.choices[0].message.content;
+                        parseMethod = 'OpenAI格式 (choices[0].message.content)';
                     }
                     // 检查 TextGen / Ooba 结构
                     else if (result.results && result.results[0] && result.results[0].text) {
                         summary = result.results[0].text;
+                        parseMethod = 'TextGen格式 (results[0].text)';
                     }
                     // 检查直接属性
                     else if (result.text) {
                         summary = result.text;
+                        parseMethod = '直接属性 (text)';
                     }
                     else if (result.content) {
                         summary = result.content;
+                        parseMethod = '直接属性 (content)';
                     }
                     else if (result.body && result.body.text) {
                         summary = result.body.text;
+                        parseMethod = 'Body格式 (body.text)';
+                    }
+                    // 🆕 检查 message 字段（某些API可能直接返回这个）
+                    else if (result.message) {
+                        summary = result.message;
+                        parseMethod = '直接属性 (message)';
+                    }
+
+                    if (summary) {
+                        console.log(`✅ [酒馆API] 解析成功 (${parseMethod})`);
                     }
                 }
 
@@ -8494,18 +8550,47 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         .trim();
                     // 如果清洗后为空，保留原文
                     summary = cleaned || raw;
+                    console.log('🧹 [酒馆API] 已清理思考标签');
                 }
 
-                if (summary && summary.trim()) return { success: true, summary };
+                if (summary && summary.trim()) {
+                    console.log(`✅ [酒馆API] 最终内容长度: ${summary.trim().length} 字符`);
+                    return { success: true, summary };
+                }
 
-                console.warn('⚠️ [酒馆API] 解析后内容为空，原始对象:', result);
+                // 🆕 详细的错误报告
+                console.error('❌ [酒馆API] 解析失败！');
+                console.error('   - 返回类型:', typeof result);
+                if (typeof result === 'object' && result !== null) {
+                    console.error('   - 可用字段:', Object.keys(result));
+                    console.error('   - 完整JSON:', JSON.stringify(result, null, 2));
+                } else {
+                    console.error('   - 返回值:', result);
+                }
             }
 
-            return { success: false, error: '酒馆API未返回有效文本或版本不支持数组调用' };
+            // 🆕 如果 generateRaw 不存在，提供详细的错误信息
+            console.error('❌ [酒馆API] context.generateRaw 不存在或不是函数');
+            console.error('   - context 存在:', !!context);
+            console.error('   - generateRaw 类型:', typeof context.generateRaw);
+            return { success: false, error: '您的 SillyTavern 版本可能过旧，不支持 generateRaw API。请更新到最新版本。' };
 
         } catch (err) {
             console.error('❌ [酒馆API] 致命错误:', err);
-            return { success: false, error: `API报错: ${err.message}` };
+            // 🆕 增强最外层错误处理
+            let errorMsg = 'API调用过程中发生未知错误';
+            if (err) {
+                if (err.message) {
+                    errorMsg = err.message;
+                } else if (typeof err === 'string') {
+                    errorMsg = err;
+                } else if (err.error) {
+                    errorMsg = typeof err.error === 'string' ? err.error : JSON.stringify(err.error);
+                } else if (Object.keys(err).length > 0) {
+                    errorMsg = `API报错: ${JSON.stringify(err)}`;
+                }
+            }
+            return { success: false, error: errorMsg };
         }
     }
 
