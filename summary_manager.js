@@ -1137,15 +1137,37 @@
                     console.log(`💾 [分批优化配置] 已保存步长: ${step}`);
                 });
 
-                // 总结优化 - 按钮点击事件
+                // 总结优化 - 按钮点击事件（重构版：支持停止功能）
                 $('#gg_opt_run').on('click', async function() {
+                    const $btn = $(this);
+
+                    // 🛑 检测是否正在运行优化任务
+                    if (window.Gaigai.isOptimizationRunning) {
+                        // 用户点击停止
+                        window.Gaigai.stopOptimizationBatch = true;
+                        console.log('🛑 [用户操作] 请求停止批量优化');
+
+                        // ✅ 立即更新按钮状态，给用户视觉反馈
+                        $btn.text('🛑 正在停止...')
+                            .prop('disabled', true)
+                            .css({
+                                'background': '#666',
+                                'opacity': '0.8'
+                            });
+
+                        if (typeof toastr !== 'undefined') {
+                            toastr.info('正在停止优化任务...', '停止中', { timeOut: 2000 });
+                        }
+
+                        return;
+                    }
+
                     const target = $('#gg_opt_target').val();
                     let prompt = $('#gg_opt_prompt').val().trim();
                     const rangeInput = $('#gg_opt_range-input').val().trim() || "1"; // ✅ 改为字符串类型
 
                     // ✅ prompt 现在可以为空，将由 optimizeSummary 函数从提示词管理获取
 
-                    const $btn = $(this);
                     const oldText = $btn.text();
                     $btn.text('⏳ AI正在优化...').prop('disabled', true).css('opacity', 0.7);
                     $('#gg_opt_status').text('正在生成优化版本...').css('color', window.Gaigai.ui.tc);
@@ -1153,8 +1175,12 @@
                     try {
                         await self.optimizeSummary(target, prompt, rangeInput);
                     } finally {
-                        $btn.text(oldText).prop('disabled', false).css('opacity', 1);
-                        $('#gg_opt_status').text('');
+                        // ✅ optimizeSummary 的 finally 块已经统一处理了按钮恢复和锁释放
+                        // 这里只是兜底：如果 isOptimizationRunning 意外未被清理，强制恢复
+                        if (window.Gaigai.isOptimizationRunning) {
+                            window.Gaigai.isOptimizationRunning = false;
+                            $btn.text(oldText).prop('disabled', false).css('opacity', 1);
+                        }
                     }
                 });
 
@@ -2462,7 +2488,7 @@
         }
 
         /**
-         * 🆕 分批优化执行
+         * 🆕 分批优化执行（重构版：增强的错误处理和停止逻辑）
          * @private
          */
         async _optimizeSummaryBatch(targetIndices, userPrompt, batchStep, initialSessionId) {
@@ -2477,81 +2503,248 @@
 
             console.log(`📦 [分批优化] 共分为 ${batches.length} 批次`);
 
-            // 依次处理每个批次
-            for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-                const currentBatch = batches[batchIndex];
-                const batchNum = batchIndex + 1;
-                const totalBatches = batches.length;
-
-                // 🆕 更新全局进度变量（用于UI恢复）
-                window.Gaigai.optimizeBatchProgress = {
-                    current: batchNum,
-                    total: totalBatches
-                };
-
-                // 更新 UI 状态
+            // 辅助函数：更新按钮状态
+            const updateBtn = (text, isRunning) => {
                 const $btn = $('#gg_opt_run');
-                const $status = $('#gg_opt_status');
                 if ($btn.length > 0) {
-                    $btn.text(`⏳ 正在优化第 ${batchNum}/${totalBatches} 批...`);
+                    $btn.text(text)
+                        .css('background', isRunning ? '#dc3545' : '#ff9800')
+                        .css('opacity', '1')
+                        .prop('disabled', false);
                 }
+            };
+
+            const updateStatus = (text, color = null) => {
+                const $status = $('#gg_opt_status');
                 if ($status.length > 0) {
-                    $status.text(`处理中: 第 ${currentBatch[0] + 1}-${currentBatch[currentBatch.length - 1] + 1} 页`).css('color', '#17a2b8');
+                    $status.text(text).css(color ? {color} : {});
+                }
+            };
+
+            let successCount = 0;
+            let failedBatches = [];
+            let isUserCancelled = false;
+
+            try {
+                // 🆕 初始化停止标志
+                window.Gaigai.stopOptimizationBatch = false;
+
+                if (typeof toastr !== 'undefined') {
+                    toastr.info(`开始执行 ${batches.length} 个批次`, '分批优化');
                 }
 
-                console.log(`📦 [批次 ${batchNum}/${totalBatches}] 处理页码: ${currentBatch.map(i => i + 1).join(', ')}`);
+                // 依次处理每个批次
+                for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+                    // 🛑 检查点 1：任务开始前
+                    if (window.Gaigai.stopOptimizationBatch) {
+                        isUserCancelled = true;
+                        break;
+                    }
 
-                try {
-                    // 调用单次优化逻辑处理当前批次
-                    await this._optimizeSummarySingle(currentBatch, userPrompt, initialSessionId);
+                    // 冷却逻辑（除了第一批）
+                    if (batchIndex > 0) {
+                        for (let d = 5; d > 0; d--) {
+                            if (window.Gaigai.stopOptimizationBatch) break; // 🛑 检查点 2：冷却期间
+                            updateBtn(`⏳ 冷却 ${d}s... (点此停止)`, true);
+                            updateStatus(`批次间冷却... ${d}秒`, '#ffc107');
+                            await new Promise(r => setTimeout(r, 1000));
+                        }
+                    }
+
+                    if (window.Gaigai.stopOptimizationBatch) {
+                        isUserCancelled = true;
+                        break;
+                    }
+
+                    const currentBatch = batches[batchIndex];
+                    const batchNum = batchIndex + 1;
+                    const totalBatches = batches.length;
+
+                    // 🆕 更新全局进度变量（用于UI恢复）
+                    window.Gaigai.optimizeBatchProgress = {
+                        current: batchNum,
+                        total: totalBatches
+                    };
+
+                    updateBtn(`🛑 停止 (${batchNum}/${totalBatches})`, true);
+                    updateStatus(`处理中: 第 ${currentBatch[0] + 1}-${currentBatch[currentBatch.length - 1] + 1} 页`, '#17a2b8');
+
+                    console.log(`📦 [批次 ${batchNum}/${totalBatches}] 处理页码: ${currentBatch.map(i => i + 1).join(', ')}`);
+
+                    // 🔄 重试机制：最多重试1次
+                    let retryCount = 0;
+                    let lastError = null;
+                    let result = null;
+
+                    while (retryCount <= 1) {
+                        try {
+                            // 调用单次优化逻辑处理当前批次
+                            await this._optimizeSummarySingle(currentBatch, userPrompt, initialSessionId);
+
+                            // 🛑 检查点 3：API返回后立即检查
+                            if (window.Gaigai.stopOptimizationBatch) {
+                                console.warn(`🛑 [分批优化] 任务 ${batchNum} 执行期间被中止`);
+                                isUserCancelled = true;
+                                break;
+                            }
+
+                            // ✅ 成功！跳出重试循环
+                            lastError = null;
+                            break;
+
+                        } catch (error) {
+                            lastError = error;
+
+                            // ✨✨✨ 修复：如果用户已经点了停止，直接退出，不要弹窗
+                            if (window.Gaigai.stopOptimizationBatch) {
+                                console.warn(`🛑 [分批优化] 检测到用户停止，跳过异常弹窗`);
+                                isUserCancelled = true;
+                                break;
+                            }
+
+                            // 🔄 判断是否需要重试
+                            if (retryCount < 1) {
+                                retryCount++;
+                                console.warn(`⚠️ [重试机制] 批次 ${batchNum} 失败，准备第 ${retryCount} 次重试...`);
+                                console.error(`[重试原因] ${error.message}`);
+
+                                updateStatus(`⚠️ 连接不稳定，等待 5秒 后重试...`, '#ffc107');
+
+                                // 等待5秒后重试
+                                for (let retrySec = 5; retrySec > 0; retrySec--) {
+                                    if (window.Gaigai.stopOptimizationBatch) {
+                                        console.warn(`🛑 [重试等待] 检测到用户停止`);
+                                        isUserCancelled = true;
+                                        break;
+                                    }
+                                    updateStatus(`⚠️ 连接不稳定，等待 ${retrySec}秒 后重试...`, '#ffc107');
+                                    await new Promise(r => setTimeout(r, 1000));
+                                }
+
+                                if (window.Gaigai.stopOptimizationBatch) {
+                                    isUserCancelled = true;
+                                    break;
+                                }
+
+                                // 继续下一次循环（重试）
+                                continue;
+                            } else {
+                                // 🚨 重试次数已用完，抛出错误让外层处理
+                                console.error(`❌ [重试机制] 批次 ${batchNum} 重试失败，进入异常处理流程`);
+                                throw error;
+                            }
+                        }
+                    }
+
+                    // 🛑 如果用户取消，跳出主循环
+                    if (isUserCancelled) break;
+
+                    // 🚨 如果重试后仍有错误，弹窗询问用户
+                    if (lastError) {
+                        console.error(lastError);
+                        failedBatches.push({ batch: batchNum, error: lastError.message });
+
+                        const userChoice = await window.Gaigai.customConfirm(
+                            `批次 ${batchNum} 发生异常：\n${lastError.message}\n\n是否继续后续批次？`,
+                            '异常处理',
+                            '继续',
+                            '停止'
+                        );
+
+                        if (!userChoice) {
+                            isUserCancelled = true;
+                            break;
+                        }
+                        continue; // 用户选择继续，跳到下一个批次
+                    }
+
+                    // ✅ 批次成功
+                    successCount++;
 
                     // 每批次成功后立即保存
                     m.save();
                     console.log(`✅ [批次 ${batchNum}/${totalBatches}] 完成并已保存`);
 
-                    // 批次之间增加冷却时间（除了最后一批）
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`批次 ${batchNum}/${totalBatches} 完成`, '进度');
+                    }
+
+                    // 🛑 检查点 4：冷却前再次检查
+                    if (window.Gaigai.stopOptimizationBatch) {
+                        isUserCancelled = true;
+                        break;
+                    }
+
+                    // ⏳ 批次间冷却（除了最后一批）
                     if (batchIndex < batches.length - 1) {
                         console.log(`⏱️ [冷却] 等待 4 秒后继续下一批...`);
-                        if ($status.length > 0) {
-                            $status.text(`⏱️ 冷却中，4秒后继续...`).css('color', '#ff9800');
+                        for (let delay = 4; delay > 0; delay--) {
+                            if (window.Gaigai.stopOptimizationBatch) break;
+                            updateStatus(`⏱️ 冷却中，${delay}秒后继续...`, '#ff9800');
+                            await new Promise(r => setTimeout(r, 1000));
                         }
-                        await new Promise(resolve => setTimeout(resolve, 4000));
                     }
 
-                } catch (error) {
-                    console.error(`❌ [批次 ${batchNum}/${totalBatches}] 失败:`, error.message);
-
-                    // 询问用户是否继续
-                    const shouldContinue = await window.Gaigai.customConfirm(
-                        `⚠️ 第 ${batchNum}/${totalBatches} 批次优化失败！\n\n错误信息: ${error.message}\n\n是否继续处理下一批次？`,
-                        '批次失败'
-                    );
-
-                    if (!shouldContinue) {
-                        console.log(`🛑 [分批优化] 用户选择停止，已完成 ${batchNum - 1}/${totalBatches} 批次`);
-
-                        // 清除进度变量
-                        delete window.Gaigai.optimizeBatchProgress;
-
-                        await window.Gaigai.customAlert(
-                            `已完成 ${batchNum - 1}/${totalBatches} 批次的优化。\n\n已优化的内容已保存。`,
-                            '任务中止'
-                        );
-                        return;
+                    // 🛑 检查点 5：冷却后
+                    if (window.Gaigai.stopOptimizationBatch) {
+                        isUserCancelled = true;
+                        break;
                     }
-
-                    console.log(`⏭️ [分批优化] 用户选择继续，跳过当前批次`);
                 }
+
+            } finally {
+                // 🛡️ 绝对确保状态重置
+                try {
+                    window.Gaigai.stopOptimizationBatch = false;
+                    delete window.Gaigai.optimizeBatchProgress;
+
+                    // 🛡️ 强制重置按钮状态
+                    const $btn = $('#gg_opt_run');
+                    if ($btn.length > 0) {
+                        $btn.text('✨ 开始优化')
+                            .css('background', '#ff9800')
+                            .css('opacity', '1')
+                            .prop('disabled', false);
+                    }
+
+                    console.log('🔓 [状态重置] 分批优化锁已释放');
+                } catch (resetError) {
+                    console.error('❌ [严重错误] 状态重置失败:', resetError);
+                    window.Gaigai.stopOptimizationBatch = false;
+                }
+
+                // 结果汇报
+                if (isUserCancelled) {
+                    updateStatus('', null);
+                    if (typeof toastr !== 'undefined') {
+                        toastr.info('批量优化已手动停止或取消', '已中止');
+                    }
+                    return;
+                }
+
+                // 保存最终状态
+                if (successCount > 0) {
+                    m.save(false, true);
+                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                        window.Gaigai.updateCurrentSnapshot();
+                    }
+                }
+
+                const msg = failedBatches.length > 0
+                    ? `⚠️ 完成，但有 ${failedBatches.length} 个批次失败。`
+                    : `✅ 全部完成！共处理 ${successCount} 个批次。`;
+
+                if (typeof toastr !== 'undefined') {
+                    const isWarning = failedBatches.length > 0;
+                    if (isWarning) toastr.warning(msg, '分批优化');
+                    else toastr.success(msg, '分批优化');
+                }
+
+                updateStatus('✅ 就绪', '#28a745');
+                setTimeout(() => updateStatus('', null), 3000);
+
+                if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
             }
-
-            // 所有批次完成，清除进度变量
-            delete window.Gaigai.optimizeBatchProgress;
-
-            console.log(`🎉 [分批优化] 全部 ${totalBatches} 批次处理完成`);
-            await window.Gaigai.customAlert(
-                `✅ 分批优化完成！\n\n共处理 ${totalBatches} 批次，优化了 ${targetIndices.length} 页内容。`,
-                '任务完成'
-            );
         }
 
         /**
