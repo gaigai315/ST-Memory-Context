@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.5
+// 记忆表格 v2.1.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.5 启动');
+    console.log('🚀 记忆表格 v2.1.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.5';
+    const V = 'v2.1.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -7397,10 +7397,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 只有当：提供商是"网页反代" (proxy_only) 且 模型名含"gemini"时，才走 Makersuite 修复路径
                 // ✨ 修复：排除本地地址 (127.0.0.1/localhost)。
                 // 如果用户用 gcli 等本地转接工具，应该走下面的通用 OpenAI/Custom 协议，那里有完善的安全注入。
+                // ✅ 核心修复：如果 URL 包含 /v1，说明是 OpenAI 兼容接口（如中转站/公益站），不要强制走 Makersuite 协议
                 let isProxyGemini = (provider === 'proxy_only') &&
                     model.toLowerCase().includes('gemini') &&
                     !apiUrl.includes('127.0.0.1') &&
-                    !apiUrl.includes('localhost');
+                    !apiUrl.includes('localhost') &&
+                    !apiUrl.toLowerCase().includes('/v1'); // ✅ 新增：避开标准中转站
 
                 if (isProxyGemini) {
                     // === 分支 1: 针对网页端 Gemini 反代 (MakerSuite 三级重试逻辑) ===
@@ -12912,9 +12914,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>优化：</strong>优化隐藏楼层功能，调用酒馆原生隐藏逻辑。</li>
-                        <li><strong>新增：</strong>新增以总结楼层的指针进度为基准，调用隐藏楼层的功能</li>
-                        <li><strong>新增：</strong>新增总结优化分批功能</li>
+                        <li><strong>修复：</strong>修复手动总结时的竞态条件bug，解决AI生成完内容但用户未确认保存时，后台自动检测重复触发总结的问题。</li>
+                        <li><strong>修复：</strong>修复手动保存总结后"总结后隐藏原楼层"功能不生效的问题，现在手动总结和自动总结行为完全一致。</li>
+                    </ul>
                 </div>
 
                 <!-- 📘 第二部分：功能指南 -->

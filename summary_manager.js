@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 2.1.5
+ * @version 2.1.6
  * @author Gaigai Team
  */
 
@@ -1495,18 +1495,35 @@
                 } else {
                     result = await window.Gaigai.tools.callTavernAPI(messages);
                 }
-            } finally {
-                window.isSummarizing = false;
+            } catch (e) {
+                window.isSummarizing = false; // ✅ API请求失败,解锁
+                console.error('❌ [总结请求失败]', e);
+
+                // 使用 customRetryAlert 提供"重试"和"放弃"选项
+                const customRetryAlert = window.Gaigai.customRetryAlert;
+                if (!customRetryAlert) {
+                    await window.Gaigai.customAlert(`API请求失败：${e.message}`, '⚠️ 请求错误');
+                    return { success: false, error: e.message };
+                }
+
+                const shouldRetry = await customRetryAlert(e.message, '⚠️ 请求错误');
+                if (shouldRetry) {
+                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
+                } else {
+                    return { success: false, error: e.message };
+                }
             }
 
             // 🛡️ [Safe Guard] Check if session changed during API call
             if (m.gid() !== initialSessionId) {
+                window.isSummarizing = false; // ✅ Session变化,解锁
                 console.warn(`🛑 [Safe Guard] Session changed during summary. Aborting.`);
                 return { success: false, error: 'session_changed' };
             }
 
             if (result.success) {
                 if (!result.summary || !result.summary.trim()) {
+                    window.isSummarizing = false; // ✅ AI返回空,解锁
                     if (!isSilent) await window.Gaigai.customAlert('AI返回空', '警告');
                     return { success: false, error: 'AI 返回空内容' };
                 }
@@ -1526,10 +1543,13 @@
 
                 if (!cleanSummary || cleanSummary.length < 10) {
                     if (!isSilent) {
+                        window.isSummarizing = false; // ✅ 弹窗前先解锁,避免阻塞
                         const shouldRetry = await window.Gaigai.customRetryAlert("总结内容过短或为空，AI 可能没看懂指令。", "⚠️ 内容无效");
                         if (shouldRetry) {
                             return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
                         }
+                    } else {
+                        window.isSummarizing = false; // ✅ 静默模式也要解锁
                     }
                     return { success: false, error: '总结内容过短或无效' };
                 }
@@ -1605,6 +1625,7 @@
                         if (typeof toastr !== 'undefined') {
                             if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
                         }
+                        window.isSummarizing = false; // ✅ 静默模式保存完成,解锁
                         return { success: true, summary: cleanSummary };
                     } else {
                         // 非表格模式(聊天总结),正常静默执行
@@ -1622,9 +1643,11 @@
                         if (typeof toastr !== 'undefined') {
                             if (!isBatch) toastr.success('自动总结已在后台完成并保存', '记忆表格', { timeOut: 1000, preventDuplicates: true });
                         }
+                        window.isSummarizing = false; // ✅ 静默模式保存完成,解锁
                         return { success: true, summary: cleanSummary };
                     }
                 } else if (isSilent && skipSave) {
+                    window.isSummarizing = false; // ✅ 静默且跳过保存,解锁
                     return { success: true, summary: cleanSummary };
                 }
 
@@ -1639,6 +1662,7 @@
 
                 // 🛑 【重要】如果是 Key 错误（401/Unauthorized），直接报错并停止，防止死循环
                 if (errorText.includes('Unauthorized') || errorText.includes('401')) {
+                    window.isSummarizing = false; // ✅ Key错误,解锁
                     await window.Gaigai.customAlert(
                         `🛑 API Key 错误或已失效！\n\n错误信息：${errorText}\n\n请前往配置页面检查您的 API Key 设置。`,
                         '⚠️ 认证失败'
@@ -1649,10 +1673,14 @@
                 // 其他错误：使用 customRetryAlert 提供"重试"和"放弃"选项
                 const customRetryAlert = window.Gaigai.customRetryAlert;
                 if (!customRetryAlert) {
+                    window.isSummarizing = false; // ✅ 错误,解锁
                     // 如果 customRetryAlert 不存在，降级为普通弹窗
                     await window.Gaigai.customAlert(`生成失败：${errorText}`, '⚠️ AI 生成失败');
                     return { success: false, error: errorText };
                 }
+
+                // ✅ 弹窗前先解锁,避免阻塞
+                window.isSummarizing = false;
 
                 // ✅ 使用 customRetryAlert 提供"重试"和"放弃"选项（传递原始错误）
                 const shouldRetry = await customRetryAlert(errorText, '⚠️ AI 生成失败');
@@ -1720,6 +1748,8 @@
 
                 const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' } }).on('click', () => {
                     $o.remove();
+                    window.isSummarizing = false; // ✅ 关闭弹窗，解锁
+                    console.log('🔓 [总结弹窗-X] 已释放 isSummarizing 锁');
                     resolve({ success: false });
                 });
                 $hd.append($x);
@@ -1732,8 +1762,15 @@
                 setTimeout(() => {
                     $('#gg_summary_editor').focus();
 
+                    // ✅ 统一的清理函数：关闭弹窗 + 释放锁
+                    const cleanup = (removePopup = true) => {
+                        if (removePopup) $o.remove();
+                        window.isSummarizing = false; // ✅ 用户操作完了，解锁！
+                        console.log('🔓 [总结弹窗] 已释放 isSummarizing 锁');
+                    };
+
                     $('#gg_cancel_summary').on('click', () => {
-                        $o.remove();
+                        cleanup();
                         resolve({ success: false });
                     });
 
@@ -1776,7 +1813,7 @@
 
                                 if (shouldRetry) {
                                     console.log('🔄 [用户重试] 关闭弹窗并重新调用总结...');
-                                    $o.remove();
+                                    cleanup(); // ✅ 释放锁后再重新调用
                                     resolve({ success: false });
                                     await self.callAIForSummary(
                                         regenParams.forceStart,
@@ -1845,6 +1882,9 @@
                                 API_CONFIG.lastSummaryIndex = newIndex;
                                 try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
                                 console.log(`✅ [进度更新] 总结进度已更新至: 原始索引 ${newIndex} (模式: ${isTableMode ? '表格' : '聊天'})`);
+
+                                // ✨✨✨ [修复] 手动保存后，立即触发隐藏逻辑
+                                await applyNativeHiding();
                             }
                         }
 
@@ -1859,7 +1899,7 @@
                         if (saveSessionId !== initialSessionId) {
                             console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 最终保存时: ${saveSessionId}`);
                             await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，数据未保存\n\n警告：总结可能已同步到世界书，请检查数据完整性！', '严重错误');
-                            $o.remove();
+                            cleanup();
                             resolve({ success: false });
                             return;
                         }
@@ -1871,7 +1911,7 @@
                             window.Gaigai.updateCurrentSnapshot();
                         }
 
-                        $o.remove();
+                        cleanup(); // ✅ 关闭弹窗并释放锁
 
                         if (!isTableMode) {
                             if (!isBatch) {
@@ -2041,7 +2081,7 @@
                     $o.on('keydown', async e => {
                         if (e.key === 'Escape') {
                             if (await window.Gaigai.customConfirm('确定取消？当前总结内容将丢失。', '确认')) {
-                                $o.remove();
+                                cleanup();
                                 resolve({ success: false });
                             }
                         }
