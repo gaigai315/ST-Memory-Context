@@ -7874,8 +7874,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 let directUrl = apiUrl;
 
                 // 根据 Provider 智能拼接 endpoint
-                if (provider === 'gemini') {
-                    // Gemini 需要特殊处理：确保有 :generateContent
+                // ✅ 核心修复：如果是 Gemini 且 URL 不包含 /v1，才走原生 Google 协议的 URL 拼接
+                // 如果 URL 包含 /v1，说明是兼容接口（中转站），应走 OpenAI 格式的 /chat/completions
+                if (provider === 'gemini' && !apiUrl.toLowerCase().includes('/v1')) {
+                    // Gemini 原生协议需要特殊处理：确保有 :generateContent
                     if (!directUrl.includes(':generateContent')) {
                         // 如果 URL 包含模型名，则在后面添加 :generateContent
                         if (directUrl.includes('/models/')) {
@@ -7886,7 +7888,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     }
                 } else {
-                    // DeepSeek / Compatible 使用 /chat/completions
+                    // DeepSeek / Compatible / Gemini中转站 使用 /chat/completions
                     if (!directUrl.endsWith('/chat/completions') && !directUrl.includes('/chat/completions')) {
                         directUrl += '/chat/completions';
                     }
@@ -7907,7 +7909,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 };
 
                 // Gemini 特殊格式处理
-                if (provider === 'gemini') {
+                // ✅ 核心修复：如果是 Gemini 且 URL 不包含 /v1，才走原生 Google 协议
+                // 如果 URL 包含 /v1，说明是兼容接口（中转站），应跳过此块，走下方的 OpenAI 默认逻辑
+                if (provider === 'gemini' && !apiUrl.toLowerCase().includes('/v1')) {
                     requestBody = {
                         contents: cleanMessages.map(m => ({
                             role: m.role === 'user' ? 'user' : 'model',
@@ -7983,7 +7987,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
 
                 // 🔧 [Gemini 官方直连修复] 如果是官方域名，将 API Key 添加到 URL 参数
-                if (provider === 'gemini' && authHeader === undefined) {
+                // ✅ 核心修复：只有在 Gemini 官方协议（不含 /v1）且无 Authorization 头时才添加 key 参数
+                if (provider === 'gemini' && !apiUrl.toLowerCase().includes('/v1') && authHeader === undefined) {
                     // 检查 URL 中是否已经包含 API Key 参数
                     if (!directUrl.includes('key=') && !directUrl.includes('goog_api_key=')) {
                         // 智能拼接：判断 URL 是否已有其他参数
