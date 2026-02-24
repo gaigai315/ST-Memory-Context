@@ -2535,6 +2535,10 @@
             const m = window.Gaigai.m;
             const summaryTable = m.s[m.s.length - 1];
 
+            // 🔒 锁定用户提示词，防止在批次间丢失
+            const fixedUserPrompt = userPrompt ? String(userPrompt).trim() : "";
+            console.log(`🔒 [分批优化] 已锁定用户提示词，长度: ${fixedUserPrompt.length}`);
+
             // 将 targetIndices 按步长切分为多个 batch
             const batches = [];
             for (let i = 0; i < targetIndices.length; i += batchStep) {
@@ -2619,7 +2623,8 @@
                     while (retryCount <= 1) {
                         try {
                             // 调用单次优化逻辑处理当前批次
-                            await this._optimizeSummarySingle(currentBatch, userPrompt, initialSessionId);
+                            if (fixedUserPrompt) console.log(`📝 [批次 ${batchNum}] 正在应用用户自定义指令...`);
+                            await this._optimizeSummarySingle(currentBatch, fixedUserPrompt, initialSessionId);
 
                             // 🛑 检查点 3：API返回后立即检查
                             if (window.Gaigai.stopOptimizationBatch) {
