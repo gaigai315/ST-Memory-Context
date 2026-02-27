@@ -4,7 +4,7 @@
  * 功能：将历史对话内容通过AI分析，自动生成记忆表格填充指令
  * 支持：单表追溯、自定义建议、批量执行
  *
- * @version 2.1.1
+ * @version 2.1.7
  * @author Gaigai Team
  */
 
@@ -1098,6 +1098,8 @@ ${lastError.message}
 
                 // ✅ [防递归爆炸]
                 if (retryCount >= 3) {
+                    // ✅ 核心修复：返回前释放锁
+                    window.isSummarizing = false;
                     if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查网络或 API 配置', '重试失败');
                     return { success: false, reason: 'max_retry_reached' };
                 }
@@ -1108,19 +1110,23 @@ ${lastError.message}
                 const shouldRetry = await window.Gaigai.customRetryAlert(errorText, '⚠️ AI 生成失败');
 
                 if (shouldRetry) {
+                    // ✅ 核心修复：递归调用前释放锁（递归会重新获取锁）
+                    window.isSummarizing = false;
                     // 用户点击"重试"，递归调用
                     return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite, forceSilent, skipLoad);
                 } else {
+                    // ✅ 核心修复：返回前释放锁
+                    window.isSummarizing = false;
                     // 用户点击"取消"，停止任务
                     return { success: false, reason: 'user_cancelled' };
                 }
-            } finally {
-                window.isSummarizing = false;
             }
 
             // 🛡️ [Safe Guard] Check if session changed during API call
             if (window.Gaigai.m.gid() !== initialSessionId) {
                 console.warn(`🛑 [Safe Guard] Session changed during backfill (Old: ${initialSessionId}, New: ${window.Gaigai.m.gid()}). Aborting save.`);
+                // ✅ 核心修复：会话变更，返回前释放锁
+                window.isSummarizing = false;
                 return { success: false, reason: 'session_changed' };
             }
 
@@ -1251,6 +1257,8 @@ ${lastError.message}
                                 if (activeTab !== undefined) refreshTable(activeTab);
                                 m.s.forEach((_, i) => updateTabCount(i));
                             }
+                            // ✅ 核心修复：静默模式执行完成，返回前释放锁
+                            window.isSummarizing = false;
                             return { success: true };
                         } else {
                             // 解析失败分支
@@ -1267,6 +1275,8 @@ ${lastError.message}
                                 );
 
                                 if (!keepGoing) {
+                                    // ✅ 核心修复：用户停止批量任务，返回前释放锁
+                                    window.isSummarizing = false;
                                     return { success: false, reason: 'user_stopped_batch_error' };
                                 }
                             } else {
@@ -1275,29 +1285,43 @@ ${lastError.message}
 
                             // 打开编辑/重试窗口
                             const regenParams = { start, end, isManual, targetIndex, customNote, isOverwrite };
+                            // ⚠️ 重要：进入弹窗前不释放锁，让弹窗在锁保护下运行
                             const userAction = await this.showBackfillEditPopup(finalOutput, end, regenParams);
 
+                            // 弹窗已关闭，锁应该已经在弹窗内部释放了
                             if (!userAction.success) return { success: false, reason: 'fallback_to_manual_cancelled' };
                             return { success: true };
                         }
                     } else {
                         const regenParams = { start, end, isManual, targetIndex, customNote, isOverwrite };
+                        // ⚠️ 重要：进入弹窗前不释放锁，让弹窗在锁保护下运行
                         const userAction = await this.showBackfillEditPopup(finalOutput, end, regenParams);
+                        // 弹窗已关闭，锁应该已经在弹窗内部释放了
                         return userAction;
                     }
                 }
+                // ✅ 核心修复：没有输出，返回前释放锁
+                window.isSummarizing = false;
                 return { success: false, reason: 'no_output' };
             } else if (result) {
                 // ✅ [防递归爆炸] 限制最大重试次数为 3 次
                 if (retryCount >= 3) {
                     console.warn(`⚠️ [重试限制] 已达到最大重试次数 (3 次)，停止重试`);
+                    // ✅ 核心修复：返回前释放锁
+                    window.isSummarizing = false;
                     if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查 API 配置或提示词', '重试失败');
                     return { success: false, reason: 'max_retry_reached' };
                 }
 
                 // ✅ 使用 customRetryAlert 让用户选择重试或放弃（传递原始错误）
                 const shouldRetry = await window.Gaigai.customRetryAlert(result.error || 'Unknown error', '⚠️ AI 生成失败');
-                if (shouldRetry) return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite, forceSilent, skipLoad);
+                if (shouldRetry) {
+                    // ✅ 核心修复：递归调用前释放锁（递归会重新获取锁）
+                    window.isSummarizing = false;
+                    return this.handleChatBackfill(start, end, isManual, targetIndex, customNote, retryCount + 1, isOverwrite, forceSilent, skipLoad);
+                }
+                // ✅ 核心修复：返回前释放锁
+                window.isSummarizing = false;
                 return { success: false, reason: 'api_failed' };
             }
         }
@@ -1450,6 +1474,8 @@ ${lastError.message}
 
                 // ✅ [防递归爆炸]
                 if (retryCount >= 3) {
+                    // ✅ 核心修复：返回前释放锁
+                    window.isSummarizing = false;
                     if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查网络或 API 配置', '重试失败');
                     return { success: false, reason: 'max_retry_reached' };
                 }
@@ -1460,19 +1486,23 @@ ${lastError.message}
                 const shouldRetry = await window.Gaigai.customRetryAlert(errorText, '⚠️ AI 生成失败');
 
                 if (shouldRetry) {
+                    // ✅ 核心修复：递归调用前释放锁（递归会重新获取锁）
+                    window.isSummarizing = false;
                     // 用户点击"重试"，递归调用
                     return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1, forceSilent);
                 } else {
+                    // ✅ 核心修复：返回前释放锁
+                    window.isSummarizing = false;
                     // 用户点击"取消"，停止任务
                     return { success: false, reason: 'user_cancelled' };
                 }
-            } finally {
-                window.isSummarizing = false;
             }
 
             // 🛡️ [Safe Guard] Check if session changed during API call
             if (window.Gaigai.m.gid() !== initialSessionId) {
                 console.warn(`🛑 [Safe Guard] Session changed during table optimization (Old: ${initialSessionId}, New: ${window.Gaigai.m.gid()}). Aborting save.`);
+                // ✅ 核心修复：会话变更，返回前释放锁
+                window.isSummarizing = false;
                 return { success: false, reason: 'session_changed' };
             }
 
@@ -1480,6 +1510,8 @@ ${lastError.message}
                 // 🛑 [优化] 在解析和保存数据之前检查停止标志
                 if (window.Gaigai.stopBatchBackfill) {
                     console.warn(`🛑 [批量任务] 检测到停止标志，跳过数据保存`);
+                    // ✅ 核心修复：停止标志，返回前释放锁
+                    window.isSummarizing = false;
                     return { success: false, reason: 'user_cancelled' };
                 }
 
@@ -1531,6 +1563,8 @@ ${lastError.message}
                 }
 
                 if (!finalOutput) {
+                    // ✅ 核心修复：AI返回空内容，返回前释放锁
+                    window.isSummarizing = false;
                     await window.Gaigai.customAlert('⚠️ AI 返回的内容为空！', '解析失败');
                     return { success: false, reason: 'empty_output' };
                 }
@@ -1567,6 +1601,8 @@ ${lastError.message}
                 const cs = window.Gaigai.tools.prs(innerText);
 
                 if (cs.length === 0) {
+                    // ✅ 核心修复：未识别到有效指令，返回前释放锁
+                    window.isSummarizing = false;
                     await window.Gaigai.customAlert('⚠️ 未识别到有效的表格指令！', '解析失败');
                     return { success: false, reason: 'no_commands' };
                 }
@@ -1587,6 +1623,8 @@ ${lastError.message}
                 }
 
                 if (hasInvalidIndex) {
+                    // ✅ 核心修复：表索引不匹配，返回前释放锁
+                    window.isSummarizing = false;
                     await window.Gaigai.customAlert(`🛑 安全拦截：检测到表索引不匹配，已取消操作\n\n请确保 AI 输出的所有指令都使用表索引 ${targetIndex}`, '错误');
                     return { success: false, reason: 'invalid_table_index' };
                 }
@@ -1605,11 +1643,15 @@ ${lastError.message}
                 if (isSilentMode) {
                     // 静默模式：直接执行
                     await this._applyTableOptimization(targetIndex, cs, m);
+                    // ✅ 核心修复：静默模式执行完成，返回前释放锁
+                    window.isSummarizing = false;
                     return { success: true };
                 } else {
                     // 非静默模式：弹窗确认
                     const regenParams = { startRow, endRow, isManual, targetIndex, customNote };
+                    // ⚠️ 重要：进入弹窗前不释放锁，让弹窗在锁保护下运行
                     const userAction = await this._showTableOptimizationConfirm(finalOutput, targetIndex, cs, regenParams, m);
+                    // 弹窗已关闭，锁应该已经在弹窗内部释放了
                     return userAction;
                 }
 
@@ -1617,13 +1659,21 @@ ${lastError.message}
                 // ✅ [防递归爆炸] 限制最大重试次数为 3 次
                 if (retryCount >= 3) {
                     console.warn(`⚠️ [重试限制] 已达到最大重试次数 (3 次)，停止重试`);
+                    // ✅ 核心修复：返回前释放锁
+                    window.isSummarizing = false;
                     if (typeof toastr !== 'undefined') toastr.error('已达到最大重试次数，请检查 API 配置或提示词', '重试失败');
                     return { success: false, reason: 'max_retry_reached' };
                 }
 
                 // ✅ 使用 customRetryAlert 让用户选择重试或放弃（传递原始错误）
                 const shouldRetry = await window.Gaigai.customRetryAlert(result.error || 'Unknown error', '⚠️ AI 生成失败');
-                if (shouldRetry) return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1, forceSilent);
+                if (shouldRetry) {
+                    // ✅ 核心修复：递归调用前释放锁（递归会重新获取锁）
+                    window.isSummarizing = false;
+                    return this.handleTableOptimization(startRow, endRow, isManual, targetIndex, customNote, retryCount + 1, forceSilent);
+                }
+                // ✅ 核心修复：返回前释放锁
+                window.isSummarizing = false;
                 return { success: false, reason: 'api_failed' };
             }
         }
@@ -1738,6 +1788,8 @@ ${lastError.message}
 
                 const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' } }).on('click', () => {
                     $o.remove();
+                    // ✅ 核心修复：弹窗关闭前释放锁
+                    window.isSummarizing = false;
                     resolve({ success: false });
                 });
                 $hd.append($x);
@@ -1751,6 +1803,8 @@ ${lastError.message}
                     // 🚫 放弃按钮
                     $('#gg_opt_popup_cancel').on('click', () => {
                         $o.remove();
+                        // ✅ 核心修复：弹窗关闭前释放锁
+                        window.isSummarizing = false;
                         resolve({ success: false });
                     });
 
@@ -1837,6 +1891,8 @@ ${lastError.message}
                         // 关闭弹窗
                         $o.remove();
 
+                        // ✅ 核心修复：确认按钮成功执行完成，返回前释放锁
+                        window.isSummarizing = false;
                         resolve({ success: true });
                     });
                 }, 100);
@@ -1895,6 +1951,8 @@ ${lastError.message}
                 // ❌ 关闭按钮：视为放弃
                 const $x = $('<button>', { class: 'g-x', text: '×', css: { background: 'none', border: 'none', color: UI.tc, cursor: 'pointer', fontSize: '22px' } }).on('click', () => {
                     $o.remove();
+                    // ✅ 核心修复：弹窗关闭前释放锁
+                    window.isSummarizing = false;
                     resolve({ success: false }); // 返回失败
                 });
                 $hd.append($x);
@@ -1908,6 +1966,8 @@ ${lastError.message}
                     // 🚫 放弃按钮
                     $('#gg_bf_popup-cancel').on('click', () => {
                         $o.remove();
+                        // ✅ 核心修复：弹窗关闭前释放锁
+                        window.isSummarizing = false;
                         resolve({ success: false }); // 返回失败
                     });
 
@@ -2112,6 +2172,8 @@ ${lastError.message}
                             console.error(`🛑 [安全拦截] 会话ID不一致！弹窗打开: ${initialSessionId}, 保存时: ${saveSessionId}`);
                             await window.Gaigai.customAlert('🛑 安全拦截：检测到会话切换，数据未保存\n\n警告：已执行的指令无法回滚，请检查数据完整性！', '严重错误');
                             $o.remove();
+                            // ✅ 核心修复：会话切换错误，返回前释放锁
+                            window.isSummarizing = false;
                             resolve({ success: false });
                             return;
                         }
@@ -2142,6 +2204,8 @@ ${lastError.message}
                         // 刷新UI
                         if (window.Gaigai.shw) window.Gaigai.shw();
 
+                        // ✅ 核心修复：确认按钮成功执行完成，返回前释放锁
+                        window.isSummarizing = false;
                         // ✨ 告诉外部：成功了
                         resolve({ success: true });
                     });

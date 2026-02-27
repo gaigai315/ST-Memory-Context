@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.1.6
+// 记忆表格 v2.1.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.1.6 启动');
+    console.log('🚀 记忆表格 v2.1.7 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.1.6';
+    const V = 'v2.1.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -98,7 +98,8 @@
         maxTokens: 65536,
         summarySource: 'table',    // ✅ 默认为表格总结（最佳实践）
         lastSummaryIndex: 0,
-        lastBackfillIndex: 0
+        lastBackfillIndex: 0,
+        useStream: true            // ✅ 流式传输开关（默认开启）
     };
 
     // ========================================================================
@@ -7315,7 +7316,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         temperature: temperature,
                         max_tokens: maxTokens,
                         maxOutputTokens: maxTokens, // ✅ Gemini严格要求的参数名
-                        stream: true, // ✅ 启用流式响应（Claude等提供商要求）
+                        stream: API_CONFIG.useStream !== false, // ✅ 根据配置决定是否启用流式传输
                         // 🛡️ 强力注入安全设置，防止空回
                         safety_settings: [
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -7361,33 +7362,45 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         credentials: 'include'
                     });
 
-                    // ✅ [强制流式] 无论 content-type 如何，都使用流式读取（零延迟）
-                    if (proxyResponse.ok && proxyResponse.body) {
-                        console.log('🌊 [Gemini官方] 开始流式读取（强制模式）...');
+                    // ✅ [流式/非流式自适应] Gemini 官方响应处理
+                    if (proxyResponse.ok) {
+                        if (proxyPayload.stream && proxyResponse.body) {
+                            console.log('🌊 [Gemini官方] 开始流式读取（强制模式）...');
 
-                        const { fullText, fullReasoning, isTruncated } = await readUniversalStream(
-                            proxyResponse.body,
-                            '[Gemini官方]'
-                        );
+                            const { fullText, fullReasoning, isTruncated } = await readUniversalStream(
+                                proxyResponse.body,
+                                '[Gemini官方]'
+                            );
 
-                        // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
-                        if (isTruncated && fullText && fullText.length > 0) {
-                            console.warn('⚠️ [Gemini官方] Token截断但有内容，返回部分响应');
-                            return { success: true, summary: fullText };
+                            // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
+                            if (isTruncated && fullText && fullText.length > 0) {
+                                console.warn('⚠️ [Gemini官方] Token截断但有内容，返回部分响应');
+                                return { success: true, summary: fullText };
+                            }
+
+                            // 如果有正常内容或思考内容，返回
+                            if (fullText && fullText.trim()) {
+                                console.log('✅ [Gemini官方] 成功');
+                                return { success: true, summary: fullText };
+                            }
+                            if (fullReasoning && fullReasoning.trim()) {
+                                console.warn('⚠️ [Gemini官方] 正文为空，返回思考内容');
+                                return { success: true, summary: fullReasoning };
+                            }
+
+                            // 真的完全没内容，抛出简洁错误
+                            throw new Error('API返回空内容');
+                        } else {
+                            // 非流式模式：直接解析 JSON
+                            console.log('📄 [Gemini官方] 使用非流式模式，解析 JSON...');
+                            const text = await proxyResponse.text();
+                            try {
+                                const data = JSON.parse(text);
+                                return parseApiResponse(data);
+                            } catch (e) {
+                                throw new Error(`Gemini非流式解析失败: ${e.message}`);
+                            }
                         }
-
-                        // 如果有正常内容或思考内容，返回
-                        if (fullText && fullText.trim()) {
-                            console.log('✅ [Gemini官方] 成功');
-                            return { success: true, summary: fullText };
-                        }
-                        if (fullReasoning && fullReasoning.trim()) {
-                            console.warn('⚠️ [Gemini官方] 正文为空，返回思考内容');
-                            return { success: true, summary: fullReasoning };
-                        }
-
-                        // 真的完全没内容，抛出简洁错误
-                        throw new Error('API返回空内容');
                     }
 
                     const errText = await proxyResponse.text();
@@ -7545,11 +7558,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         let cleanUrl = apiUrl.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '');
                         console.log(`📡 [尝试 1] MakerSuite 协议 + 纯净 URL: ${cleanUrl}`);
 
+                        const wantsStream = API_CONFIG.useStream !== false;
                         try {
-                            return await tryMakersuiteRequest(cleanUrl, true);
-                        } catch (streamError) {
-                            console.warn('⚠️ [尝试 1-流式] 失败，尝试非流式...', streamError.message);
-                            return await tryMakersuiteRequest(cleanUrl, false);
+                            console.log(`🚀 [自动降级] 第 1 次尝试：${wantsStream ? '流式' : '非流式'}请求`);
+                            return await tryMakersuiteRequest(cleanUrl, wantsStream);
+                        } catch (e1) {
+                            if (wantsStream) {
+                                console.warn('⚠️ [尝试 1-流式] 失败，降级尝试非流式...', e1.message);
+                                return await tryMakersuiteRequest(cleanUrl, false);
+                            } else {
+                                throw e1;
+                            }
                         }
 
                     } catch (e1) {
@@ -7560,11 +7579,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             let v1Url = apiUrl.replace(/\/v1\/?$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '') + '/v1';
                             console.log(`📡 [尝试 2] MakerSuite 协议 + V1 URL: ${v1Url}`);
 
+                            const wantsStream = API_CONFIG.useStream !== false;
                             try {
-                                return await tryMakersuiteRequest(v1Url, true);
-                            } catch (streamError) {
-                                console.warn('⚠️ [尝试 2-流式] 失败，尝试非流式...', streamError.message);
-                                return await tryMakersuiteRequest(v1Url, false);
+                                console.log(`🚀 [自动降级] 第 2 次尝试：${wantsStream ? '流式' : '非流式'}请求`);
+                                return await tryMakersuiteRequest(v1Url, wantsStream);
+                            } catch (e2) {
+                                if (wantsStream) {
+                                    console.warn('⚠️ [尝试 2-流式] 失败，降级尝试非流式...', e2.message);
+                                    return await tryMakersuiteRequest(v1Url, false);
+                                } else {
+                                    throw e2;
+                                }
                             }
 
                         } catch (e2) {
@@ -7622,7 +7647,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         messages: cleanMessages,
                         temperature: temperature,
                         max_tokens: maxTokens,
-                        stream: true, // ✅ 启用流式响应（Claude等提供商要求）
+                        stream: API_CONFIG.useStream !== false, // ✅ 根据配置决定是否启用流式传输
 
                         // 兼容性参数
                         mode: 'chat',
@@ -7673,33 +7698,34 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         credentials: 'include'
                     });
 
-                    // ✅ [强制流式] 无论 content-type 如何，都使用流式读取（零延迟）
-                    if (proxyResponse.ok && proxyResponse.body) {
-                        console.log('🌊 [后端代理] 开始流式读取（强制模式）...');
+                    // ✅ [流式/非流式自适应] 根据配置决定处理方式
+                    if (proxyResponse.ok) {
+                        if (proxyPayload.stream && proxyResponse.body) {
+                            console.log('🌊 [后端代理] 开始流式读取（强制模式）...');
 
-                        const { fullText: rawText, fullReasoning, isTruncated } = await readUniversalStream(
-                            proxyResponse.body,
-                            '[后端代理]'
-                        );
+                            const { fullText: rawText, fullReasoning, isTruncated } = await readUniversalStream(
+                                proxyResponse.body,
+                                '[后端代理]'
+                            );
 
-                        let fullText = rawText;
+                            let fullText = rawText;
 
-                        // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
-                        if (isTruncated && fullText && fullText.length > 0) {
-                            console.warn('⚠️ [后端代理] Token截断但有内容，返回部分响应');
-                            fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
-                            return { success: true, summary: fullText };
-                        }
+                            // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
+                            if (isTruncated && fullText && fullText.length > 0) {
+                                console.warn('⚠️ [后端代理] Token截断但有内容，返回部分响应');
+                                fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                                return { success: true, summary: fullText };
+                            }
 
-                        // 清洗 <think> 标签
-                        if (fullText) {
-                            const beforeClean = fullText;
-                            let cleaned = fullText
-                                .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                                .replace(/^[\s\S]*?<\/think>/i, '')
-                                .trim();
+                            // 清洗 <think> 标签
+                            if (fullText) {
+                                const beforeClean = fullText;
+                                let cleaned = fullText
+                                    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+                                    .replace(/^[\s\S]*?<\/think>/i, '')
+                                    .trim();
 
-                            cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+                                cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
 
                             if (!cleaned && beforeClean.trim().length > 0) {
                                 console.warn('⚠️ [后端代理清洗] 清洗后内容为空，触发回退保护');
@@ -7724,6 +7750,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         // 真的完全没内容，抛出简洁错误
                         throw new Error('API返回空内容');
+                        } else {
+                            // 非流式模式：直接解析 JSON
+                            console.log('📄 [后端代理] 使用非流式模式，解析 JSON...');
+                            const text = await proxyResponse.text();
+                            try {
+                                const data = JSON.parse(text);
+                                return parseApiResponse(data);
+                            } catch (e) {
+                                throw new Error(`非流式解析失败: ${e.message}`);
+                            }
+                        }
                     }
 
                     // 2. 处理错误
@@ -7771,7 +7808,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             messages: cleanMessages,
                             temperature: temperature,
                             max_tokens: maxTokens,
-                            stream: true
+                            stream: API_CONFIG.useStream !== false
                         };
 
                         console.log(`🌐 [后端代理-降级] 目标: ${v1Url} | 模式: openai | 模型: ${model}`);
@@ -7787,56 +7824,68 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             credentials: 'include'
                         });
 
-                        // 4. 处理流式响应
-                        if (retryResponse.ok && retryResponse.body) {
-                            console.log('🌊 [后端代理-降级OpenAI] 重试成功，开始流式读取...');
+                        // 4. 处理流式/非流式响应
+                        if (retryResponse.ok) {
+                            if (retryPayload.stream && retryResponse.body) {
+                                console.log('🌊 [后端代理-降级OpenAI] 重试成功，开始流式读取...');
 
-                            const { fullText: rawText, fullReasoning, isTruncated } = await readUniversalStream(
-                                retryResponse.body,
-                                '[降级重试]'
-                            );
+                                const { fullText: rawText, fullReasoning, isTruncated } = await readUniversalStream(
+                                    retryResponse.body,
+                                    '[降级重试]'
+                                );
 
-                            let fullText = rawText;
+                                let fullText = rawText;
 
-                            // ✅ 优先返回：如果截断且有内容，直接返回
-                            if (isTruncated && fullText && fullText.length > 0) {
-                                console.warn('⚠️ [降级重试] Token截断但有内容，返回部分响应');
-                                fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
-                                return { success: true, summary: fullText };
-                            }
+                                // ✅ 优先返回：如果截断且有内容，直接返回
+                                if (isTruncated && fullText && fullText.length > 0) {
+                                    console.warn('⚠️ [降级重试] Token截断但有内容，返回部分响应');
+                                    fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                                    return { success: true, summary: fullText };
+                                }
 
-                            // 清洗 <think> 标签
-                            if (fullText) {
-                                const beforeClean = fullText;
-                                let cleaned = fullText
-                                    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                                    .replace(/^[\s\S]*?<\/think>/i, '')
-                                    .trim();
+                                // 清洗 <think> 标签
+                                if (fullText) {
+                                    const beforeClean = fullText;
+                                    let cleaned = fullText
+                                        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+                                        .replace(/^[\s\S]*?<\/think>/i, '')
+                                        .trim();
 
-                                cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
+                                    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
 
-                                if (!cleaned && beforeClean.trim().length > 0) {
-                                    console.warn('⚠️ [降级重试清洗] 清洗后内容为空，触发回退保护');
-                                    fullText = beforeClean;
-                                } else {
-                                    fullText = cleaned;
-                                    if (beforeClean.length !== cleaned.length) {
-                                        console.log(`🧹 [降级重试清洗] 已移除 <think> 标签`);
+                                    if (!cleaned && beforeClean.trim().length > 0) {
+                                        console.warn('⚠️ [降级重试清洗] 清洗后内容为空，触发回退保护');
+                                        fullText = beforeClean;
+                                    } else {
+                                        fullText = cleaned;
+                                        if (beforeClean.length !== cleaned.length) {
+                                            console.log(`🧹 [降级重试清洗] 已移除 <think> 标签`);
+                                        }
                                     }
                                 }
-                            }
 
-                            // 如果有正常内容或思考内容，返回
-                            if (fullText && fullText.trim()) {
-                                console.log('✅ [后端代理-降级OpenAI] 成功');
-                                return { success: true, summary: fullText };
-                            }
-                            if (fullReasoning && fullReasoning.trim()) {
-                                console.warn('⚠️ [降级重试] 正文为空，返回思考内容');
-                                return { success: true, summary: fullReasoning };
-                            }
+                                // 如果有正常内容或思考内容，返回
+                                if (fullText && fullText.trim()) {
+                                    console.log('✅ [后端代理-降级OpenAI] 成功');
+                                    return { success: true, summary: fullText };
+                                }
+                                if (fullReasoning && fullReasoning.trim()) {
+                                    console.warn('⚠️ [降级重试] 正文为空，返回思考内容');
+                                    return { success: true, summary: fullReasoning };
+                                }
 
-                            throw new Error('API返回空内容');
+                                throw new Error('API返回空内容');
+                            } else {
+                                // 非流式模式：直接解析 JSON
+                                console.log('📄 [后端代理-降级] 使用非流式模式，解析 JSON...');
+                                const text = await retryResponse.text();
+                                try {
+                                    const data = JSON.parse(text);
+                                    return parseApiResponse(data);
+                                } catch (e) {
+                                    throw new Error(`降级非流式解析失败: ${e.message}`);
+                                }
+                            }
                         }
 
                         // 处理降级重试的错误响应
@@ -8261,43 +8310,50 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             } // attemptDirectRequest 函数结束
 
             // ♻️♻️♻️ [自动降级核心逻辑] ♻️♻️♻️
+            const wantsStream = API_CONFIG.useStream !== false;
             try {
-                // 第一次尝试：流式请求
-                console.log('🚀 [自动降级] 第 1 次尝试：流式请求');
-                return await attemptDirectRequest(true);
+                // 第一次尝试：根据配置决定流式或非流式
+                console.log(`🚀 [自动降级] 第 1 次尝试：${wantsStream ? '流式' : '非流式'}请求`);
+                return await attemptDirectRequest(wantsStream);
             } catch (firstError) {
-                console.error('❌ [自动降级] 流式请求失败:', firstError.message);
+                if (wantsStream) {
+                    console.error('❌ [自动降级] 流式请求失败:', firstError.message);
 
-                // 判断是否应该降级重试
-                const shouldRetry =
-                    firstError.message.includes('Stream response content is empty') ||
-                    firstError.message.includes('JSON parsing failed') ||
-                    firstError.message.includes('流式读取失败') ||
-                    firstError.message.includes('流式解析失败');
+                    // 判断是否应该降级重试
+                    const shouldRetry =
+                        firstError.message.includes('Stream response content is empty') ||
+                        firstError.message.includes('JSON parsing failed') ||
+                        firstError.message.includes('流式读取失败') ||
+                        firstError.message.includes('流式解析失败');
 
-                if (shouldRetry) {
-                    console.warn('⚠️ [自动降级] 检测到流式请求问题，正在自动降级为非流式 (Non-Stream) 重试...');
+                    if (shouldRetry) {
+                        console.warn('⚠️ [自动降级] 检测到流式请求问题，正在自动降级为非流式 (Non-Stream) 重试...');
 
-                    try {
-                        // 第二次尝试：非流式请求
-                        console.log('🔄 [自动降级] 第 2 次尝试：非流式请求');
-                        return await attemptDirectRequest(false);
-                    } catch (secondError) {
-                        console.error('❌ [自动降级] 非流式请求也失败:', secondError.message);
+                        try {
+                            // 第二次尝试：非流式请求
+                            console.log('🔄 [自动降级] 第 2 次尝试：非流式请求');
+                            return await attemptDirectRequest(false);
+                        } catch (secondError) {
+                            console.error('❌ [自动降级] 非流式请求也失败:', secondError.message);
 
-                        // 两次都失败，返回最后一次的错误
+                            // 两次都失败，返回最后一次的错误
+                            return {
+                                success: false,
+                                error: `流式和非流式请求均失败\n\n第1次(流式): ${firstError.message}\n\n第2次(非流式): ${secondError.message}`
+                            };
+                        }
+                    } else {
+                        // 不是流式问题，直接返回错误
+                        console.error('❌ [浏览器直连] 失败（非流式问题，不重试）:', firstError.message);
                         return {
                             success: false,
-                            error: `流式和非流式请求均失败\n\n第1次(流式): ${firstError.message}\n\n第2次(非流式): ${secondError.message}`
+                            error: firstError.message
                         };
                     }
                 } else {
-                    // 不是流式问题，直接返回错误
-                    console.error('❌ [浏览器直连] 失败（非流式问题，不重试）:', firstError.message);
-                    return {
-                        success: false,
-                        error: firstError.message
-                    };
+                    // 非流式请求失败，直接返回错误
+                    console.error('❌ [直连请求] 非流式请求失败:', firstError.message);
+                    return { success: false, error: firstError.message };
                 }
             }
         }
@@ -8917,6 +8973,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <label>最大输出长度 (Max Tokens)：</label>
             <input type="number" id="gg_api_max_tokens" value="${API_CONFIG.maxTokens || 8192}" placeholder="DeepSeek填8192，Gemini填65536" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; font-size:10px; margin-bottom:10px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 
+            <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px; cursor:pointer;">
+                <input type="checkbox" id="gg_api_use_stream" ${API_CONFIG.useStream !== false ? 'checked' : ''} style="transform: scale(1.1);">
+                <span>🌊 启用流式传输 (Stream)</span>
+                <span style="font-size:10px; opacity:0.7; font-weight:normal;">如果经常遇到输出截断，可取消勾选</span>
+            </label>
+
         </fieldset>
 
         <div style="display:flex; gap:10px;">
@@ -9349,6 +9411,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 API_CONFIG.apiKey = ($('#gg_api_key').val() || '');
                 API_CONFIG.model = ($('#gg_api_model').val() || '');
                 API_CONFIG.maxTokens = parseInt($('#gg_api_max_tokens').val()) || 8192;
+                API_CONFIG.useStream = $('#gg_api_use_stream').is(':checked');
                 API_CONFIG.temperature = 0.1;
                 API_CONFIG.enableAI = true;
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
@@ -9376,6 +9439,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     let currentKey = ($('#gg_api_key').val() || '').trim();
                     const currentModel = ($('#gg_api_model').val() || '').trim();
                     const currentMaxTokens = parseInt($('#gg_api_max_tokens').val()) || 8192;
+                    const currentUseStream = $('#gg_api_use_stream').is(':checked');
                     const currentProvider = $('#gg_api_provider').val();
                     const currentMode = $('input[name="gg_api_mode"]:checked').val() === 'independent';
 
@@ -9405,6 +9469,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         apiKey: API_CONFIG.apiKey,
                         model: API_CONFIG.model,
                         maxTokens: API_CONFIG.maxTokens,
+                        useStream: API_CONFIG.useStream,
                         provider: API_CONFIG.provider,
                         useIndependentAPI: API_CONFIG.useIndependentAPI
                     };
@@ -9426,6 +9491,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         API_CONFIG.apiKey = currentKey;
                         API_CONFIG.model = currentModel;
                         API_CONFIG.maxTokens = currentMaxTokens;
+                        API_CONFIG.useStream = currentUseStream;
                         API_CONFIG.provider = currentProvider;
                         API_CONFIG.useIndependentAPI = currentMode;
 
@@ -9465,6 +9531,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         API_CONFIG.apiKey = backup.apiKey;
                         API_CONFIG.model = backup.model;
                         API_CONFIG.maxTokens = backup.maxTokens;
+                        API_CONFIG.useStream = backup.useStream;
                         API_CONFIG.provider = backup.provider;
                         API_CONFIG.useIndependentAPI = backup.useIndependentAPI;
 
@@ -12416,10 +12483,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     }
 
                     if (targetBaseKey) {
-                        // ✅ 强制回滚 (Force=true)，无视智能保护
-                        // Swipe 意味着用户明确想要撤销，所以必须强制执行
-                        restoreSnapshot(targetBaseKey, true);
-                        console.log(`↺ [Swipe] 成功强制回档至基准线: 快照 [${targetBaseKey}]`);
+                        // ✅ 核心修复：只有在开启实时填表且非批量填表时，才允许 Swipe 回档
+                        if (C.enabled && !C.autoBackfill) {
+                            restoreSnapshot(targetBaseKey, true);
+                            console.log(`↺ [Swipe] 成功强制回档至基准线: 快照[${targetBaseKey}]`);
+                        } else {
+                            console.log(`⏭️ [Swipe] 当前为批量/非实时模式，跳过快照回档以保护表格数据。`);
+                        }
                     } else {
                         console.warn(`⚠️ [Swipe] 警告: 找不到上一楼的快照，无法回滚。`);
                     }
@@ -12485,10 +12555,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 4. 立即执行回滚
                     if (targetBaseKey) {
-                        // Force = true (无视智能保护)
-                        const success = restoreSnapshot(targetBaseKey, true);
-                        if (success) {
-                            console.log(`↺ [DOM Swipe] 已强制回滚至快照 [${targetBaseKey}]`);
+                        // ✅ 核心修复：同样增加模式判断
+                        if (C.enabled && !C.autoBackfill) {
+                            const success = restoreSnapshot(targetBaseKey, true);
+                            if (success) {
+                                console.log(`↺ [DOM Swipe] 已强制回滚至快照 [${targetBaseKey}]`);
+                            }
+                        } else {
+                            console.log(`⏭️[DOM Swipe] 当前为批量/非实时模式，跳过快照回档。`);
                         }
                     } else {
                          console.warn(`⚠️ [DOM Swipe] 找不到上一楼 [${prevKey}] 的快照，无法回滚`);
@@ -12859,8 +12933,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>修复：</strong>修复手动总结时的竞态条件bug，解决AI生成完内容但用户未确认保存时，后台自动检测重复触发总结的问题。</li>
-                        <li><strong>修复：</strong>修复手动保存总结后"总结后隐藏原楼层"功能不生效的问题，现在手动总结和自动总结行为完全一致。</li>
+                        <li><strong>新增：</strong>AI配置中新增"流式/非流式传输"切换选项，如遇到输出被截断可尝试取消勾选。填表、总结、总结优化功能均已全面适配。</li>
+                        <li><strong>修复：</strong>修复批量填表模式下，用户在确认弹窗点击"取消"后表格意外清空的Bug（修复全局锁过早释放导致的并发竞态问题）。</li>
+                        <li><strong>修复：</strong>修复Swipe切换回复时错误触发快照回档的Bug，批量填表模式下现在会跳过回档以保护表格数据。</li>
                     </ul>
                 </div>
 
