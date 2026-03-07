@@ -788,7 +788,7 @@
                 </div>
 
                 <div style="margin-bottom:10px;">
-                    <label style="font-size:11px; display:block; margin-bottom:4px;">💬 优化建议（下方建议处留空，自动触发插件自带的总结优化提示词，若填写则使用用户输入的总结建议优化提示词。）</label>
+                    <label style="font-size:11px; display:block; margin-bottom:4px;">💬 优化建议</label>
                     <textarea id="gg_opt_prompt" placeholder="例如：把流水账改写成史诗感、精简字数到200字以内、增加情感描写、用古文风格重写..." style="width:100%; height:80px; padding:6px; border-radius:4px; font-size:11px; resize:vertical; font-family:inherit;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     <div style="font-size:9px; color:${UI.tc}; opacity:0.7; margin-top:4px;">
                         💡 输入您希望AI如何优化总结的具体要求（留空则使用默认优化策略）
