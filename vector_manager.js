@@ -1050,9 +1050,9 @@
 
         /**
          * 📚 收集当前角色卡绑定的世界书来源
-         * 优先读取角色卡主世界书/辅助世界书；若都不存在，再回退到内嵌世界书。
+         * 仅读取辅助/绿灯世界书，跳过主世界书/蓝灯常驻世界书；若都不存在，再回退到内嵌世界书。
          * @private
-         * @returns {Promise<{characterName: string, sources: Object[]}>}
+         * @returns {Promise<{characterName: string, sources: Object[], skippedPrimaryWorlds: string[]}>}
          */
         async _collectCurrentCharacterWorldSources() {
             const { character, characterName, characterKey } = this._getCurrentCharacterContext();
@@ -1063,6 +1063,7 @@
 
             const sources = [];
             const namedWorlds = new Set();
+            const skippedPrimaryWorlds = [];
             const addNamedWorld = (worldName) => {
                 const name = String(worldName || '').trim();
                 if (!name || name === STORAGE_BOOK_NAME || namedWorlds.has(name)) return;
@@ -1075,7 +1076,14 @@
                 });
             };
 
-            addNamedWorld(character.data?.extensions?.world || character.extensions?.world);
+            const primaryWorldName = character.data?.extensions?.world || character.extensions?.world;
+            if (primaryWorldName) {
+                const name = String(primaryWorldName).trim();
+                if (name && name !== STORAGE_BOOK_NAME) {
+                    skippedPrimaryWorlds.push(name);
+                    console.log(`⏭️ [VectorManager] 跳过主世界书/蓝灯常驻世界书: ${name}`);
+                }
+            }
 
             const directExtraWorlds = character.data?.extensions?.worlds || character.extensions?.worlds;
             if (Array.isArray(directExtraWorlds)) {
@@ -1103,12 +1111,16 @@
             }
 
             if (sources.length === 0) {
-                throw new Error(`角色《${characterName || '当前角色'}》未绑定世界书`);
+                const skippedHint = skippedPrimaryWorlds.length > 0
+                    ? `\n已跳过主世界书/蓝灯常驻世界书: ${skippedPrimaryWorlds.join('、')}`
+                    : '';
+                throw new Error(`角色《${characterName || '当前角色'}》未检测到可向量化的绿灯世界书${skippedHint}`);
             }
 
             return {
                 characterName: characterName || '当前角色',
-                sources
+                sources,
+                skippedPrimaryWorlds
             };
         }
 
@@ -1217,6 +1229,7 @@
                 success: successBookIds.length > 0,
                 characterName: collected.characterName,
                 sourceCount: collected.sources.length,
+                skippedPrimaryWorlds: collected.skippedPrimaryWorlds || [],
                 bookIds: successBookIds,
                 lastBookId: successBookIds[successBookIds.length - 1] || null,
                 results
@@ -2185,7 +2198,7 @@
                                         🌏 一键向量化当前角色世界书
                                     </button>
                                     <div style="font-size: 10px; opacity: 0.6; margin-top: 4px; color: ${UI.tc}; text-align: center;">
-                                        💡 自动读取当前角色卡绑定的主世界书、辅助世界书或内嵌世界书，并按条目分批向量化
+                                        💡 默认只处理辅助/绿灯世界书；跳过主世界书/蓝灯常驻世界书，必要时回退到内嵌世界书
                                     </div>
                                 </div>
 
@@ -3261,21 +3274,27 @@
                     const failedText = failedItems.length > 0
                         ? `\n\n失败项:\n${failedItems.map(item => `《${item.sourceName}》: ${item.error}`).join('\n')}`
                         : '';
+                    const skippedText = result.skippedPrimaryWorlds?.length > 0
+                        ? `\n\n已跳过蓝灯常驻世界书:\n${result.skippedPrimaryWorlds.map(name => `《${name}》`).join('\n')}`
+                        : '';
 
                     self.selectedBookId = result.lastBookId || self.selectedBookId;
                     self.showUI();
 
                     if (typeof toastr !== 'undefined') {
                         toastr.success(`已完成 ${successItems.length}/${result.sourceCount} 本世界书`, '当前角色世界书已向量化');
+                        if (result.skippedPrimaryWorlds?.length > 0) {
+                            toastr.info(`已跳过 ${result.skippedPrimaryWorlds.length} 本蓝灯常驻世界书`, '已按绿灯过滤', { timeOut: 2500 });
+                        }
                         if (failedItems.length > 0) {
                             await customAlert(
-                                `⚠️ 当前角色《${result.characterName}》世界书已部分完成\n\n${successText}${failedText}`,
+                                `⚠️ 当前角色《${result.characterName}》世界书已部分完成\n\n${successText}${failedText}${skippedText}`,
                                 '部分失败'
                             );
                         }
                     } else {
                         await customAlert(
-                            `✅ 当前角色《${result.characterName}》世界书处理完成\n\n${successText}${failedText}`,
+                            `✅ 当前角色《${result.characterName}》世界书处理完成\n\n${successText}${failedText}${skippedText}`,
                             '执行完成'
                         );
                     }
