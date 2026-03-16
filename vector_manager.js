@@ -1707,7 +1707,13 @@
 
                                 <div style="margin-bottom: 6px;">
                                     <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank Model</label>
-                                    <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                                    <div class="gg-model-row">
+                                        <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                                        <div class="gg-model-btns">
+                                            <button id="gg_vm_fetch_rerank_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
+                                            <button id="gg_vm_test_rerank_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -2508,6 +2514,190 @@
                 } catch (e) {
                     console.error('❌ [VectorManager] 测试连接失败:', e);
                     await customAlert(`❌ 测试连接失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
+            // 🔄 拉取 Rerank 模型列表
+            $('#gg_vm_fetch_rerank_models').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 拉取中...').prop('disabled', true);
+
+                try {
+                    const rerankUrl = $('#gg_vm_rerank_url').val().trim();
+                    const rerankKey = $('#gg_vm_rerank_key').val().trim();
+
+                    if (!rerankUrl) {
+                        await customAlert('⚠️ 请先填写 Rerank API 地址', '提示');
+                        return;
+                    }
+
+                    let baseUrl = rerankUrl.replace(/\/+$/, '');
+                    baseUrl = baseUrl.replace(/\/rerank$/i, '');
+                    if (!baseUrl.endsWith('/v1')) {
+                        baseUrl += '/v1';
+                    }
+                    const modelsUrl = `${baseUrl}/models`;
+
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (rerankKey) {
+                        headers['Authorization'] = `Bearer ${rerankKey}`;
+                    }
+
+                    const response = await fetch(modelsUrl, {
+                        method: 'GET',
+                        headers: headers
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [Rerank 模型列表] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
+
+                    let models = [];
+                    if (data.data && Array.isArray(data.data)) {
+                        models = data.data.map(m => m.id || m.name || m).filter(Boolean);
+                    } else if (Array.isArray(data)) {
+                        models = data.map(m => m.id || m.name || m).filter(Boolean);
+                    }
+
+                    if (models.length === 0) {
+                        await customAlert('⚠️ 未找到可用 Rerank 模型', '提示');
+                        return;
+                    }
+
+                    const $modelInput = $('#gg_vm_rerank_model');
+                    const currentValue = $modelInput.val();
+                    const $select = $('<select>', {
+                        id: 'gg_vm_rerank_model',
+                        style: $modelInput.attr('style')
+                    });
+
+                    $select.append($('<option>', {
+                        value: '__manual__',
+                        text: '-- 手动输入 --'
+                    }));
+
+                    models.forEach(modelId => {
+                        $select.append($('<option>', {
+                            value: modelId,
+                            text: modelId,
+                            selected: modelId === currentValue
+                        }));
+                    });
+
+                    $select.on('change', function() {
+                        if ($(this).val() === '__manual__') {
+                            const $newInput = $('<input>', {
+                                type: 'text',
+                                id: 'gg_vm_rerank_model',
+                                value: '',
+                                style: $(this).attr('style'),
+                                placeholder: '请输入 Rerank 模型名称...'
+                            });
+
+                            $(this).replaceWith($newInput);
+                            $newInput.focus();
+                        }
+                    });
+
+                    $modelInput.replaceWith($select);
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已加载 ${models.length} 个 Rerank 模型`, '拉取成功');
+                    } else {
+                        await customAlert(`✅ 已加载 ${models.length} 个 Rerank 模型`, '拉取成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 拉取 Rerank 模型失败:', e);
+                    await customAlert(`❌ 拉取 Rerank 模型失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
+            // 🧪 测试 Rerank 连接
+            $('#gg_vm_test_rerank_connection').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 测试中...').prop('disabled', true);
+
+                try {
+                    const rerankUrl = $('#gg_vm_rerank_url').val().trim();
+                    const rerankKey = $('#gg_vm_rerank_key').val().trim();
+                    const model = $('#gg_vm_rerank_model').val().trim();
+
+                    if (!rerankUrl) {
+                        await customAlert('⚠️ 请先填写 Rerank API 地址', '提示');
+                        return;
+                    }
+
+                    if (!model) {
+                        await customAlert('⚠️ 请先填写 Rerank 模型名称', '提示');
+                        return;
+                    }
+
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (rerankKey) {
+                        headers['Authorization'] = `Bearer ${rerankKey}`;
+                    }
+
+                    const response = await fetch(rerankUrl, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({
+                            model: model,
+                            query: 'test',
+                            documents: ['hello', 'world'],
+                            top_n: 2,
+                            return_documents: false
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [Rerank 测试] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
+
+                    if (Array.isArray(data.results)) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`返回 ${data.results.length} 条排序结果`, '✅ Rerank 连接成功');
+                        } else {
+                            await customAlert(`✅ Rerank API 连接成功\n\n返回 ${data.results.length} 条排序结果`, '测试成功');
+                        }
+                    } else {
+                        throw new Error('返回数据格式不正确，缺少 results 数组');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] Rerank 测试失败:', e);
+                    await customAlert(`❌ Rerank 测试失败\n\n${e.message}`, '错误');
                 } finally {
                     btn.html(originalText).prop('disabled', false);
                 }
