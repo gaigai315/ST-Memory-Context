@@ -799,6 +799,431 @@
         }
 
         /**
+         * 🧭 获取当前角色卡上下文
+         * @private
+         * @returns {{ctx: Object|null, character: Object|null, characterName: string|null, characterKey: string|null}}
+         */
+        _getCurrentCharacterContext() {
+            try {
+                const ctx = window.Gaigai?.m?.ctx?.() || window.SillyTavern?.getContext?.();
+                if (!ctx) {
+                    return { ctx: null, character: null, characterName: null, characterKey: null };
+                }
+
+                let character = null;
+                if (ctx.characterId !== undefined && Array.isArray(ctx.characters) && ctx.characters[ctx.characterId]) {
+                    character = ctx.characters[ctx.characterId];
+                }
+
+                if (!character && Array.isArray(ctx.characters) && ctx.characters.length > 0) {
+                    const fallbackName = ctx.chat_metadata?.character_name || ctx.chatMetadata?.character_name || ctx.name2;
+                    if (fallbackName) {
+                        character = ctx.characters.find(item => item?.name === fallbackName || item?.avatar === fallbackName) || null;
+                    }
+                }
+
+                const characterName = character?.name || ctx.chat_metadata?.character_name || ctx.chatMetadata?.character_name || ctx.name2 || null;
+                let characterKey = character?.avatar || null;
+
+                try {
+                    if (!characterKey && typeof window.getCharaFilename === 'function') {
+                        characterKey = window.getCharaFilename(ctx.characterId ?? null);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [VectorManager] getCharaFilename 调用失败，改用角色名兜底:', e);
+                }
+
+                if (!characterKey) {
+                    characterKey = characterName || 'current_character';
+                }
+
+                return { ctx, character, characterName, characterKey };
+            } catch (error) {
+                console.error('❌ [VectorManager] 获取当前角色上下文失败:', error);
+                return { ctx: null, character: null, characterName: null, characterKey: null };
+            }
+        }
+
+        /**
+         * 🔑 统一处理世界书关键词字段
+         * @private
+         * @param {string|string[]|null|undefined} raw
+         * @returns {string[]}
+         */
+        _normalizeKeyList(raw) {
+            if (Array.isArray(raw)) {
+                return raw.map(item => String(item || '').trim()).filter(Boolean);
+            }
+
+            if (typeof raw === 'string') {
+                return raw
+                    .split(',')
+                    .map(item => item.trim())
+                    .filter(Boolean);
+            }
+
+            return [];
+        }
+
+        /**
+         * 🧱 统一处理世界书条目列表
+         * @private
+         * @param {Object|Object[]|null|undefined} entries
+         * @returns {Object[]}
+         */
+        _normalizeWorldInfoEntries(entries) {
+            if (Array.isArray(entries)) {
+                return entries.filter(entry => entry && typeof entry === 'object');
+            }
+
+            if (entries && typeof entries === 'object') {
+                return Object.values(entries).filter(entry => entry && typeof entry === 'object');
+            }
+
+            return [];
+        }
+
+        /**
+         * 🆔 为同步书籍生成稳定 ID
+         * @private
+         * @param {string} prefix
+         * @param {string} rawKey
+         * @returns {string}
+         */
+        _buildStableBookId(prefix, rawKey) {
+            const raw = String(rawKey || 'book');
+            const safe = raw
+                .replace(/[^a-zA-Z0-9_-]/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .slice(0, 48) || 'book';
+
+            return `${prefix}_${safe}_${this._hashText(raw)}`;
+        }
+
+        /**
+         * 📝 将世界书条目转换为检索片段
+         * @private
+         * @param {Object} entry
+         * @param {number} index
+         * @returns {string}
+         */
+        _buildWorldInfoChunk(entry, index = 0) {
+            if (!entry || typeof entry !== 'object') return '';
+
+            const title = String(entry.comment || entry.title || `条目 ${index + 1}`).trim();
+            const content = String(entry.content || entry.entry || '').trim();
+            const keys = this._normalizeKeyList(entry.keys || entry.key);
+            const secondaryKeys = this._normalizeKeyList(entry.secondary_keys || entry.keysecondary);
+            const sections = [];
+
+            if (title) sections.push(`标题: ${title}`);
+            if (keys.length > 0) sections.push(`关键词: ${keys.join('、')}`);
+            if (secondaryKeys.length > 0) sections.push(`辅助关键词: ${secondaryKeys.join('、')}`);
+            if (content) sections.push(`内容:\n${content}`);
+
+            const chunkText = sections.join('\n').trim();
+            return chunkText ? this._resolvePlaceholders(chunkText) : '';
+        }
+
+        /**
+         * ♻️ 增量写入书籍，尽量复用旧向量
+         * @private
+         * @param {string} bookId
+         * @param {string} bookName
+         * @param {string[]} rawChunks
+         * @param {Object|null} meta
+         * @returns {Object}
+         */
+        _upsertBookFromChunks(bookId, bookName, rawChunks, meta = null) {
+            const newChunks = (Array.isArray(rawChunks) ? rawChunks : [])
+                .map(chunk => String(chunk || '').trim())
+                .filter(Boolean);
+
+            if (newChunks.length === 0) {
+                return { success: false, bookId, count: 0, reusedCount: 0, createCount: 0, error: '没有可导入的条目' };
+            }
+
+            const oldBook = this.library[bookId];
+            const existingVectorsMap = new Map();
+            const createTime = oldBook?.createTime || Date.now();
+
+            if (oldBook) {
+                oldBook.chunks.forEach((text, idx) => {
+                    if (oldBook.vectorized?.[idx] && oldBook.vectors?.[idx]) {
+                        existingVectorsMap.set(text, oldBook.vectors[idx]);
+                    }
+                });
+            }
+
+            let reusedCount = 0;
+            const newVectors = [];
+            const newVectorized = [];
+
+            newChunks.forEach(text => {
+                if (existingVectorsMap.has(text)) {
+                    newVectors.push(existingVectorsMap.get(text));
+                    newVectorized.push(true);
+                    reusedCount++;
+                } else {
+                    newVectors.push(null);
+                    newVectorized.push(false);
+                }
+            });
+
+            this.library[bookId] = {
+                name: bookName,
+                chunks: newChunks,
+                vectors: newVectors,
+                vectorized: newVectorized,
+                createTime: createTime,
+                meta: meta || oldBook?.meta || null
+            };
+
+            console.log(`📚 [VectorManager] 书籍已同步: ${bookName}，条目 ${newChunks.length}，复用向量 ${reusedCount}`);
+
+            return {
+                success: true,
+                bookId,
+                bookName,
+                count: newChunks.length,
+                reusedCount,
+                createCount: newChunks.length - reusedCount
+            };
+        }
+
+        /**
+         * 🌐 读取指定世界书数据
+         * @private
+         * @param {string} worldBookName
+         * @returns {Promise<Object>}
+         */
+        async _loadWorldInfoBookByName(worldBookName) {
+            const targetName = String(worldBookName || '').trim();
+            if (!targetName) {
+                throw new Error('世界书名称为空');
+            }
+
+            try {
+                if (window.world_info?.[targetName]?.entries) {
+                    return {
+                        name: targetName,
+                        entries: window.world_info[targetName].entries
+                    };
+                }
+            } catch (e) {
+                console.warn(`⚠️ [VectorManager] 从内存读取世界书 ${targetName} 失败，改走 API:`, e);
+            }
+
+            let csrfToken = '';
+            try {
+                if (typeof window.Gaigai?.getCsrfToken === 'function') {
+                    csrfToken = await window.Gaigai.getCsrfToken();
+                }
+            } catch (e) {
+                console.warn('⚠️ [VectorManager] 获取 CSRF Token 失败:', e);
+            }
+
+            const response = await fetch('/api/worldinfo/get', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({ name: targetName }),
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error(`读取世界书失败 (${response.status})`);
+            }
+
+            const text = await response.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('❌ [VectorManager] 世界书 JSON 解析失败:', e.message);
+                console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                throw new Error(`世界书返回非 JSON 格式\n\n原始响应: ${text.substring(0, 100)}`);
+            }
+        }
+
+        /**
+         * 📚 收集当前角色卡绑定的世界书来源
+         * 优先读取角色卡主世界书/辅助世界书；若都不存在，再回退到内嵌世界书。
+         * @private
+         * @returns {Promise<{characterName: string, sources: Object[]}>}
+         */
+        async _collectCurrentCharacterWorldSources() {
+            const { character, characterName, characterKey } = this._getCurrentCharacterContext();
+
+            if (!character) {
+                throw new Error('未检测到当前角色卡，请先打开一个角色聊天');
+            }
+
+            const sources = [];
+            const namedWorlds = new Set();
+            const addNamedWorld = (worldName) => {
+                const name = String(worldName || '').trim();
+                if (!name || name === STORAGE_BOOK_NAME || namedWorlds.has(name)) return;
+                namedWorlds.add(name);
+                sources.push({
+                    type: 'world_info',
+                    name,
+                    bookName: `世界书 · ${name}`,
+                    stableKey: name
+                });
+            };
+
+            addNamedWorld(character.data?.extensions?.world || character.extensions?.world);
+
+            const directExtraWorlds = character.data?.extensions?.worlds || character.extensions?.worlds;
+            if (Array.isArray(directExtraWorlds)) {
+                directExtraWorlds.forEach(addNamedWorld);
+            }
+
+            const charLoreList = window.world_info?.charLore;
+            if (Array.isArray(charLoreList)) {
+                const matchedCharLore = charLoreList.find(item => item?.name === characterKey || item?.name === character?.avatar);
+                if (matchedCharLore && Array.isArray(matchedCharLore.extraBooks)) {
+                    matchedCharLore.extraBooks.forEach(addNamedWorld);
+                }
+            }
+
+            const embeddedBook = character.data?.character_book || character.character_book;
+            if (sources.length === 0 && embeddedBook?.entries) {
+                const embeddedName = String(embeddedBook.name || `${characterName || '当前角色'}内嵌世界书`).trim();
+                sources.push({
+                    type: 'embedded_world_info',
+                    name: embeddedName,
+                    bookName: `世界书 · ${embeddedName}`,
+                    stableKey: `${characterKey}_embedded_world`,
+                    entries: embeddedBook.entries
+                });
+            }
+
+            if (sources.length === 0) {
+                throw new Error(`角色《${characterName || '当前角色'}》未绑定世界书`);
+            }
+
+            return {
+                characterName: characterName || '当前角色',
+                sources
+            };
+        }
+
+        /**
+         * 🌏 一键导入并向量化当前角色卡世界书
+         * @param {Function|null} progressCallback
+         * @returns {Promise<Object>}
+         */
+        async importCurrentCharacterWorldBooks(progressCallback = null) {
+            const collected = await this._collectCurrentCharacterWorldSources();
+            const results = [];
+            const successBookIds = [];
+
+            for (let i = 0; i < collected.sources.length; i++) {
+                const source = collected.sources[i];
+                const bookIndex = i + 1;
+
+                try {
+                    const worldBook = source.type === 'embedded_world_info'
+                        ? { name: source.name, entries: source.entries }
+                        : await this._loadWorldInfoBookByName(source.name);
+
+                    const allEntries = this._normalizeWorldInfoEntries(worldBook.entries);
+                    const enabledEntries = allEntries.filter(entry => entry.enabled !== false && entry.disable !== true);
+                    const chunks = enabledEntries
+                        .map((entry, entryIndex) => this._buildWorldInfoChunk(entry, entryIndex))
+                        .filter(Boolean);
+
+                    if (progressCallback) {
+                        progressCallback({
+                            stage: 'sync',
+                            bookIndex,
+                            bookTotal: collected.sources.length,
+                            bookName: source.bookName,
+                            current: 0,
+                            total: chunks.length
+                        });
+                    }
+
+                    if (chunks.length === 0) {
+                        results.push({
+                            success: false,
+                            sourceName: source.bookName,
+                            error: '没有可向量化的启用条目'
+                        });
+                        continue;
+                    }
+
+                    const bookId = this._buildStableBookId(
+                        source.type === 'embedded_world_info' ? 'embedded_worldbook' : 'worldbook',
+                        source.stableKey || source.name
+                    );
+
+                    const syncResult = this._upsertBookFromChunks(
+                        bookId,
+                        source.bookName,
+                        chunks,
+                        {
+                            sourceType: source.type,
+                            sourceName: source.name,
+                            characterName: collected.characterName
+                        }
+                    );
+
+                    await this.saveLibrary();
+
+                    const vectorizeResult = await this.vectorizeBook(bookId, (current, total) => {
+                        if (progressCallback) {
+                            progressCallback({
+                                stage: 'vectorize',
+                                bookIndex,
+                                bookTotal: collected.sources.length,
+                                bookName: source.bookName,
+                                current,
+                                total
+                            });
+                        }
+                    });
+
+                    successBookIds.push(bookId);
+                    results.push({
+                        success: true,
+                        sourceName: source.bookName,
+                        bookId,
+                        totalEntries: allEntries.length,
+                        enabledEntries: enabledEntries.length,
+                        syncResult,
+                        vectorizeResult
+                    });
+                } catch (error) {
+                    console.error(`❌ [VectorManager] 处理世界书失败: ${source.bookName}`, error);
+                    results.push({
+                        success: false,
+                        sourceName: source.bookName,
+                        error: error.message || String(error)
+                    });
+                }
+            }
+
+            if (successBookIds.length > 0) {
+                const nextActiveBooks = [...new Set([...this.getActiveBooks(), ...successBookIds])];
+                this.setActiveBooks(nextActiveBooks);
+            }
+
+            return {
+                success: successBookIds.length > 0,
+                characterName: collected.characterName,
+                sourceCount: collected.sources.length,
+                bookIds: successBookIds,
+                lastBookId: successBookIds[successBookIds.length - 1] || null,
+                results
+            };
+        }
+
+        /**
          * ⚡ 向量化指定书籍（批量优化版）
          * @param {string} bookId - 书籍 ID
          * @param {Function} progressCallback - 进度回调 (current, total)
@@ -1707,7 +2132,13 @@
 
                                 <div style="margin-bottom: 6px;">
                                     <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank Model</label>
-                                    <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                                    <div class="gg-model-row">
+                                        <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                                        <div class="gg-model-btns">
+                                            <button id="gg_vm_fetch_rerank_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
+                                            <button id="gg_vm_test_rerank_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1746,6 +2177,15 @@
                                     </button>
                                     <div style="font-size: 10px; opacity: 0.6; margin-top: 4px; color: ${UI.tc}; text-align: center;">
                                         💡 将最新的记忆总结表转换为书籍，以便进行向量化检索
+                                    </div>
+                                </div>
+
+                                <div style="grid-column: 1 / -1;">
+                                    <button id="gg_vm_import_current_worldbooks" style="width: 100%; padding: 10px; background: #FF9800; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 600;">
+                                        🌏 一键向量化当前角色世界书
+                                    </button>
+                                    <div style="font-size: 10px; opacity: 0.6; margin-top: 4px; color: ${UI.tc}; text-align: center;">
+                                        💡 自动读取当前角色卡绑定的主世界书、辅助世界书或内嵌世界书，并按条目分批向量化
                                     </div>
                                 </div>
 
@@ -2513,6 +2953,190 @@
                 }
             });
 
+            // 🔄 拉取 Rerank 模型列表
+            $('#gg_vm_fetch_rerank_models').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 拉取中...').prop('disabled', true);
+
+                try {
+                    const rerankUrl = $('#gg_vm_rerank_url').val().trim();
+                    const rerankKey = $('#gg_vm_rerank_key').val().trim();
+
+                    if (!rerankUrl) {
+                        await customAlert('⚠️ 请先填写 Rerank API 地址', '提示');
+                        return;
+                    }
+
+                    let baseUrl = rerankUrl.replace(/\/+$/, '');
+                    baseUrl = baseUrl.replace(/\/rerank$/i, '');
+                    if (!baseUrl.endsWith('/v1')) {
+                        baseUrl += '/v1';
+                    }
+                    const modelsUrl = `${baseUrl}/models`;
+
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (rerankKey) {
+                        headers['Authorization'] = `Bearer ${rerankKey}`;
+                    }
+
+                    const response = await fetch(modelsUrl, {
+                        method: 'GET',
+                        headers: headers
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [Rerank 模型列表] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
+
+                    let models = [];
+                    if (data.data && Array.isArray(data.data)) {
+                        models = data.data.map(m => m.id || m.name || m).filter(Boolean);
+                    } else if (Array.isArray(data)) {
+                        models = data.map(m => m.id || m.name || m).filter(Boolean);
+                    }
+
+                    if (models.length === 0) {
+                        await customAlert('⚠️ 未找到可用 Rerank 模型', '提示');
+                        return;
+                    }
+
+                    const $modelInput = $('#gg_vm_rerank_model');
+                    const currentValue = $modelInput.val();
+                    const $select = $('<select>', {
+                        id: 'gg_vm_rerank_model',
+                        style: $modelInput.attr('style')
+                    });
+
+                    $select.append($('<option>', {
+                        value: '__manual__',
+                        text: '-- 手动输入 --'
+                    }));
+
+                    models.forEach(modelId => {
+                        $select.append($('<option>', {
+                            value: modelId,
+                            text: modelId,
+                            selected: modelId === currentValue
+                        }));
+                    });
+
+                    $select.on('change', function() {
+                        if ($(this).val() === '__manual__') {
+                            const $newInput = $('<input>', {
+                                type: 'text',
+                                id: 'gg_vm_rerank_model',
+                                value: '',
+                                style: $(this).attr('style'),
+                                placeholder: '请输入 Rerank 模型名称...'
+                            });
+
+                            $(this).replaceWith($newInput);
+                            $newInput.focus();
+                        }
+                    });
+
+                    $modelInput.replaceWith($select);
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已加载 ${models.length} 个 Rerank 模型`, '拉取成功');
+                    } else {
+                        await customAlert(`✅ 已加载 ${models.length} 个 Rerank 模型`, '拉取成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 拉取 Rerank 模型失败:', e);
+                    await customAlert(`❌ 拉取 Rerank 模型失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
+            // 🧪 测试 Rerank 连接
+            $('#gg_vm_test_rerank_connection').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 测试中...').prop('disabled', true);
+
+                try {
+                    const rerankUrl = $('#gg_vm_rerank_url').val().trim();
+                    const rerankKey = $('#gg_vm_rerank_key').val().trim();
+                    const model = $('#gg_vm_rerank_model').val().trim();
+
+                    if (!rerankUrl) {
+                        await customAlert('⚠️ 请先填写 Rerank API 地址', '提示');
+                        return;
+                    }
+
+                    if (!model) {
+                        await customAlert('⚠️ 请先填写 Rerank 模型名称', '提示');
+                        return;
+                    }
+
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (rerankKey) {
+                        headers['Authorization'] = `Bearer ${rerankKey}`;
+                    }
+
+                    const response = await fetch(rerankUrl, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({
+                            model: model,
+                            query: 'test',
+                            documents: ['hello', 'world'],
+                            top_n: 2,
+                            return_documents: false
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [Rerank 测试] JSON 解析失败:', e.message);
+                        console.error('   原始响应 (前200字符):', text.substring(0, 200));
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
+
+                    if (Array.isArray(data.results)) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.success(`返回 ${data.results.length} 条排序结果`, '✅ Rerank 连接成功');
+                        } else {
+                            await customAlert(`✅ Rerank 连接成功\n\n返回 ${data.results.length} 条排序结果`, '测试成功');
+                        }
+                    } else {
+                        throw new Error('返回数据格式不正确，缺少 results 数组');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 测试 Rerank 连接失败:', e);
+                    await customAlert(`❌ 测试 Rerank 连接失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
             // 保存配置
             $('#gg_vm_save').off('click').on('click', async () => {
                 try {
@@ -2590,6 +3214,74 @@
                 } catch (e) {
                     console.error('❌ [VectorManager] 同步失败:', e);
                     await customAlert(`❌ 同步失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(oldText).prop('disabled', false);
+                }
+            });
+
+            // 一键导入并向量化当前角色世界书
+            $('#gg_vm_import_current_worldbooks').off('click').on('click', async () => {
+                const btn = $('#gg_vm_import_current_worldbooks');
+                const oldText = btn.html();
+
+                try {
+                    const url = $('#gg_vm_url').val().trim();
+                    if (!url) {
+                        await customAlert('⚠️ 未配置 API\n\n请先填写向量 API 地址。', '配置不完整');
+                        return;
+                    }
+
+                    btn.prop('disabled', true);
+
+                    const result = await self.importCurrentCharacterWorldBooks((progress) => {
+                        const name = progress.bookName || '当前世界书';
+                        if (progress.stage === 'sync') {
+                            btn.html(`<i class="fa-solid fa-spinner fa-spin"></i> 解析中... (${progress.bookIndex}/${progress.bookTotal}) ${name}`);
+                        } else {
+                            btn.html(`<i class="fa-solid fa-spinner fa-spin"></i> 向量化中... (${progress.bookIndex}/${progress.bookTotal}) ${name} ${progress.current}/${progress.total}`);
+                        }
+                    });
+
+                    if (!result.success) {
+                        const errorText = result.results.map(item => `《${item.sourceName}》: ${item.error}`).join('\n') || '未找到可处理的世界书';
+                        await customAlert(`❌ 当前角色世界书向量化失败\n\n${errorText}`, '执行失败');
+                        return;
+                    }
+
+                    const successItems = result.results.filter(item => item.success);
+                    const failedItems = result.results.filter(item => !item.success);
+                    const successText = successItems
+                        .map(item => {
+                            const syncCount = item.syncResult?.count || 0;
+                            const vectorCount = item.vectorizeResult?.count || 0;
+                            const reusedCount = item.syncResult?.reusedCount || 0;
+                            return `《${item.sourceName}》: ${syncCount} 条，新增向量 ${vectorCount}，复用向量 ${reusedCount}`;
+                        })
+                        .join('\n');
+                    const failedText = failedItems.length > 0
+                        ? `\n\n失败项:\n${failedItems.map(item => `《${item.sourceName}》: ${item.error}`).join('\n')}`
+                        : '';
+
+                    self.selectedBookId = result.lastBookId || self.selectedBookId;
+                    self.showUI();
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已完成 ${successItems.length}/${result.sourceCount} 本世界书`, '当前角色世界书已向量化');
+                        if (failedItems.length > 0) {
+                            await customAlert(
+                                `⚠️ 当前角色《${result.characterName}》世界书已部分完成\n\n${successText}${failedText}`,
+                                '部分失败'
+                            );
+                        }
+                    } else {
+                        await customAlert(
+                            `✅ 当前角色《${result.characterName}》世界书处理完成\n\n${successText}${failedText}`,
+                            '执行完成'
+                        );
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 当前角色世界书向量化失败:', e);
+                    await customAlert(`❌ 当前角色世界书向量化失败\n\n${e.message}`, '错误');
                 } finally {
                     btn.html(oldText).prop('disabled', false);
                 }
