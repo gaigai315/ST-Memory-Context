@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.2.0
+// 记忆表格 v2.2.1
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.0 启动');
+    console.log('🚀 记忆表格 v2.2.1 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.0';
+    const V = 'v2.2.1';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -12444,12 +12444,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             return originalFetch.apply(this, args);
                         }
 
-                        // 检查是否是生成请求
-                        if ((url.includes('/api/backends/chat-completions/generate') ||
-                            url.includes('/generate') ||
-                            url.includes('/v1/chat/completions')) &&
-                            !window.isSummarizing) {
-                            console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
+                        // 检查是否是文本生成请求，严格排除画图(sd)、语音(tts)等无关请求
+            const isTextGeneration = (
+                url.includes('/api/backends/chat-completions/generate') ||
+                url.includes('/v1/chat/completions') ||
+                (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
+            );
+
+            if (isTextGeneration && !window.isSummarizing) {
+                console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
 
                             try {
                                 // ✅ 【关键修复】先执行隐藏，再执行向量检索
@@ -12882,8 +12885,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                                     console.error(`📍 尝试加载的 URL: ${vectorManagerUrl}`);
                                                                 }
 
-                                                                // 所有依赖加载完后，再启动主初始化流程
-                                                                setTimeout(tryInit, 500);
+                                                                // 📱 加载手机插件适配模块
+                                                                const phoneAdapterUrl = `${EXTENSION_PATH}/phone-adapter.js`;
+                                                                $.getScript(phoneAdapterUrl)
+                                                                    .done(function () {
+                                                                        console.log('✅ [Loader] phone-adapter.js 加载成功');
+                                                                        // 所有依赖加载完后，再启动主初始化流程
+                                                                        setTimeout(tryInit, 500);
+                                                                    })
+                                                                    .fail(function () {
+                                                                        console.warn('⚠️ [Loader] phone-adapter.js 加载失败（可选模块，继续初始化）');
+                                                                        // 即使加载失败，也继续初始化
+                                                                        setTimeout(tryInit, 500);
+                                                                    });
                                                             })
                                                             .fail(function (jqxhr, settings, exception) {
                                                                 console.error('❌ [Loader] vector_manager.js 加载失败！');

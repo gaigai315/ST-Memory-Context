@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 1.9.7
+ * @version 2.2.1
  * @author Gaigai Team
  */
 
@@ -1707,7 +1707,14 @@
 
                                 <div style="margin-bottom: 6px;">
                                     <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">Rerank Model</label>
-                                    <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                                    <div class="gg-model-row">
+                                        <input type="text" id="gg_vm_rerank_model" value="${config.rerankModel || 'BAAI/bge-reranker-v2-m3'}" placeholder="BAAI/bge-reranker-v2-m3" style="flex: 1; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+                                        <div class="gg-model-btns">
+                                            <button id="gg_vm_fetch_rerank_models" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(100,150,255,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,150,255,0.4)'" onmouseout="this.style.background='rgba(100,150,255,0.2)'">🔄 拉取模型</button>
+                                            <button id="gg_vm_test_rerank_connection" style="padding: 5px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; background: rgba(76,175,80,0.2); color: ${UI.tc}; font-size: 9px; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(76,175,80,0.4)'" onmouseout="this.style.background='rgba(76,175,80,0.2)'">🧪 测试连接</button>
+                                        </div>
+                                    </div>
+                                    <select id="gg_vm_rerank_model_select" style="display: none; width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box; margin-top: 4px;"></select>
                                 </div>
                             </div>
 
@@ -2508,6 +2515,176 @@
                 } catch (e) {
                     console.error('❌ [VectorManager] 测试连接失败:', e);
                     await customAlert(`❌ 测试连接失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
+            // 🔄 拉取 Rerank 模型列表
+            $('#gg_vm_fetch_rerank_models').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...').prop('disabled', true);
+
+                try {
+                    const apiUrl = $('#gg_vm_rerank_url').val().trim();
+                    const apiKey = $('#gg_vm_rerank_key').val().trim();
+
+                    if (!apiUrl) {
+                        await customAlert('⚠️ 请先填写 Rerank API URL', '提示');
+                        return;
+                    }
+
+                    // 智能处理 Rerank API URL：提取 base URL 拼接 /models
+                    let baseUrl = apiUrl.replace(/\/+$/, '');
+                    // 如果以 /rerank 结尾，截掉 /rerank
+                    baseUrl = baseUrl.replace(/\/rerank$/, '');
+                    // 确保以 /v1 结尾
+                    if (!baseUrl.endsWith('/v1')) {
+                        baseUrl += '/v1';
+                    }
+                    const modelsUrl = `${baseUrl}/models`;
+
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (apiKey) {
+                        headers['Authorization'] = `Bearer ${apiKey}`;
+                    }
+
+                    const response = await fetch(modelsUrl, {
+                        method: 'GET',
+                        headers: headers
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const text = await response.text();
+
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        console.error('❌ [Rerank模型列表] JSON 解析失败:', e.message);
+                        throw new Error(`API返回非JSON格式\n\n原始响应: ${text.substring(0, 100)}`);
+                    }
+
+                    let models = [];
+                    if (data.data && Array.isArray(data.data)) {
+                        models = data.data.map(m => m.id || m.name || m).filter(Boolean);
+                    } else if (Array.isArray(data)) {
+                        models = data.map(m => m.id || m.name || m).filter(Boolean);
+                    }
+
+                    if (models.length === 0) {
+                        await customAlert('⚠️ 未找到可用模型', '提示');
+                        return;
+                    }
+
+                    // 将输入框替换为下拉框
+                    const $modelInput = $('#gg_vm_rerank_model');
+                    const currentValue = $modelInput.val();
+                    const $select = $('<select>', {
+                        id: 'gg_vm_rerank_model',
+                        style: $modelInput.attr('style')
+                    });
+
+                    $select.append($('<option>', {
+                        value: '__manual__',
+                        text: '-- 手动输入 --'
+                    }));
+
+                    models.forEach(modelId => {
+                        $select.append($('<option>', {
+                            value: modelId,
+                            text: modelId,
+                            selected: modelId === currentValue
+                        }));
+                    });
+
+                    $select.on('change', function() {
+                        if ($(this).val() === '__manual__') {
+                            const $newInput = $('<input>', {
+                                type: 'text',
+                                id: 'gg_vm_rerank_model',
+                                value: '',
+                                style: $(this).attr('style'),
+                                placeholder: '请输入Rerank模型名称...'
+                            });
+                            $(this).replaceWith($newInput);
+                            $newInput.focus();
+                        }
+                    });
+
+                    $modelInput.replaceWith($select);
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`已加载 ${models.length} 个模型`, 'Rerank 拉取成功');
+                    } else {
+                        await customAlert(`✅ 已加载 ${models.length} 个模型`, 'Rerank 拉取成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] 拉取Rerank模型失败:', e);
+                    await customAlert(`❌ 拉取Rerank模型失败\n\n${e.message}`, '错误');
+                } finally {
+                    btn.html(originalText).prop('disabled', false);
+                }
+            });
+
+            // 🧪 测试 Rerank 连接
+            $('#gg_vm_test_rerank_connection').off('click').on('click', async function () {
+                const btn = $(this);
+                const originalText = btn.html();
+                btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...').prop('disabled', true);
+
+                try {
+                    const apiUrl = $('#gg_vm_rerank_url').val().trim();
+                    const apiKey = $('#gg_vm_rerank_key').val().trim();
+                    const model = $('#gg_vm_rerank_model').val().trim();
+
+                    if (!apiUrl) {
+                        await customAlert('⚠️ 请先填写 Rerank API URL', '提示');
+                        return;
+                    }
+
+                    if (!model) {
+                        await customAlert('⚠️ 请先填写 Rerank 模型名称', '提示');
+                        return;
+                    }
+
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (apiKey) {
+                        headers['Authorization'] = `Bearer ${apiKey}`;
+                    }
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({
+                            model: model,
+                            query: 'test',
+                            documents: ['test'],
+                            top_n: 1
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    }
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success('Rerank API连接成功', '✅ 连接成功');
+                    } else {
+                        await customAlert('✅ Rerank API连接成功', '测试成功');
+                    }
+                } catch (e) {
+                    console.error('❌ [VectorManager] Rerank测试连接失败:', e);
+                    await customAlert(`❌ Rerank测试连接失败\n\n${e.message}`, '错误');
                 } finally {
                     btn.html(originalText).prop('disabled', false);
                 }
