@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 2.2.1
+ * @version 2.2.2
  * @author Gaigai Team
  */
 
@@ -2761,6 +2761,23 @@
                         // 自动选中新创建/更新的书籍
                         self.selectedBookId = result.bookId;
                         self.showUI();
+
+                        // ✅ 新增：手动同步成功后，自动隐藏总结表的所有内容
+                        const sumIdx = m.s.length - 1; // 总结表索引
+                        const sumSheet = m.get(sumIdx);
+                        if (sumSheet && sumSheet.r.length > 0) {
+                            // 遍历所有行进行隐藏标记
+                            for (let ri = 0; ri < sumSheet.r.length; ri++) {
+                                window.Gaigai.markAsSummarized(sumIdx, ri);
+                            }
+                            m.save(false, true); // 保存隐藏状态
+                            console.log('⚡[手动同步向量化] 已自动隐藏总结表所有行');
+
+                            // 如果记忆表格主界面正开着，刷新它以显示绿色隐藏状态
+                            if ($('#gai-main-pop').length > 0 && typeof window.Gaigai.shw === 'function') {
+                                window.Gaigai.shw();
+                            }
+                        }
                     } else {
                         throw new Error(result.error || '同步失败');
                     }

@@ -4,7 +4,7 @@
  * 功能：AI总结相关的所有逻辑（表格总结、聊天总结、自动总结触发器、总结优化）
  * 支持：快照总结、分批总结、总结优化/润色
  *
- * @version 2.1.8
+ * @version 2.2.2
  * @author Gaigai Team
  */
 
@@ -2899,6 +2899,28 @@
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 追加新页到总结表`);
 
                         m.save(false, true); // 追加总结后立即保存
+
+                        // ✅✅✅ [新增] 总结优化保存后，触发自动向量化并隐藏总结表所有行
+                        if (window.Gaigai.config_obj.autoVectorizeSummary && window.Gaigai.VM && typeof window.Gaigai.VM.syncSummaryToBook === 'function') {
+                            try {
+                                console.log('⚡ [总结优化] 触发自动向量化同步...');
+                                // 强制将当前总结表覆盖同步到知识书，并执行向量化
+                                await window.Gaigai.VM.syncSummaryToBook(true);
+
+                                const sumIdx = m.s.length - 1; // 总结表索引
+                                const sumSheet = m.get(sumIdx);
+                                if (sumSheet && sumSheet.r.length > 0) {
+                                    // 遍历所有行进行隐藏标记
+                                    for (let ri = 0; ri < sumSheet.r.length; ri++) {
+                                        window.Gaigai.markAsSummarized(sumIdx, ri);
+                                    }
+                                    console.log('⚡ [总结优化] 已自动隐藏总结表所有行');
+                                }
+                            } catch (vecErr) {
+                                console.error('❌ [总结优化] 自动向量化失败:', vecErr);
+                            }
+                        }
+
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
@@ -3056,6 +3078,28 @@
                         console.log(`🔒 [安全验证通过] 会话ID: ${finalSessionId}, 实际覆盖 ${realUpdateCount} 页内容`);
 
                         m.save(false, true); // 总结优化后立即保存
+
+                        // ✅✅✅ [新增] 总结优化保存后，触发自动向量化并隐藏总结表所有行
+                        if (window.Gaigai.config_obj.autoVectorizeSummary && window.Gaigai.VM && typeof window.Gaigai.VM.syncSummaryToBook === 'function') {
+                            try {
+                                console.log('⚡ [总结优化] 触发自动向量化同步...');
+                                // 强制将当前总结表覆盖同步到知识书，并执行向量化
+                                await window.Gaigai.VM.syncSummaryToBook(true);
+
+                                const sumIdx = m.s.length - 1; // 总结表索引
+                                const sumSheet = m.get(sumIdx);
+                                if (sumSheet && sumSheet.r.length > 0) {
+                                    // 遍历所有行进行隐藏标记
+                                    for (let ri = 0; ri < sumSheet.r.length; ri++) {
+                                        window.Gaigai.markAsSummarized(sumIdx, ri);
+                                    }
+                                    console.log('⚡ [总结优化] 已自动隐藏总结表所有行');
+                                }
+                            } catch (vecErr) {
+                                console.error('❌ [总结优化] 自动向量化失败:', vecErr);
+                            }
+                        }
+
                         if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
                             window.Gaigai.updateCurrentSnapshot();
                         }
