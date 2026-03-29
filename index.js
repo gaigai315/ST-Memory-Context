@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.2.3
+// 记忆表格 v2.2.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.3 启动');
+    console.log('🚀 记忆表格 v2.2.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.3';
+    const V = 'v2.2.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -47,6 +47,7 @@
         filterTagsWhite: '',    // 白名单标签（仅留）
         contextLimit: true,     // ✅ 默认开启隐藏楼层
         contextLimitCount: 30,  // ✅ 隐藏30楼
+        autoCalculateParams: true, // ✨ 默认开启智能计算联动
         tableInj: true,
         tablePos: 'system',
         tablePosType: 'system_end',
@@ -10151,7 +10152,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             : '';
 
         const h = `<div class="g-p" style="display: flex; flex-direction: column; gap: 12px;">
-        <h4 style="margin:0 0 4px 0;">⚙️ 插件配置</h4>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin:0;">⚙️ 插件配置</h4>
+            <label style="font-size:12px; cursor:pointer; color:#ff9800; font-weight:bold; display:flex; align-items:center; gap:4px;">
+                <input type="checkbox" id="gg_c_auto_calc" ${C.autoCalculateParams ? 'checked' : ''} style="transform: scale(1.1);">
+                <span>✨智能计算联动</span>
+            </label>
+        </div>
 
         ${hibernateBanner}
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
@@ -10355,7 +10362,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
-            <div style="font-weight: 600; color:var(--g-tc); margin-bottom: 8px;">🏷️ 标签过滤（串行双重过滤）</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-weight: 600; color:var(--g-tc);">🏷️ 标签过滤（串行双重过滤）</div>
+                <button id="gg_btn_ai_extract_tags" style="padding:4px 10px; background:linear-gradient(135deg, #9C27B0 0%, #673AB7 100%); color:#fff; border:none; border-radius:4px; font-size:10px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.2); white-space: nowrap;">🤖 AI 智能诊断提取</button>
+            </div>
             <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:6px;">过滤逻辑：先去黑后留白，可单选。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think</code>。支持方括号，如需过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">[xx]标签</code>，请完整填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">[xx]</code>。过滤注释填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
 
             <div style="margin-bottom: 8px;">
@@ -10801,6 +10811,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoBackfillDelayCount = parseInt($('#gg_c_auto_bf_delay_count').val()) || 5;
                 C.contextLimit = $('#gg_c_limit_on').is(':checked');
                 C.contextLimitCount = parseInt($('#gg_c_limit_count').val());
+                C.autoCalculateParams = $('#gg_c_auto_calc').is(':checked');
                 C.tableInj = $('#gg_c_table_inj').is(':checked');
                 C.autoSummary = $('#gg_c_auto_sum').is(':checked');
                 C.autoSummaryFloor = parseInt($('#gg_c_auto_floor').val());
@@ -10948,6 +10959,140 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 syncUIToConfig();
                 m.save(false, true);
+            });
+
+            // ✨ 智能计算开关保存
+            $('#gg_c_auto_calc').on('change', function() {
+                C.autoCalculateParams = $(this).is(':checked');
+                m.save(false, true);
+            });
+
+            // ✨ 核心联动计算引擎
+            function runSmartCalculation(source, value) {
+                if (!$('#gg_c_auto_calc').is(':checked')) return;
+                const v = parseInt(value);
+                if (isNaN(v) || v <= 0) return;
+
+                if (source === 'limit') {
+                    // 场景2：使用隐藏楼层
+                    // 用户输入：隐藏后保留层数（如 25）
+                    // 批量填表 = 保留层数 - 5
+                    $('#gg_c_auto_bf_floor').val(Math.max(5, v - 5));
+                    // 批量填表滞后 = 2 楼
+                    $('#gg_c_auto_bf_delay_count').val(2);
+                    // 小总结 = 50 楼（固定值）
+                    $('#gg_c_auto_floor').val(50);
+                    // 小总结滞后 = 3 楼
+                    $('#gg_c_auto_sum_delay_count').val(3);
+                    // 大总结 = 100 楼（固定值）
+                    $('#gg_c_big_sum_floor').val(100);
+                    // 大总结滞后 = 4 楼
+                    $('#gg_c_auto_big_delay_count').val(4);
+                } else if (source === 'summary') {
+                    // 场景1：使用上下文管理（隐藏楼层关闭）
+                    if (!$('#gg_c_limit_on').is(':checked')) {
+                        // 大总结 = 自动总结 × 5
+                        $('#gg_c_big_sum_floor').val(Math.max(50, v * 5));
+                        // 大总结滞后 = 5 楼
+                        $('#gg_c_auto_big_delay_count').val(5);
+                    }
+                }
+                syncUIToConfig();
+            }
+
+            // ✨ 绑定输入事件
+            $('#gg_c_limit_count').on('input', function() { runSmartCalculation('limit', $(this).val()); });
+            $('#gg_c_auto_floor').on('input', function() { runSmartCalculation('summary', $(this).val()); });
+
+            // 🤖 AI 智能诊断提取标签
+            $('#gg_btn_ai_extract_tags').on('click', async function() {
+                const $btn = $(this);
+                const oldHtml = $btn.html();
+
+                try {
+                    const ctx = m.ctx();
+                    if (!ctx || !ctx.chat || ctx.chat.length === 0) {
+                        await window.Gaigai.customAlert('聊天记录为空，无法诊断。', '错误');
+                        return;
+                    }
+
+                    let lastAiMsg = null;
+                    for (let i = ctx.chat.length - 1; i >= 0; i--) {
+                        if (!ctx.chat[i].is_user && ctx.chat[i].role !== 'system') {
+                            lastAiMsg = ctx.chat[i];
+                            break;
+                        }
+                    }
+
+                    if (!lastAiMsg) {
+                        await window.Gaigai.customAlert('未找到 AI 的回复记录。', '错误');
+                        return;
+                    }
+
+                    const swipeId = lastAiMsg.swipe_id ?? 0;
+                    let rawText = '';
+                    if (lastAiMsg.swipes && lastAiMsg.swipes.length > swipeId) {
+                        rawText = lastAiMsg.swipes[swipeId];
+                    } else {
+                        rawText = lastAiMsg.mes || lastAiMsg.content || '';
+                    }
+
+                    if (!rawText.includes('<') && !rawText.includes('[')) {
+                        await window.Gaigai.customAlert('最后一条 AI 回复中未检测到明显的 XML (<>) 或方括号 ([]) 标签格式，无需提取。', '诊断结果');
+                        return;
+                    }
+
+                    $btn.html('<i class="fa-solid fa-spinner fa-spin"></i> 诊断中...').prop('disabled', true);
+
+                    const prompt = window.Gaigai.PromptManager.AI_TAG_DIAGNOSTIC_PROMPT.replace('{{RAW_TEXT}}', rawText);
+
+                    const messages = [{ role: 'user', content: prompt }];
+                    const API_CONFIG = window.Gaigai.config;
+                    let result;
+                    if (API_CONFIG.useIndependentAPI) {
+                        result = await window.Gaigai.tools.callIndependentAPI(messages);
+                    } else {
+                        result = await window.Gaigai.tools.callTavernAPI(messages);
+                    }
+
+                    if (!result.success || !result.summary) {
+                        throw new Error(result.error || 'AI 返回为空');
+                    }
+
+                    let jsonStr = result.summary;
+                    const jsonMatch = jsonStr.match(/\{.*\}/s);
+                    if (jsonMatch) jsonStr = jsonMatch[0];
+
+                    const parsed = JSON.parse(jsonStr);
+
+                    if ((!parsed.blacklist || parsed.blacklist.length === 0) && (!parsed.whitelist || parsed.whitelist.length === 0)) {
+                        await window.Gaigai.customAlert('AI 诊断完毕：文本中无需过滤的标签。', '诊断结果');
+                        return;
+                    }
+
+                    let msg = '🤖 **AI 诊断结果：**\n\n';
+                    if (parsed.reasoning) msg += `💡 **AI 分析思路：**\n${parsed.reasoning}\n\n`;
+                    if (parsed.blacklist && parsed.blacklist.length > 0) msg += `🚫 建议加入黑名单 (去除)：${parsed.blacklist.join(', ')}\n`;
+                    if (parsed.whitelist && parsed.whitelist.length > 0) msg += `✅ 建议加入白名单 (仅留)：${parsed.whitelist.join(', ')}\n`;
+                    msg += '\n是否立即应用到输入框？(原有内容将被覆盖)';
+
+                    if (await window.Gaigai.customConfirm(msg, '诊断完成')) {
+                        if (parsed.blacklist) $('#gg_c_filter_tags').val(parsed.blacklist.join(', '));
+                        if (parsed.whitelist) $('#gg_c_filter_tags_white').val(parsed.whitelist.join(', '));
+
+                        $('#gg_c_filter_tags, #gg_c_filter_tags_white').css('background', 'rgba(76, 175, 80, 0.2)');
+                        setTimeout(() => { $('#gg_c_filter_tags, #gg_c_filter_tags_white').css('background', ''); }, 1000);
+
+                        syncUIToConfig();
+                        if (typeof toastr !== 'undefined') toastr.success('标签规则已更新并保存');
+                    }
+
+                } catch (error) {
+                    console.error('AI提取标签失败:', error);
+                    await window.Gaigai.customAlert('AI 分析失败，可能未配置API或模型不支持 JSON 格式输出。\n错误信息：' + error.message, '诊断失败');
+                } finally {
+                    $btn.html(oldHtml).prop('disabled', false);
+                }
             });
 
             $('#gg_save_cfg').on('click', async function () {
@@ -13206,6 +13351,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong>新增大总结：</strong>新增大总结功能</li>
+                        <li><strong>新增楼层计算功能：</strong>填表或总结时，可勾选自动计算保证数值的合理化</li>
+                        <li><strong>新增AI分析：</strong>对不会填写过滤标签的用户可使用AI进行帮忙分析标签,并一键填写</li>
                         <li><strong>新增过滤标签：</strong>黑白名单过滤标签支持对方括号标签进行清洗。</li>
                     </ul>
                 </div>
