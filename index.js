@@ -10152,9 +10152,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             : '';
 
         const h = `<div class="g-p" style="display: flex; flex-direction: column; gap: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="margin:0;">⚙️ 插件配置</h4>
-            <label style="font-size:12px; cursor:pointer; color:#ff9800; font-weight:bold; display:flex; align-items:center; gap:4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <h4 style="margin:0; flex-shrink: 0;">⚙️ 插件配置</h4>
+            <label style="font-size:11px; cursor:pointer; color:#ff9800; font-weight:bold; display:flex; align-items:center; gap:4px; white-space: nowrap;">
                 <input type="checkbox" id="gg_c_auto_calc" ${C.autoCalculateParams ? 'checked' : ''} style="transform: scale(1.1);">
                 <span>✨智能计算联动</span>
             </label>
@@ -10338,7 +10338,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label style="font-weight: 600;">📚 自动大总结（聊天历史）/label>
+                <label style="font-weight: 600;">📚 自动大总结（聊天历史）</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px;">每</span>
                     <input type="number" id="gg_c_big_sum_floor" value="${C.autoBigSummaryFloor}" min="50" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
