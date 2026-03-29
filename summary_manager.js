@@ -628,10 +628,15 @@
 
             // 读取进度
             let lastSumIndex = API_CONFIG.lastSummaryIndex || 0;
+            let lastBigSumIndex = API_CONFIG.lastBigSummaryIndex || 0;
             // ✅ 智能修正逻辑：如果指针超出范围，修正到当前最大值（而不是归零）
             if (totalCount > 0 && lastSumIndex > totalCount) {
                 lastSumIndex = totalCount;
                 console.log(`⚠️ [进度修正] 总结指针超出范围，已修正为 ${totalCount}（原值: ${API_CONFIG.lastSummaryIndex}）`);
+            }
+            if (totalCount > 0 && lastBigSumIndex > totalCount) {
+                lastBigSumIndex = totalCount;
+                console.log(`⚠️ [进度修正] 大总结指针超出范围，已修正为 ${totalCount}（原值: ${API_CONFIG.lastBigSummaryIndex}）`);
             }
 
             // ✅ 读取保存的批次步长
@@ -666,10 +671,16 @@
                 <div style="font-size: 11px; color: ${UI.tc}; opacity: 0.9; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
                     <span><strong>⚙️ 自动总结模式：</strong>${sourceText}</span>
                     <span style="opacity: 0.7;">|</span>
-                    <span><strong>📍 进度指针：</strong></span>
+                    <span><strong>📍 小总结指针：</strong></span>
                     <input type="number" id="gg_edit_sum_pointer" value="${lastSumIndex}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:3px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <span>/ ${totalCount} 层</span>
                     <button id="gg_save_sum_pointer_btn" style="padding:3px 10px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
+                </div>
+                <div style="font-size: 11px; color: ${UI.tc}; opacity: 0.9; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span><strong>📚 大总结指针：</strong></span>
+                    <input type="number" id="gg_edit_big_sum_pointer" value="${lastBigSumIndex}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:3px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <span>/ ${totalCount} 层</span>
+                    <button id="gg_save_big_sum_pointer_btn" style="padding:3px 10px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
                     <span style="opacity: 0.7;">|</span>
                     <a href="javascript:void(0)" id="gg_open_config_link" style="color: #ff9800; text-decoration: underline; cursor: pointer; font-size: 10px;">修改配置</a>
                 </div>
@@ -944,6 +955,43 @@
                     }
 
                     // 5. 刷新控制台界面
+                    setTimeout(() => self.showUI(), 300);
+                });
+
+                // ✨ 大总结指针修正按钮点击事件
+                $('#gg_save_big_sum_pointer_btn').on('click', async function() {
+                    const API_CONFIG = window.Gaigai.config;
+                    const ctx = m.ctx();
+                    const totalCount = ctx && ctx.chat ? ctx.chat.length : 0;
+
+                    const newPointer = parseInt($('#gg_edit_big_sum_pointer').val());
+
+                    if (isNaN(newPointer) || newPointer < 0 || newPointer > totalCount) {
+                        await window.Gaigai.customAlert(`⚠️ 输入无效！\n\n请输入 0 到 ${totalCount} 之间的数字`, '错误');
+                        return;
+                    }
+
+                    API_CONFIG.lastBigSummaryIndex = newPointer;
+
+                    try {
+                        localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                        console.log(`✅ [进度修正] 大总结指针已更新至: ${newPointer}`);
+                    } catch (e) {
+                        console.error('❌ [进度修正] localStorage 保存失败:', e);
+                    }
+
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                        window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                            console.warn('⚠️ [进度修正] 云端同步失败:', err);
+                        });
+                    }
+
+                    m.save(false, true);
+
+                    if (typeof toastr !== 'undefined') {
+                        toastr.success(`大总结进度已修正为 ${newPointer}`, '更新成功', { timeOut: 2000 });
+                    }
+
                     setTimeout(() => self.showUI(), 300);
                 });
 
@@ -1480,6 +1528,7 @@
                 messages.push({ role: 'user', content: '请继续执行上述总结任务。' });
             }
 
+            // 🔍 更新探针数据（记录最后一次API请求，包括自动总结）
             window.Gaigai.lastRequestData = {
                 chat: JSON.parse(JSON.stringify(messages)),
                 timestamp: Date.now(),
@@ -2091,6 +2140,111 @@
         }
 
         /**
+         * 🆕 大总结功能：对指定区间进行总结，并清理零散小总结
+         * @param {number} start - 起始楼层
+         * @param {number} end - 结束楼层
+         */
+        async runBigSummary(start, end) {
+            const m = window.Gaigai.m;
+            const API_CONFIG = window.Gaigai.config;
+            const C = window.Gaigai.config_obj;
+
+            console.log(`📚 [大总结] 开始执行: ${start}-${end}`);
+
+            try {
+                // 🛡️ 防撞车锁：如果常规小总结正在执行，大总结必须排队等待其落盘
+                while (window.isSummarizing) {
+                    console.log('⏳ [大总结] 检测到小总结正在生成，大总结排队等待 2 秒...');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+                // 锁定状态，防止新的小总结在此期间乱入
+                window.isSummarizing = true;
+
+                // 1. 触发 AI 总结
+                const result = await this.callAIForSummary(start, end, null, true, false, true, null, true);
+
+                if (!result || !result.success || !result.summary) {
+                    console.warn('❌ [大总结] AI 总结失败');
+                    return;
+                }
+
+                // 2. 获取总结表
+                const sumSheet = m.get(m.s.length - 1);
+                if (!sumSheet) {
+                    console.error('❌ [大总结] 总结表不存在');
+                    return;
+                }
+
+                // 3. 先清理碎片总结（只删除当前区间内的零散小总结）
+                const indicesToDelete = [];
+                const crossBoundarySummaries = []; // 记录跨区域总结
+                for (let i = 0; i < sumSheet.r.length; i++) {
+                    const row = sumSheet.r[i];
+                    const note = row[2] || '';
+                    const match = note.match(/^(\d+)\s*-\s*(\d+)$/);
+
+                    if (match) {
+                        const s = parseInt(match[1]);
+                        const e = parseInt(match[2]);
+
+                        // 完全在区间内：删除
+                        if (s >= start && e <= end) {
+                            indicesToDelete.push(i);
+                        }
+                        // 跨区域：起点在区间外，终点在区间内（如 98-120 对于 100-200）
+                        else if (s < start && e > start && e <= end) {
+                            crossBoundarySummaries.push(note);
+                        }
+                        // 跨区域：起点在区间内，终点在区间外（如 180-220 对于 100-200）
+                        else if (s >= start && s < end && e > end) {
+                            crossBoundarySummaries.push(note);
+                        }
+                    }
+                }
+
+                if (indicesToDelete.length > 0) {
+                    sumSheet.delMultiple(indicesToDelete);
+                    console.log(`🗑️ [大总结] 已清理 ${indicesToDelete.length} 个零散总结`);
+                }
+
+                // 提醒用户跨区域总结
+                if (crossBoundarySummaries.length > 0) {
+                    const message = `⚠️ 检测到 ${crossBoundarySummaries.length} 个跨区域总结：\n${crossBoundarySummaries.join(', ')}\n\n大总结已完成，跨区域总结内容已保留，请手动核实后删除。`;
+                    console.warn(`⚠️ [大总结] ${message}`);
+                    if (typeof toastr !== 'undefined') {
+                        toastr.warning(message, '大总结完成', { timeOut: 10000 });
+                    }
+                }
+
+                // 4. 写入大总结（删除后保存，标题会自动按顺序命名）
+                m.sm.save(result.summary, `${start}-${end}`);
+                console.log(`✅ [大总结] 已保存: ${start}-${end}`);
+
+                // 4. 更新进度指针
+                API_CONFIG.lastBigSummaryIndex = end;
+                localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                m.save(true, true);
+
+                // 5. 同步到世界书
+                await window.Gaigai.WI.syncToWorldInfo(null, true);
+
+                // 6. 触发自动向量化
+                if (C.autoVectorizeSummary && window.Gaigai.VM) {
+                    await window.Gaigai.VM.syncSummaryToBook(true);
+                }
+
+                // 7. 刷新界面
+                if ($('#gai-main-pop').length > 0) window.Gaigai.shw();
+
+                console.log(`✅ [大总结] 完成: ${start}-${end}`);
+            } catch (error) {
+                console.error('❌ [大总结] 执行失败:', error);
+            } finally {
+                window.isSummarizing = false;
+            }
+        }
+
+        /**
          * 分批总结函数（迁移自 index.js）
          */
         async runBatchSummary(start, end, step, mode = 'chat', silent = false) {
@@ -2434,7 +2588,7 @@
             // ✨ 核心修改：如果是多段优化，强制注入分隔符指令
             let formatInstruction = "";
             if (targetIndices.length > 1) {
-                formatInstruction = `\n\n⚠️⚠️⚠️ 【重要格式要求】 ⚠️⚠️⚠️\n你正在同时优化 ${targetIndices.length} 个独立的页面。请务必保持它们的独立性！\n在输出时，不同页面的优化结果之间**必须**使用 \`---分隔线---\` 进行分割。\n严禁将它们合并成一段！请严格按照原文顺序输出。`;
+                formatInstruction = `\n\n你正在同时优化 ${targetIndices.length} 个页面。请严格按照总结优化提示词进行优化输出。`;
             }
 
             messages.push({

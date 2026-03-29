@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.2.2
+// 记忆表格 v2.2.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -15,7 +15,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.2 启动');
+    console.log('🚀 记忆表格 v2.2.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +27,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.2';
+    const V = 'v2.2.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -59,6 +59,10 @@
         manualSummaryTargetTables: [], // 🆕 手动总结控制台的目标表格索引（空数组表示全部）
         autoSummaryDelay: true,        // ✅ 开启延迟
         autoSummaryDelayCount: 4,      // ✅ 延迟4楼
+        autoBigSummary: false,         // ❌ 默认关闭大总结
+        autoBigSummaryFloor: 100,      // ✅ 100层触发大总结
+        autoBigSummaryDelay: false,    // ❌ 默认关闭大总结延迟
+        autoBigSummaryDelayCount: 6,   // ✅ 延迟6楼
         autoBackfill: false,           // ❌ 默认关闭批量填表（避免与实时填表冲突）
         autoBackfillFloor: 20,         // ✅ 预设20层
         autoBackfillPrompt: true,      // ✅ 默认静默发起（不弹窗确认）
@@ -102,6 +106,7 @@
         summarySource: 'table',    // ✅ 默认为表格总结（最佳实践）
         lastSummaryIndex: 0,
         lastBackfillIndex: 0,
+        lastBigSummaryIndex: 0,    // 🆕 大总结进度指针
         useStream: true            // ✅ 流式传输开关（默认开启）
     };
 
@@ -2719,6 +2724,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (!content) return content;
         let result = content;
 
+        // 辅助函数：转义正则特殊字符
+        const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
         // 1️⃣ 黑名单处理 (如果设置了)
         if (C.filterTags) {
             const tags = C.filterTags.split(/[,，]/).map(t => t.trim()).filter(t => t);
@@ -2727,6 +2735,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (t.startsWith('!--')) {
                     // 匹配 HTML 注释 <!--...-->
                     re = new RegExp('<' + t + '[\\s\\S]*?-->', 'gi');
+                } else if (t.startsWith('[') && t.endsWith(']')) {
+                    // 🆕 匹配方括号标签 [tag]...[/tag]
+                    const inner = escapeRegExp(t.slice(1, -1));
+                    re = new RegExp('\\[' + inner + '(?:\\s+[^\\]]*)?\\][\\s\\S]*?\\[\\/' + inner + '\\s*\\]', 'gi');
                 } else {
                     // 匹配成对标签 <tag>...</tag>
                     // 允许闭合标签中有空格 (e.g., </ details>)
@@ -2757,6 +2769,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (t.startsWith('!--')) {
                         // 白名单模式下注释标签通常不常用，但也做兼容
                         re = new RegExp('<' + t + '[\\s\\S]*?-->', 'gi');
+                    } else if (t.startsWith('[') && t.endsWith(']')) {
+                        // 🆕 匹配方括号标签 [tag]...[/tag]
+                        const inner = escapeRegExp(t.slice(1, -1));
+                        re = new RegExp('\\[' + inner + '(?:\\s+[^\\]]*)?\\]([\\s\\S]*?)(?:\\[\\/' + inner + '\\]|$)', 'gi');
                     } else {
                         // 提取标签内的内容（group 1）
                         re = new RegExp(`<${t}(?:\\s+[^>]*)?>([\\s\\S]*?)(?:<\\/${t}>|$)`, 'gi');
@@ -5544,6 +5560,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             function finish() {
                 saveSummarizedRows();
                 m.save(false, true); // 手动总结完成后立即保存
+                if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                    window.Gaigai.updateCurrentSnapshot();
+                }
                 refreshTable(ti);
                 $overlay.remove();
             }
@@ -6690,6 +6709,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 2. 重置总结进度
                 API_CONFIG.lastSummaryIndex = 0;
                 API_CONFIG.lastBackfillIndex = 0;
+                API_CONFIG.lastBigSummaryIndex = 0;
                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
 
                 // 异步触发云端同步
@@ -6941,6 +6961,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 function finish(msg) {
                     saveSummarizedRows();
                     m.save(true, true); // 总结标记操作立即保存
+                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                        window.Gaigai.updateCurrentSnapshot();
+                    }
                     // 刷新总结视图
                     const renderBookUI = window.Gaigai.renderBookUI || (function () { }); // 防止未引用
                     // 重新渲染当前页
@@ -6967,6 +6990,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
                 saveSummarizedRows();
                 m.save(true, true); // 总结标记切换立即保存
+                if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                    window.Gaigai.updateCurrentSnapshot();
+                }
                 refreshTable(ti);
                 // await customAlert(...) // 原有弹窗可移除
             } else if (selectedRow !== null) {
@@ -6976,6 +7002,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 else summarizedRows[ti].push(selectedRow);
                 saveSummarizedRows();
                 m.save(true, true); // 单行总结标记立即保存
+                if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                    window.Gaigai.updateCurrentSnapshot();
+                }
                 refreshTable(ti);
             } else {
                 // ✅ 批量显隐操作面板（当没有选中任何行时）
@@ -7070,6 +7099,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 function finish(msg) {
                     saveSummarizedRows();
                     m.save(true, true); // 批量总结标记立即保存
+                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                        window.Gaigai.updateCurrentSnapshot();
+                    }
                     refreshTable(ti);
                     $overlay.remove();
                     if (typeof toastr !== 'undefined') toastr.success(msg);
@@ -10298,8 +10330,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-weight: 600;">📚 自动大总结（聊天历史）/label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 11px;">每</span>
+                    <input type="number" id="gg_c_big_sum_floor" value="${C.autoBigSummaryFloor}" min="50" style="width: 70px; text-align: center; border-radius: 4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <span style="font-size: 11px;">层</span>
+                    <input type="checkbox" id="gg_c_big_sum" ${C.autoBigSummary ? 'checked' : ''} style="transform: scale(1.2);">
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:8px; border-left:2px solid rgba(255,152,0,0.3); font-size:11px;">
+                <input type="checkbox" id="gg_c_auto_big_delay" ${C.autoBigSummaryDelay ? 'checked' : ''} style="margin:0;">
+                <label for="gg_c_auto_big_delay" style="cursor:pointer; display:flex; align-items:center; gap:4px; margin:0;">
+                    <span>⏱️ 延迟启动</span>
+                </label>
+                <span style="opacity:0.7;">|</span>
+                <span style="opacity:0.8;">滞后</span>
+                <input type="number" id="gg_c_auto_big_delay_count" value="${C.autoBigSummaryDelayCount || 6}" min="1" style="width:70px; text-align:center; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.2);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                <span style="opacity:0.8;">层再执行</span>
+            </div>
+            <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.7; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px;">
+                💡 大总结会对指定跨度的楼层进行一次性总结，并自动清理该区间内的零散小总结
+            </div>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
             <div style="font-weight: 600; color:var(--g-tc); margin-bottom: 8px;">🏷️ 标签过滤（串行双重过滤）</div>
-            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:6px;">过滤逻辑：先去黑后留白，可单选。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think, search</code>。若要过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">&lt;!--注释--&gt;</code>，请填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
+            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:6px;">过滤逻辑：先去黑后留白，可单选。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think</code>。支持方括号，如需过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">[xx]标签</code>，请完整填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">[xx]</code>。过滤注释填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
 
             <div style="margin-bottom: 8px;">
                 <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">🚫 黑名单标签 (去除)</label>
@@ -10752,6 +10809,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoSummaryDelay = $('#gg_c_auto_sum_delay').is(':checked');
                 C.autoSummaryDelayCount = parseInt($('#gg_c_auto_sum_delay_count').val()) || 5;
                 C.autoSummaryHideContext = $('#gg_c_auto_sum_hide').is(':checked');
+                C.autoBigSummary = $('#gg_c_big_sum').is(':checked');
+                C.autoBigSummaryFloor = parseInt($('#gg_c_big_sum_floor').val()) || 100;
+                C.autoBigSummaryDelay = $('#gg_c_auto_big_delay').is(':checked');
+                C.autoBigSummaryDelayCount = parseInt($('#gg_c_auto_big_delay_count').val()) || 6;
                 C.filterTags = $('#gg_c_filter_tags').val();
                 C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
@@ -11485,6 +11546,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         C.autoSummaryTargetTables  // 🆕 传入配置的表格范围
                                     );
                                 }
+                            }
+                        }
+                    }
+
+                    // ============================================================
+                    // 模块 C: 自动大总结
+                    // ============================================================
+                    if (C.autoBigSummary) {
+                        const lastBigIndex = API_CONFIG.lastBigSummaryIndex || 0;
+                        const currentCount = x.chat.length;
+                        const newBigMsgCount = currentCount - lastBigIndex;
+
+                        const bigInterval = C.autoBigSummaryFloor || 100;
+                        const bigDelay = C.autoBigSummaryDelay ? (parseInt(C.autoBigSummaryDelayCount) || 6) : 0;
+                        const bigThreshold = bigInterval + bigDelay;
+
+                        if (newBigMsgCount >= bigThreshold) {
+                            if ($('.g-ov').length > 0) {
+                                console.log('⏸️ [自动大总结] 检测到插件弹窗打开，跳过本次触发');
+                                return;
+                            }
+
+                            const targetEndIndex = C.autoBigSummaryDelay ? (lastBigIndex + bigInterval) : currentCount;
+                            console.log(`📚 [Auto Big Summary] 触发! 当前:${currentCount}, 上次:${lastBigIndex}, 间隔:${bigInterval}, 延迟:${bigDelay}, 阈值:${bigThreshold}, 目标:${targetEndIndex}`);
+
+                            if (window.Gaigai.SummaryManager && typeof window.Gaigai.SummaryManager.runBigSummary === 'function') {
+                                window.Gaigai.SummaryManager.runBigSummary(lastBigIndex, targetEndIndex);
                             }
                         }
                     }
@@ -12438,6 +12526,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     window.fetch = async function(...args) {
                         const url = args[0] ? args[0].toString() : '';
 
+                        // 🔴 全局主开关守卫
+                        const C = window.Gaigai.config_obj;
+                        if (!C || !C.masterSwitch) {
+                            return originalFetch.apply(this, args);
+                        }
+
                         // Safe check: Ensure body is a string before calling includes (skips FormData/File uploads)
                         if (args[1] && typeof args[1].body === 'string' && args[1].body.includes("API连接测试是否成功")) {
                             console.log('🧪 [Fetch Hijack] Detected API connection test, skipping vector search.');
@@ -12459,11 +12553,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 if (C.contextLimit && window.Gaigai.applyContextLimitHiding) {
                                     console.log('🔍 [Fetch Hijack] 先执行留N层隐藏...');
                                     await window.Gaigai.applyContextLimitHiding();
+                                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                                        window.Gaigai.updateCurrentSnapshot();
+                                    }
                                 }
 
                                 if (C.autoSummaryHideContext && window.Gaigai.applyNativeHiding) {
                                     console.log('🔍 [Fetch Hijack] 先执行已总结隐藏...');
                                     await window.Gaigai.applyNativeHiding();
+                                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                                        window.Gaigai.updateCurrentSnapshot();
+                                    }
                                 }
 
                                 // 在发送前获取当前 chat 状态
@@ -13105,7 +13205,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>优化自动向量化：</strong>总结优化后，支持在勾选了总结后自动向量化的下情况，实现自动同步更新向量化的总结知识书。</li>
+                        <li><strong>新增大总结：</strong>新增大总结功能</li>
+                        <li><strong>新增过滤标签：</strong>黑白名单过滤标签支持对方括号标签进行清洗。</li>
                     </ul>
                 </div>
 
