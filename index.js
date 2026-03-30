@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.2.5
+// 记忆表格 v2.2.6
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.5 启动');
+    console.log('🚀 记忆表格 v2.2.6 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.5';
+    const V = 'v2.2.6';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -5034,6 +5034,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <div class="g-toc-header">
                     <span>📚 目录导航</span>
                     <div style="display:flex; align-items:center; gap:8px;">
+                        <button class="g-toc-move-btn up" data-ti="${tableIndex}" style="background:rgba(0,0,0,0.1); border:none; border-radius:4px; cursor:pointer; font-size:11px; color:inherit; padding:4px 8px;" title="上移当前页">↑</button>
+                        <button class="g-toc-move-btn down" data-ti="${tableIndex}" style="background:rgba(0,0,0,0.1); border:none; border-radius:4px; cursor:pointer; font-size:11px; color:inherit; padding:4px 8px;" title="下移当前页">↓</button>
                         <button class="g-toc-sort-btn" data-ti="${tableIndex}" style="background:rgba(0,0,0,0.1); border:none; border-radius:4px; cursor:pointer; font-size:11px; color:inherit; padding:4px 8px;" title="切换排序">
                             ${C.reverseToc ? '🔽 倒序' : '🔼 正序'}
                         </button>
@@ -5461,6 +5463,65 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             setTimeout(() => {
                 $(`#gai-book-toc-${ti}`).addClass('active');
                 $(`#gai-toc-overlay-${ti}`).addClass('active');
+            }, 50);
+        });
+
+        // 6. 移动目录页（上移/下移）
+        $('#gai-main-pop').off('click', '.g-toc-move-btn').on('click', '.g-toc-move-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const $btn = $(this);
+            const ti = parseInt($btn.data('ti'));
+            const ri = currentBookPage;
+            let direction = $btn.hasClass('up') ? -1 : 1;
+
+            // 适配倒序：如果开启了倒序，视觉上的"上下"与底层数组的"前后"是相反的
+            if (C.reverseToc) {
+                direction = -direction;
+            }
+
+            const sh = m.get(ti);
+            if (!sh) return;
+
+            const success = sh.move(ri, direction);
+            if (!success) {
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning('无法移动：已在边界', '提示', { timeOut: 1000 });
+                }
+                return;
+            }
+
+            // 同步修正当前正在阅读的页码，防止视觉跳脱
+            currentBookPage = ri + direction;
+
+            // 同步修正该页的隐藏(变绿)状态
+            if (summarizedRows[ti]) {
+                const hasCurrent = summarizedRows[ti].includes(ri);
+                const hasTarget = summarizedRows[ti].includes(ri + direction);
+
+                if (hasCurrent !== hasTarget) {
+                    if (hasCurrent) {
+                        summarizedRows[ti] = summarizedRows[ti].filter(x => x !== ri);
+                        summarizedRows[ti].push(ri + direction);
+                    }
+                    if (hasTarget) {
+                        summarizedRows[ti] = summarizedRows[ti].filter(x => x !== ri + direction);
+                        summarizedRows[ti].push(ri);
+                    }
+                    if (typeof saveSummarizedRows === 'function') saveSummarizedRows();
+                }
+            }
+
+            lastManualEditTime = Date.now();
+            m.save(true, true);
+
+            refreshBookView(ti);
+
+            // 视图刷新后，HTML被替换，我们需要在稍作延迟后重新为目录元素添加 active 类以保持目录打开
+            setTimeout(() => {
+                $('#gai-book-toc-' + ti).addClass('active');
+                $('#gai-toc-overlay-' + ti).addClass('active');
             }, 50);
         });
 
@@ -13388,6 +13449,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>新增楼层计算功能：</strong>填表或总结时，可勾选自动计算保证数值的合理化</li>
                         <li><strong>新增AI分析：</strong>对不会填写过滤标签的用户可使用AI进行帮忙分析标签,并一键填写</li>
                         <li><strong>新增过滤标签：</strong>黑白名单过滤标签支持对方括号标签进行清洗。</li>
+                        <li><strong>新增总结移动：</strong>在记忆总结的目录导航处可对当前页面进行上下页调整</li>
                         <li><strong>优化布局：</strong>微调部分css样式布局</li>
                         <li><strong>修复bug：</strong>修复部分已知bug</li>
                     </ul>
