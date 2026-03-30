@@ -1,9 +1,10 @@
 // ========================================================================
-// 记忆表格 v2.2.4
+// 记忆表格 v2.2.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
     'use strict';
+    /* global $, window, document, localStorage, SillyTavern, toastr, navigator, fetch */
 
     // ===== 初始化全局对象（必须在最开始，供 prompt_manager.js 使用）=====
     window.Gaigai = window.Gaigai || {};
@@ -15,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.4 启动');
+    console.log('🚀 记忆表格 v2.2.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -27,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.4';
+    const V = 'v2.2.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -219,7 +220,7 @@
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px', margin: 0
                 }
-            }).attr('style', function(i, s) { return s + 'z-index: 2147483647 !important;'; });
+            }).attr('style', function (i, s) { return s + 'z-index: 2147483647 !important;'; });
 
             const $dialog = $('<div>', {
                 css: {
@@ -543,7 +544,7 @@
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px', margin: 0
                 }
-            }).attr('style', function(i, s) { return s + 'z-index: 2147483647 !important;'; });
+            }).attr('style', function (i, s) { return s + 'z-index: 2147483647 !important;'; });
 
             const $dialog = $('<div>', {
                 css: {
@@ -640,7 +641,7 @@
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px', margin: 0
                 }
-            }).attr('style', function(i, s) { return s + 'z-index: 2147483647 !important;'; });
+            }).attr('style', function (i, s) { return s + 'z-index: 2147483647 !important;'; });
 
             const $dialog = $('<div>', {
                 css: {
@@ -768,7 +769,7 @@
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     padding: '20px', margin: 0
                 }
-            }).attr('style', function(i, s) { return s + 'z-index: 2147483647 !important;'; });
+            }).attr('style', function (i, s) { return s + 'z-index: 2147483647 !important;'; });
 
             const $dialog = $('<div>', {
                 css: {
@@ -1319,7 +1320,8 @@
                 // ✅ 新增：保存当前 API 进度指针到这个角色的存档里
                 meta: {
                     lastSum: API_CONFIG.lastSummaryIndex,
-                    lastBf: API_CONFIG.lastBackfillIndex
+                    lastBf: API_CONFIG.lastBackfillIndex,
+                    lastBigSum: API_CONFIG.lastBigSummaryIndex // ✅ 新增大总结指针独立保存
                 },
                 // ✅ Per-Chat Configuration: Save critical feature toggles for this chat
                 config: {
@@ -1395,62 +1397,62 @@
                 // 备份执行函数
                 function performBackup() {
 
-                // 智能保存函数：自动处理空间不足问题
-                const performSave = () => {
-                    try {
-                        localStorage.setItem(backupKey, JSON.stringify(data));
-                    } catch (e) {
-                        // 检测是否为存储空间已满错误
-                        if (e.name === 'QuotaExceededError' || e.code === 22) {
-                            console.warn('⚠️ [存储空间已满] 触发紧急清理，删除所有旧备份...');
-                            // 紧急清理：删除所有本插件的旧备份
-                            let cleanedCount = 0;
-                            Object.keys(localStorage).forEach(key => {
-                                if (key.startsWith('gg_data_')) {
-                                    localStorage.removeItem(key);
-                                    cleanedCount++;
+                    // 智能保存函数：自动处理空间不足问题
+                    const performSave = () => {
+                        try {
+                            localStorage.setItem(backupKey, JSON.stringify(data));
+                        } catch (e) {
+                            // 检测是否为存储空间已满错误
+                            if (e.name === 'QuotaExceededError' || e.code === 22) {
+                                console.warn('⚠️ [存储空间已满] 触发紧急清理，删除所有旧备份...');
+                                // 紧急清理：删除所有本插件的旧备份
+                                let cleanedCount = 0;
+                                Object.keys(localStorage).forEach(key => {
+                                    if (key.startsWith('gg_data_')) {
+                                        localStorage.removeItem(key);
+                                        cleanedCount++;
+                                    }
+                                });
+                                console.log(`🧹 [紧急清理] 已删除 ${cleanedCount} 个旧备份，释放存储空间`);
+
+                                // 清理后再试一次
+                                try {
+                                    localStorage.setItem(backupKey, JSON.stringify(data));
+                                    console.log('✅ [紧急清理] 清理后保存成功');
+                                } catch (e2) {
+                                    console.error('❌ [紧急清理] 清理后仍无法保存备份:', e2);
+                                    // 即使备份失败，也不要抛出错误，因为主数据已经保存成功
                                 }
-                            });
-                            console.log(`🧹 [紧急清理] 已删除 ${cleanedCount} 个旧备份，释放存储空间`);
-
-                            // 清理后再试一次
-                            try {
-                                localStorage.setItem(backupKey, JSON.stringify(data));
-                                console.log('✅ [紧急清理] 清理后保存成功');
-                            } catch (e2) {
-                                console.error('❌ [紧急清理] 清理后仍无法保存备份:', e2);
-                                // 即使备份失败，也不要抛出错误，因为主数据已经保存成功
+                            } else {
+                                // 其他类型的错误，记录但不中断
+                                console.warn('⚠️ [备份保存] 保存备份时出错:', e);
                             }
-                        } else {
-                            // 其他类型的错误，记录但不中断
-                            console.warn('⚠️ [备份保存] 保存备份时出错:', e);
                         }
+                    };
+
+                    performSave();
+
+                    // 🧹 [常规清理] 只保留最近 15 个备份
+                    try {
+                        const allKeys = Object.keys(localStorage);
+                        const backups = allKeys
+                            .filter(k => k.startsWith(`gg_data_${id}_`))
+                            .map(k => {
+                                const ts = parseInt(k.split('_').pop());
+                                return { key: k, ts: ts };
+                            })
+                            .sort((a, b) => b.ts - a.ts); // 按时间戳降序排列
+
+                        // 删除超过15个的旧备份
+                        if (backups.length > 15) {
+                            backups.slice(15).forEach(backup => {
+                                localStorage.removeItem(backup.key);
+                            });
+                            console.log(`🧹 [备份清理] 已清理 ${backups.length - 15} 个旧备份，保留最近15个`);
+                        }
+                    } catch (cleanupError) {
+                        console.warn('⚠️ [备份清理] 清理失败:', cleanupError);
                     }
-                };
-
-                performSave();
-
-                // 🧹 [常规清理] 只保留最近 15 个备份
-                try {
-                    const allKeys = Object.keys(localStorage);
-                    const backups = allKeys
-                        .filter(k => k.startsWith(`gg_data_${id}_`))
-                        .map(k => {
-                            const ts = parseInt(k.split('_').pop());
-                            return { key: k, ts: ts };
-                        })
-                        .sort((a, b) => b.ts - a.ts); // 按时间戳降序排列
-
-                    // 删除超过15个的旧备份
-                    if (backups.length > 15) {
-                        backups.slice(15).forEach(backup => {
-                            localStorage.removeItem(backup.key);
-                        });
-                        console.log(`🧹 [备份清理] 已清理 ${backups.length - 15} 个旧备份，保留最近15个`);
-                    }
-                } catch (cleanupError) {
-                    console.warn('⚠️ [备份清理] 清理失败:', cleanupError);
-                }
                 } // 结束 performBackup 函数
 
             } catch (e) {
@@ -1547,6 +1549,7 @@
                 userRowHeights = {};
                 API_CONFIG.lastSummaryIndex = 0;
                 API_CONFIG.lastBackfillIndex = 0;
+                API_CONFIG.lastBigSummaryIndex = 0; // ✅ 切换会话时，大总结指针也重置为0
                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
 
                 console.log(`🔄 [会话切换] ID: ${id}，已重置所有状态`);
@@ -1717,6 +1720,7 @@
                 if (finalData.meta) {
                     if (finalData.meta.lastSum !== undefined) API_CONFIG.lastSummaryIndex = finalData.meta.lastSum;
                     if (finalData.meta.lastBf !== undefined) API_CONFIG.lastBackfillIndex = finalData.meta.lastBf;
+                    if (finalData.meta.lastBigSum !== undefined) API_CONFIG.lastBigSummaryIndex = finalData.meta.lastBigSum; // ✅ 新增恢复大总结指针
                     localStorage.setItem(AK, JSON.stringify(API_CONFIG));
                 }
 
@@ -2419,7 +2423,7 @@
         $box.append($reverseContainer);
 
         // 倒序开关事件
-        $reverseCheckbox.on('change', function() {
+        $reverseCheckbox.on('change', function () {
             const isReversed = $(this).is(':checked');
             C.reverseView = isReversed;
 
@@ -2428,7 +2432,7 @@
             $reverseKnob.css('left', isReversed ? '23px' : '3px');
 
             // 保存配置到 localStorage
-            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch(err){}
+            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch (err) { }
 
             // 保存并刷新视图
             m.save();
@@ -2486,7 +2490,7 @@
         $box.append($sinkContainer); // 添加到倒序开关的下方
 
         // 沉底开关事件
-        $sinkCheckbox.on('change', function() {
+        $sinkCheckbox.on('change', function () {
             const isSinked = $(this).is(':checked');
             C.sinkHiddenRows = isSinked;
 
@@ -2495,7 +2499,7 @@
             $sinkKnob.css('left', isSinked ? '23px' : '3px');
 
             // 保存配置到 localStorage
-            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch(err){}
+            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch (err) { }
 
             // 保存并刷新视图
             m.save();
@@ -2964,7 +2968,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         try {
             // Attempt to fix lazy formatting (e.g. 0: "val" -> "0": "val")
             const jsonStr = s.replace(/([{,]\s*)(\d+)(\s*:)/g, '$1"$2"$3')
-                             .replace(/'/g, '"'); // Try replacing single quotes (risky but helpful)
+                .replace(/'/g, '"'); // Try replacing single quotes (risky but helpful)
 
             const parsed = JSON.parse(jsonStr);
             Object.assign(d, parsed);
@@ -3269,7 +3273,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 标记已替换，防止后续重复注入
                     replacedSummary = true;
 
-                    console.log(`✨ [原地拆分注入] ${varSum} 已拆分为 ${newMessages.length} 条消息 (前:${preText?'有':'无'}, 数据:${summaryMessages.length}条, 后:${postText?'有':'无'})`);
+                    console.log(`✨ [原地拆分注入] ${varSum} 已拆分为 ${newMessages.length} 条消息 (前:${preText ? '有' : '无'}, 数据:${summaryMessages.length}条, 后:${postText ? '有' : '无'})`);
 
                     // 跳过后续的 modified 处理，因为已经完成替换
                     continue;
@@ -3330,7 +3334,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 标记已替换，防止后续重复注入
                     replacedTable = true;
 
-                    console.log(`✨ [原地拆分注入] ${varTable} 已拆分为 ${newMessages.length} 条消息 (前:${preText?'有':'无'}, 数据:${tableMessages.length}条, 后:${postText?'有':'无'})`);
+                    console.log(`✨ [原地拆分注入] ${varTable} 已拆分为 ${newMessages.length} 条消息 (前:${preText ? '有' : '无'}, 数据:${tableMessages.length}条, 后:${postText ? '有' : '无'})`);
 
                     // 跳过后续的 modified 处理，因为已经完成替换
                     continue;
@@ -3406,7 +3410,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (anchorIndex === -1) anchorIndex = i;
                     foundAnchor = true;
 
-                    console.log(`✨ [原地拆分注入] ${varSmart} 已拆分为 ${newMessages.length} 条消息 (前:${preText?'有':'无'}, 总结:${summaryMessages.length}条, 表格:${tableMessages.length}条, 后:${postText?'有':'无'})`);
+                    console.log(`✨ [原地拆分注入] ${varSmart} 已拆分为 ${newMessages.length} 条消息 (前:${preText ? '有' : '无'}, 总结:${summaryMessages.length}条, 表格:${tableMessages.length}条, 后:${postText ? '有' : '无'})`);
 
                     // 跳过后续的 modified 处理，因为已经完成替换
                     continue;
@@ -3727,7 +3731,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (hideTagDebounceTimer) clearTimeout(hideTagDebounceTimer);
 
         // 4. 使用 requestIdleCallback (兼容性写法)
-        const runTask = window.requestIdleCallback || function(cb) { setTimeout(cb, 500); };
+        const runTask = window.requestIdleCallback || function (cb) { setTimeout(cb, 500); };
 
         hideTagDebounceTimer = setTimeout(() => {
             runTask(() => {
@@ -5445,9 +5449,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 切换状态并保存配置
             C.reverseToc = !C.reverseToc;
-            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch(err){}
+            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch (err) { }
             if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
-                window.Gaigai.saveAllSettingsToCloud().catch(()=>{});
+                window.Gaigai.saveAllSettingsToCloud().catch(() => { });
             }
 
             // 刷新视图
@@ -6651,7 +6655,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 lastManualEditTime = Date.now();
 
                 // 重置填表进度指针（不重置总结指针）
+                API_CONFIG.lastSummaryIndex = 0;
                 API_CONFIG.lastBackfillIndex = 0;
+                API_CONFIG.lastBigSummaryIndex = 0; // ✅ 切换会话时，大总结指针也重置为0
                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
 
                 // 同步到云端
@@ -7196,8 +7202,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 判断是否是本地地址
             const isLocalUrl = cleaned.includes('127.0.0.1') ||
-                              cleaned.includes('localhost') ||
-                              cleaned.includes('0.0.0.0');
+                cleaned.includes('localhost') ||
+                cleaned.includes('0.0.0.0');
 
             // 🔀 分支逻辑：
             // 1. 本地 build 反代 → 保留 /v1（走 custom 模式）
@@ -7276,8 +7282,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 2. 提取 finish_reason
             const finishReason = chunk.choices?.[0]?.finish_reason ||
-                                chunk.candidates?.[0]?.finishReason ||
-                                '';
+                chunk.candidates?.[0]?.finishReason ||
+                '';
 
             // 3. 检查 Gemini 安全拦截 (无 content 但有 finishReason)
             if (finishReason === 'SAFETY' || finishReason === 'RECITATION' || finishReason === 'safety') {
@@ -7914,29 +7920,29 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                                 cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
 
-                            if (!cleaned && beforeClean.trim().length > 0) {
-                                console.warn('⚠️ [后端代理清洗] 清洗后内容为空，触发回退保护');
-                                fullText = beforeClean;
-                            } else {
-                                fullText = cleaned;
-                                if (beforeClean.length !== cleaned.length) {
-                                    console.log(`🧹 [后端代理清洗] 已移除 <think> 标签`);
+                                if (!cleaned && beforeClean.trim().length > 0) {
+                                    console.warn('⚠️ [后端代理清洗] 清洗后内容为空，触发回退保护');
+                                    fullText = beforeClean;
+                                } else {
+                                    fullText = cleaned;
+                                    if (beforeClean.length !== cleaned.length) {
+                                        console.log(`🧹 [后端代理清洗] 已移除 <think> 标签`);
+                                    }
                                 }
                             }
-                        }
 
-                        // 如果有正常内容或思考内容，返回
-                        if (fullText && fullText.trim()) {
-                            console.log('✅ [后端代理] 成功');
-                            return { success: true, summary: fullText };
-                        }
-                        if (fullReasoning && fullReasoning.trim()) {
-                            console.warn('⚠️ [后端代理] 正文为空，返回思考内容');
-                            return { success: true, summary: fullReasoning };
-                        }
+                            // 如果有正常内容或思考内容，返回
+                            if (fullText && fullText.trim()) {
+                                console.log('✅ [后端代理] 成功');
+                                return { success: true, summary: fullText };
+                            }
+                            if (fullReasoning && fullReasoning.trim()) {
+                                console.warn('⚠️ [后端代理] 正文为空，返回思考内容');
+                                return { success: true, summary: fullReasoning };
+                            }
 
-                        // 真的完全没内容，抛出简洁错误
-                        throw new Error('API返回空内容');
+                            // 真的完全没内容，抛出简洁错误
+                            throw new Error('API返回空内容');
                         } else {
                             // 非流式模式：直接解析 JSON
                             console.log('📄 [后端代理] 使用非流式模式，解析 JSON...');
@@ -9808,6 +9814,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (serverData.api) {
                 const currentSumIdx = API_CONFIG.lastSummaryIndex;
                 const currentBfIdx = API_CONFIG.lastBackfillIndex;
+                const currentBigSumIdx = API_CONFIG.lastBigSummaryIndex; // ✅ 备份大总结指针
                 const currentSumSrc = API_CONFIG.summarySource; // ✅ 新增备份：保护总结来源（会话独立配置）
 
                 Object.assign(API_CONFIG, serverData.api);
@@ -9818,6 +9825,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
                 if (currentBfIdx !== undefined && currentBfIdx > (serverData.api.lastBackfillIndex || 0)) {
                     API_CONFIG.lastBackfillIndex = currentBfIdx;
+                }
+                if (currentBigSumIdx !== undefined && currentBigSumIdx > (serverData.api.lastBigSummaryIndex || 0)) {
+                    API_CONFIG.lastBigSummaryIndex = currentBigSumIdx; // ✅ 恢复大总结指针
                 }
 
                 // ✅ 新增恢复：恢复总结来源（防止全局配置覆盖当前会话的独立设置）
@@ -9912,7 +9922,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             try {
                 const tp = localStorage.getItem('gg_table_presets');
                 if (tp) tablePresets = JSON.parse(tp);
-            } catch (e) {}
+            } catch (e) { }
 
             // 🛡️ 安全检查：确保至少有"默认结构"预设再上传
             if (!tablePresets['默认结构'] && window.Gaigai.DEFAULT_TABLES) {
@@ -9921,7 +9931,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 同时写回本地，避免下次再触发
                 try {
                     localStorage.setItem('gg_table_presets', JSON.stringify(tablePresets));
-                } catch (e) {}
+                } catch (e) { }
             }
 
             const allSettings = {
@@ -9945,7 +9955,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 localStorage.setItem(CK, JSON.stringify(C));
                 localStorage.setItem(AK, JSON.stringify(API_CONFIG));
                 localStorage.setItem(UK, JSON.stringify(UI));
-            } catch (e) {}
+            } catch (e) { }
 
             // 5. 获取通行证
             let csrfToken = '';
@@ -10000,7 +10010,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     // 【全局单例】配置页表格选择按钮监听器（防止重复绑定）
-    (function() {
+    (function () {
         if (window._gg_config_table_selector_bound) return;
         window._gg_config_table_selector_bound = true;
 
@@ -10008,7 +10018,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let lastClickTime = 0; // 记录上次点击时间
 
         // 暴露到全局，供内联事件调用
-        window._gg_openTableSelector = function(event) {
+        window._gg_openTableSelector = function (event) {
             // ✅ 修复1: 阻止事件冒泡和默认行为
             if (event) {
                 event.preventDefault();
@@ -10086,7 +10096,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     $('#gg_modal_cancel').on('click', function () { overlay.remove(); $(document).off('keydown.gg_modal'); $(document).off('click.gg_card'); isOpening = false; });
                     overlay.on('click', function (e) { if (e.target === overlay[0]) { overlay.remove(); $(document).off('keydown.gg_modal'); $(document).off('click.gg_card'); isOpening = false; } });
                     $(document).on('keydown.gg_modal', function (e) { if (e.key === 'Escape') { overlay.remove(); $(document).off('keydown.gg_modal'); $(document).off('click.gg_card'); isOpening = false; } });
-                    $(document).off('click.gg_card').on('click.gg_card', '.gg-choice-card', function(e) {
+                    $(document).off('click.gg_card').on('click.gg_card', '.gg-choice-card', function (e) {
                         // ✅ Fix: If the input itself is clicked, let the browser handle it natively
                         if ($(e.target).is('input')) return;
 
@@ -10152,16 +10162,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             : '';
 
         const h = `<div class="g-p" style="display: flex; flex-direction: column; gap: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <h4 style="margin:0; flex-shrink: 0;">⚙️ 插件配置</h4>
-            <label style="font-size:11px; cursor:pointer; color:#ff9800; font-weight:bold; display:flex; align-items:center; gap:4px; white-space: nowrap;">
-                <input type="checkbox" id="gg_c_auto_calc" ${C.autoCalculateParams ? 'checked' : ''} style="transform: scale(1.1);">
-                <span>✨智能计算联动</span>
-            </label>
-        </div>
+        <h4 style="margin: 0 0 10px 0;">⚙️ 插件配置</h4>
 
         ${hibernateBanner}
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
+            
+            <!-- ✅ 智能计算联动 (采用标准整行排版) -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div>
+                    <label style="font-weight: 600; display:block; color: #0d0d0d;">✨ 智能计算联动</label>
+                    <span style="font-size:10px; opacity:0.7;">勾选后，当手动填写隐藏楼层/小总结楼层处时，自动帮助填写其他楼层数值合理化</span>
+                </div>
+                <input type="checkbox" id="gg_c_auto_calc" ${C.autoCalculateParams ? 'checked' : ''} style="transform: scale(1.2);">
+            </div>
+            
+            <hr style="border: 0; border-top: 1px dashed rgba(0,0,0,0.1); margin: 5px 0 8px 0;">
+
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <div>
                     <label style="font-weight: 600; display:block;">💡 实时填表</label>
@@ -10276,18 +10292,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <!-- 🆕 表格选择按钮 -->
                     <button type="button" id="gg_open_table_selector" onclick="window._gg_openTableSelector(event)" style="width: 100%; padding: 12px; background: ${UI.c}; color: ${UI.tc}; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-align: center; transition: all 0.2s; touch-action: manipulation;">
                         <span style="pointer-events: none;" id="gg_table_selector_text">${(() => {
-                            const dataTables = m.s.slice(0, -1);
-                            const selectedTables = C.autoSummaryTargetTables;
+                const dataTables = m.s.slice(0, -1);
+                const selectedTables = C.autoSummaryTargetTables;
 
-                            // ✅ 修正显示逻辑：undefined/null=默认全选, []=未选择, [1,2]=已选择X个
-                            if (selectedTables === undefined || selectedTables === null) {
-                                return `🎯 默认全选 ${dataTables.length} 个表格 (点击修改)`;
-                            } else if (Array.isArray(selectedTables) && selectedTables.length === 0) {
-                                return `⚠️ 未选择表格 (点击修改)`;
-                            } else {
-                                return `🎯 已选择 ${selectedTables.length} 个表格 (点击修改)`;
-                            }
-                        })()}</span>
+                // ✅ 修正显示逻辑：undefined/null=默认全选, []=未选择, [1,2]=已选择X个
+                if (selectedTables === undefined || selectedTables === null) {
+                    return `🎯 默认全选 ${dataTables.length} 个表格 (点击修改)`;
+                } else if (Array.isArray(selectedTables) && selectedTables.length === 0) {
+                    return `⚠️ 未选择表格 (点击修改)`;
+                } else {
+                    return `🎯 已选择 ${selectedTables.length} 个表格 (点击修改)`;
+                }
+            })()}</span>
                     </button>
 
                     <div style="font-size: 10px; color: ${UI.tc}; opacity: 0.6; margin-top: 8px; padding-left: 2px;">
@@ -10362,12 +10378,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
 
         <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div style="font-weight: 600; color:var(--g-tc);">🏷️ 标签过滤（串行双重过滤）</div>
-                <button id="gg_btn_ai_extract_tags" style="padding:4px 10px; background:linear-gradient(135deg, #9C27B0 0%, #673AB7 100%); color:#fff; border:none; border-radius:4px; font-size:10px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.2); white-space: nowrap;">🤖 AI 智能诊断提取</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                    <span style="font-weight: 600; color:var(--g-tc);">🏷️ 标签过滤</span>
+                    <i class="fa-solid fa-circle-info" id="gg_filter_info_icon" style="cursor: pointer; margin-left: 2px; color: #17a2b8; font-size: 14px;" title="点击查看过滤规则说明"></i>
+                </div>
+                <button id="gg_btn_ai_extract_tags" style="padding: 4px 8px !important; background: ${UI.c} !important; color: ${UI.tc} !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; font-size: 11px !important; font-weight: normal !important; height: auto !important; min-height: 0 !important; line-height: 1.2 !important; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2); white-space: nowrap; margin-left: auto;">🤖 AI 智能诊断</button>
             </div>
-            <div style="font-size:10px; color:var(--g-tc); opacity:0.7; margin-bottom:6px;">过滤逻辑：先去黑后留白，可单选。例: <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">think</code>。支持方括号，如需过滤 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">[xx]标签</code>，请完整填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">[xx]</code>。过滤注释填入 <code style="background:rgba(0,0,0,0.1); padding:2px; color:var(--g-tc);">!--</code></div>
-
+            
             <div style="margin-bottom: 8px;">
                 <label style="font-size:11px; color:var(--g-tc); font-weight: 500; display: block; margin-bottom: 4px;">🚫 黑名单标签 (去除)</label>
                 <input type="text" id="gg_c_filter_tags" value="${esc(C.filterTags || '')}" placeholder="例: thinking, system" style="width:100%; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -10382,8 +10400,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <span class="gg-quick-tag" data-tag="!--" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">!--</span>
                     <span id="gg_clear_filter_tags" style="background: rgba(211,47,47,0.1); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; color:#d32f2f; transition: background 0.2s;" onmouseover="this.style.background='rgba(211,47,47,0.2)'" onmouseout="this.style.background='rgba(211,47,47,0.1)'" title="清空">🗑️</span>
                 </div>
-
-                <div style="font-size:9px; color:#d63031; margin-top:2px;">删除这些标签及其内部的所有文字</div>
             </div>
 
             <div>
@@ -10395,7 +10411,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <span class="gg-quick-tag-white" data-tag="statusbar" style="background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: monospace; color:var(--g-tc); transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.15)'" onmouseout="this.style.background='rgba(0,0,0,0.08)'">statusbar</span>
                     <span id="gg_clear_filter_tags_white" style="background: rgba(211,47,47,0.1); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; color:#d32f2f; transition: background 0.2s;" onmouseover="this.style.background='rgba(211,47,47,0.2)'" onmouseout="this.style.background='rgba(211,47,47,0.1)'" title="清空">🗑️</span>
                 </div>
-                <div style="font-size:9px; color:#27ae60; margin-top:2px;">仅提取这些标签内的文字（若未找到则保留黑名单处理后的结果）</div>
             </div>
         </div>
 
@@ -10857,14 +10872,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 2. 存入 localStorage
                 try {
                     localStorage.setItem('gg_config', JSON.stringify(C));
-                } catch (e) {}
+                } catch (e) { }
 
                 // 3. 实时反馈
                 console.log(`💠 [设置] 独立向量检索已${C.vectorEnabled ? '开启' : '关闭'}`);
 
                 // 4. 尝试同步到云端
                 if (typeof saveAllSettingsToCloud === 'function') {
-                    saveAllSettingsToCloud().catch(() => {});
+                    saveAllSettingsToCloud().catch(() => { });
                 }
             });
 
@@ -10931,7 +10946,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // 🆕 隐藏楼层与总结后隐藏的互斥逻辑
-            $('#gg_c_limit_on').on('change', function() {
+            $('#gg_c_limit_on').on('change', function () {
                 const isChecked = $(this).is(':checked');
 
                 if (isChecked) {
@@ -10946,7 +10961,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 m.save(false, true);
             });
 
-            $('#gg_c_auto_sum_hide').on('change', function() {
+            $('#gg_c_auto_sum_hide').on('change', function () {
                 const isChecked = $(this).is(':checked');
 
                 if (isChecked) {
@@ -10962,7 +10977,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // ✨ 智能计算开关保存
-            $('#gg_c_auto_calc').on('change', function() {
+            $('#gg_c_auto_calc').on('change', function () {
                 C.autoCalculateParams = $(this).is(':checked');
                 m.save(false, true);
             });
@@ -11001,11 +11016,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             // ✨ 绑定输入事件
-            $('#gg_c_limit_count').on('input', function() { runSmartCalculation('limit', $(this).val()); });
-            $('#gg_c_auto_floor').on('input', function() { runSmartCalculation('summary', $(this).val()); });
+            $('#gg_c_limit_count').on('input', function () { runSmartCalculation('limit', $(this).val()); });
+            $('#gg_c_auto_floor').on('input', function () { runSmartCalculation('summary', $(this).val()); });
 
             // 🤖 AI 智能诊断提取标签
-            $('#gg_btn_ai_extract_tags').on('click', async function() {
+            $('#gg_btn_ai_extract_tags').on('click', async function () {
                 const $btn = $(this);
                 const oldHtml = $btn.html();
 
@@ -11198,7 +11213,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ==================== 快速添加标签功能 ====================
             // 点击标签快速添加到输入框
-            $('.gg-quick-tag').off('click').on('click', function() {
+            $('.gg-quick-tag').off('click').on('click', function () {
                 const tag = $(this).data('tag');
                 const $input = $('#gg_c_filter_tags');
                 let currentValue = $input.val().trim();
@@ -11219,8 +11234,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }, 200);
             });
 
+            // i 图标点击事件 - 显示过滤规则说明
+            $('#gg_filter_info_icon').off('click').on('click', async function () {
+                await window.Gaigai.customAlert(
+                    '🏷️ 标签过滤规则说明\n\n' +
+                    '【过滤逻辑】\n' +
+                    '先去黑后留白，可单选。\n\n' +
+                    '【黑名单 (去除)】\n' +
+                    '删除这些标签及其内部的所有文字。\n' +
+                    '例: think\n\n' +
+                    '【白名单 (仅留)】\n' +
+                    '仅提取这些标签内的文字（若未找到则保留黑名单处理后的结果）。\n' +
+                    '例: content, message\n\n' +
+                    '【特殊格式】\n' +
+                    '• 方括号标签：如需过滤 [xx]标签，请完整填入 [xx]\n' +
+                    '• HTML注释：过滤注释填入 !--',
+                    '过滤规则说明'
+                );
+            });
+
             // 清空按钮
-            $('#gg_clear_filter_tags').off('click').on('click', function() {
+            $('#gg_clear_filter_tags').off('click').on('click', function () {
                 $('#gg_c_filter_tags').val('');
 
                 // 视觉反馈
@@ -11232,7 +11266,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // ==================== 白名单快速添加标签功能 ====================
             // Whitelist Quick Tags
-            $('.gg-quick-tag-white').off('click').on('click', function() {
+            $('.gg-quick-tag-white').off('click').on('click', function () {
                 const tag = $(this).data('tag');
                 const $input = $('#gg_c_filter_tags_white');
                 let currentValue = $input.val().trim();
@@ -11251,7 +11285,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             });
 
             // Whitelist Clear Button
-            $('#gg_clear_filter_tags_white').off('click').on('click', function() {
+            $('#gg_clear_filter_tags_white').off('click').on('click', function () {
                 $('#gg_c_filter_tags_white').val('');
 
                 // Visual feedback
@@ -12030,8 +12064,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 2. 判定是否为有效消息 (User 或 Assistant)
                     const isUser = msg.is_user === true ||
-                                   msg.role === 'user' ||
-                                   (msg.name !== 'System' && msg.role !== 'assistant');
+                        msg.role === 'user' ||
+                        (msg.name !== 'System' && msg.role !== 'assistant');
 
                     const isAssistant = !isUser && (msg.role === 'assistant' || msg.name !== 'System');
 
@@ -12522,7 +12556,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             class: 'drawer-toggle'
         });
 
-        $icon.on('mousedown touchstart', function(e) {
+        $icon.on('mousedown touchstart', function (e) {
             // 1. 按下时：重置标记，启动计时器
             isLongPress = false;
 
@@ -12533,7 +12567,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.masterSwitch = !C.masterSwitch;
 
                 // 保存配置
-                try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch(e){}
+                try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch (e) { }
                 m.save(false, true);
                 if (typeof saveAllSettingsToCloud === 'function') saveAllSettingsToCloud();
                 console.log(`✅ [长按开关] 配置已保存，masterSwitch = ${C.masterSwitch}`);
@@ -12570,46 +12604,46 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             }, 800); // 800毫秒判定为长按
         })
-        .on('mouseup touchend mouseleave touchcancel', function(e) {
-            // 2. 松开/移出时：清除计时器
-            clearTimeout(pressTimer);
+            .on('mouseup touchend mouseleave touchcancel', function (e) {
+                // 2. 松开/移出时：清除计时器
+                clearTimeout(pressTimer);
 
-            // 如果不是长按（即短点击）且是 mouseup/touchend 事件
-            if (!isLongPress && (e.type === 'mouseup' || e.type === 'touchend')) {
-                e.preventDefault();
+                // 如果不是长按（即短点击）且是 mouseup/touchend 事件
+                if (!isLongPress && (e.type === 'mouseup' || e.type === 'touchend')) {
+                    e.preventDefault();
 
-                console.log(`🖱️ [短按图标] 检测到短按事件，当前 masterSwitch = ${C.masterSwitch}`);
+                    console.log(`🖱️ [短按图标] 检测到短按事件，当前 masterSwitch = ${C.masterSwitch}`);
 
-                // 检查全局主开关状态
-                if (C.masterSwitch) {
-                    console.log('✅ [短按图标] 插件已启用，正在打开配置面板...');
+                    // 检查全局主开关状态
+                    if (C.masterSwitch) {
+                        console.log('✅ [短按图标] 插件已启用，正在打开配置面板...');
 
-                    // ✅ 清除可能存在的旧 toast 通知
-                    if (typeof toastr !== 'undefined') {
-                        toastr.clear();
-                    }
+                        // ✅ 清除可能存在的旧 toast 通知
+                        if (typeof toastr !== 'undefined') {
+                            toastr.clear();
+                        }
 
-                    shw(); // 正常打开
-                } else {
-                    console.log('⚠️ [短按图标] 插件处于休眠状态，显示警告提示');
+                        shw(); // 正常打开
+                    } else {
+                        console.log('⚠️ [短按图标] 插件处于休眠状态，显示警告提示');
 
-                    // 提醒用户
-                    if (typeof toastr !== 'undefined') {
-                        toastr.clear(); // 清除旧通知
-                        toastr.warning('⚠️ 插件已休眠 (长按图标开启)', '未启用', {
-                            timeOut: 3000,
-                            progressBar: true
-                        });
+                        // 提醒用户
+                        if (typeof toastr !== 'undefined') {
+                            toastr.clear(); // 清除旧通知
+                            toastr.warning('⚠️ 插件已休眠 (长按图标开启)', '未启用', {
+                                timeOut: 3000,
+                                progressBar: true
+                            });
+                        }
                     }
                 }
-            }
-            return false;
-        })
-        .on('contextmenu', (e) => {
-            // 4. 禁用右键菜单（防止长按弹出浏览器菜单）
-            e.preventDefault();
-            return false;
-        });
+                return false;
+            })
+            .on('contextmenu', (e) => {
+                // 4. 禁用右键菜单（防止长按弹出浏览器菜单）
+                e.preventDefault();
+                return false;
+            });
 
         // 4. 组装 (复刻酒馆标准结构)
         $toggle.append($icon);        // 图标放入 toggle 层
@@ -12668,7 +12702,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 🔥 劫持 window.fetch 以在发送请求前强制等待向量检索
                     const originalFetch = window.fetch;
-                    window.fetch = async function(...args) {
+                    window.fetch = async function (...args) {
                         const url = args[0] ? args[0].toString() : '';
 
                         // 🔴 全局主开关守卫
@@ -12684,14 +12718,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
 
                         // 检查是否是文本生成请求，严格排除画图(sd)、语音(tts)等无关请求
-            const isTextGeneration = (
-                url.includes('/api/backends/chat-completions/generate') ||
-                url.includes('/v1/chat/completions') ||
-                (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
-            );
+                        const isTextGeneration = (
+                            url.includes('/api/backends/chat-completions/generate') ||
+                            url.includes('/v1/chat/completions') ||
+                            (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
+                        );
 
-            if (isTextGeneration && !window.isSummarizing) {
-                console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
+                        if (isTextGeneration && !window.isSummarizing) {
+                            console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
 
                             try {
                                 // ✅ 【关键修复】先执行隐藏，再执行向量检索
@@ -12790,16 +12824,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                     } else if (finalBody.prompt) {
                                                         debugChat = Array.isArray(finalBody.prompt)
                                                             ? finalBody.prompt
-                                                            : [{role: 'user', content: finalBody.prompt}];
+                                                            : [{ role: 'user', content: finalBody.prompt }];
                                                     }
 
                                                     // 🔥 强制标记包含向量内容的消息为 SYSTEM
                                                     let markedCount = 0;
                                                     debugChat.forEach((msg, idx) => {
                                                         let content = msg.content ||
-                                                                     (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
-                                                                     (msg.text) ||
-                                                                     '';
+                                                            (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
+                                                            (msg.text) ||
+                                                            '';
 
                                                         // 如果消息包含向量文本，强制设置为 SYSTEM
                                                         if (vectorText && content.includes(vectorText)) {
@@ -12942,7 +12976,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
 
                 // ✅✅✅ [暴力修复] 直接监听 DOM 点击事件，确保 Swipe 立即触发回滚
-                $(document).on('click', '.swipe_left, .swipe_right', function(e) {
+                $(document).on('click', '.swipe_left, .swipe_right', function (e) {
                     console.log('🖱️ [DOM监听] 检测到 Swipe 按钮点击，强制启动回滚流程...');
 
                     // 1. 设置全局标志位，通知后续的 omsg 不要拦截
@@ -12977,7 +13011,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             console.log(`⏭️[DOM Swipe] 当前为批量/非实时模式，跳过快照回档。`);
                         }
                     } else {
-                         console.warn(`⚠️ [DOM Swipe] 找不到上一楼 [${prevKey}] 的快照，无法回滚`);
+                        console.warn(`⚠️ [DOM Swipe] 找不到上一楼 [${prevKey}] 的快照，无法回滚`);
                     }
 
                     // 5. 立即清理当前楼层的脏快照
@@ -13354,6 +13388,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>新增楼层计算功能：</strong>填表或总结时，可勾选自动计算保证数值的合理化</li>
                         <li><strong>新增AI分析：</strong>对不会填写过滤标签的用户可使用AI进行帮忙分析标签,并一键填写</li>
                         <li><strong>新增过滤标签：</strong>黑白名单过滤标签支持对方括号标签进行清洗。</li>
+                        <li><strong>优化布局：</strong>微调部分css样式布局</li>
+                        <li><strong>修复bug：</strong>修复部分已知bug</li>
                     </ul>
                 </div>
 

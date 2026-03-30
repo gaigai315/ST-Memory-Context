@@ -667,25 +667,37 @@
             const h = `
         <div class="g-p" style="display: flex; flex-direction: column; height: 100%; box-sizing: border-box;">
             <!-- 📌 当前配置状态显示 -->
-            <div style="background: rgba(255,193,7,0.1); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; border: 1px solid rgba(255,193,7,0.3); flex-shrink: 0;">
-                <div style="font-size: 11px; color: ${UI.tc}; opacity: 0.9; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
-                    <span><strong>⚙️ 自动总结模式：</strong>${sourceText}</span>
-                    <span style="opacity: 0.7;">|</span>
-                    <span><strong>📍 小总结指针：</strong></span>
-                    <input type="number" id="gg_edit_sum_pointer" value="${lastSumIndex}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:3px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-                    <span>/ ${totalCount} 层</span>
-                    <button id="gg_save_sum_pointer_btn" style="padding:3px 10px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
+            <div style="background: rgba(255,193,7,0.1); border-radius: 6px; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(255,193,7,0.3); flex-shrink: 0; color: ${UI.tc};">
+                
+                <!-- 模式显示 -->
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 10px; border-bottom: 1px dashed rgba(0,0,0,0.1); padding-bottom: 8px;">
+                    ⚙️ 自动总结模式：<span style="font-weight: normal; color: #ff9800;">${sourceText}</span>
                 </div>
-                <div style="font-size: 11px; color: ${UI.tc}; opacity: 0.9; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <span><strong>📚 大总结指针：</strong></span>
-                    <input type="number" id="gg_edit_big_sum_pointer" value="${lastBigSumIndex}" min="0" max="${totalCount}" style="width:60px; text-align:center; padding:3px; border-radius:4px; border:1px solid rgba(0,0,0,0.2); font-size:11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-                    <span>/ ${totalCount} 层</span>
-                    <button id="gg_save_big_sum_pointer_btn" style="padding:3px 10px; background:#ff9800; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:10px; white-space:nowrap;">修正</button>
-                    <span style="opacity: 0.7;">|</span>
-                    <a href="javascript:void(0)" id="gg_open_config_link" style="color: #ff9800; text-decoration: underline; cursor: pointer; font-size: 10px;">修改配置</a>
+
+                <!-- 小总结指针 -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 11px;">
+                    <span style="font-weight: bold; white-space: nowrap;">📍 小总结指针:</span>
+                    <div style="display: flex; align-items: center; gap: 5px; flex: 1;">
+                        <input type="number" id="gg_edit_sum_pointer" value="${lastSumIndex}" min="0" max="${totalCount}" style="width: 100%; min-width: 50px; text-align: center; padding: 4px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <span style="white-space: nowrap;">/ ${totalCount} 层</span>
+                    </div>
+                    <button id="gg_save_sum_pointer_btn" style="padding: 4px 12px; background: #ff9800; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; white-space: nowrap; flex-shrink: 0;">修正</button>
                 </div>
-                <div style="font-size: 9px; color: ${UI.tc}; opacity: 0.6;">
-                    💡 提示：进度指针会自动保存到角色存档中，切换角色时自动恢复
+
+                <!-- 大总结指针 -->
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 11px;">
+                    <span style="font-weight: bold; white-space: nowrap;">📚 大总结指针:</span>
+                    <div style="display: flex; align-items: center; gap: 5px; flex: 1;">
+                        <input type="number" id="gg_edit_big_sum_pointer" value="${lastBigSumIndex}" min="0" max="${totalCount}" style="width: 100%; min-width: 50px; text-align: center; padding: 4px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); font-size: 11px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <span style="white-space: nowrap;">/ ${totalCount} 层</span>
+                    </div>
+                    <button id="gg_save_big_sum_pointer_btn" style="padding: 4px 12px; background: #ff9800; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; white-space: nowrap; flex-shrink: 0;">修正</button>
+                </div>
+
+                <!-- 底部提示与链接 -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                    <span style="font-size: 9px; opacity: 0.6;">💡 指针会自动保存，切换角色时恢复</span>
+                    <a href="javascript:void(0)" id="gg_open_config_link" style="color: #ff9800; text-decoration: underline; cursor: pointer; font-size: 11px; white-space: nowrap;">修改配置</a>
                 </div>
             </div>
 
@@ -833,7 +845,7 @@
             window.Gaigai.pop('🤖 总结控制台', h, true);
 
             // 阻止输入框的按键冒泡
-            $('#gg_sum_chat-start, #gg_sum_chat-end, #gg_sum_step, #gg_opt_range-input, #gg_opt_prompt, #edit-sum-pointer').on('keydown keyup input', function (e) {
+            $('#gg_sum_chat-start, #gg_sum_chat-end, #gg_sum_step, #gg_opt_range-input, #gg_opt_prompt, #gg_edit_sum_pointer, #gg_edit_big_sum_pointer').on('keydown keyup input', function (e) {
                 e.stopPropagation();
             });
 
@@ -2152,6 +2164,36 @@
             console.log(`📚 [大总结] 开始执行: ${start}-${end}`);
 
             try {
+                // === 🌟 新增：执行大总结前，检查记忆总结中是否已存在该区间的总结 ===
+                const checkSumSheet = m.get(m.s.length - 1);
+                if (checkSumSheet && checkSumSheet.r && checkSumSheet.r.length > 0) {
+                    const targetRangeStr = `${start}-${end}`;
+                    let alreadyExists = false;
+
+                    // 遍历总结表，检查备注（通常在第3列索引2）是否包含这个区间
+                    for (let i = 0; i < checkSumSheet.r.length; i++) {
+                        const note = checkSumSheet.r[i][2] || '';
+                        if (note.trim() === targetRangeStr) {
+                            alreadyExists = true;
+                            break;
+                        }
+                    }
+
+                    if (alreadyExists) {
+                        const msg = `⚠️ 拦截提示：检测到总结表格中已存在 [ ${start}-${end} ] 楼层的记录！\n\n大总结已自动取消。请手动前往总结控制台修正【大总结指针】，或自行检查已有内容。`;
+                        console.warn(`🛑 [大总结] ${msg}`);
+                        
+                        // 弹出提示 (兼容不同环境)
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning(`已存在 ${start}-${end} 楼层总结，大总结已取消，请手动修正指针。`, '⚠️ 大总结拦截', { timeOut: 8000 });
+                        } else {
+                            await window.Gaigai.customAlert(msg, '⚠️ 大总结拦截');
+                        }
+                        
+                        return; // 存在相同区间，直接终止大总结流程
+                    }
+                }
+
                 // 🛡️ 防撞车锁：如果常规小总结正在执行，大总结必须排队等待其落盘
                 while (window.isSummarizing) {
                     console.log('⏳ [大总结] 检测到小总结正在生成，大总结排队等待 2 秒...');
