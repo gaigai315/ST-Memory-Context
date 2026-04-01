@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.2.6
+// 记忆表格 v2.2.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.6 启动');
+    console.log('🚀 记忆表格 v2.2.7 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.6';
+    const V = 'v2.2.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2818,6 +2818,54 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         cleanTx = cleanTx.replace(/\\n/g, ' ').replace(/\s+/g, ' ').replace(/Row\s+\(/g, 'Row(').trim();
 
         const cs = [];
+
+        // ==========================================
+        // 🌟 策略 S: 智能 Row 格式解析 (按列名和人名自动 Upsert)
+        // 匹配格式: Row(0, {"姓名": "张三", "地点": "客厅"}) 或 (0, {"姓名": "张三"...})
+        // ==========================================
+        const rowRegex = /(?:Row)?\s*\(\s*(\d+)\s*,\s*(\{[\s\S]*?\})\s*\)/gi;
+        let rowMatch;
+        while ((rowMatch = rowRegex.exec(cleanTx)) !== null) {
+            try {
+                const ti = parseInt(rowMatch[1]);
+                const dObj = pob(rowMatch[2]); // 解析花括号里的对象
+                const sh = m.get(ti);
+
+                if (sh) {
+                    let mappedData = {};
+                    let primaryKeyValue = null;
+
+                    // 将中文列名映射为数字列索引
+                    Object.entries(dObj).forEach(([key, val]) => {
+                        let ci = -1;
+                        if (!isNaN(key)) {
+                            ci = parseInt(key); // 兼容直接写数字
+                        } else {
+                            // 忽略表头里的 # 号进行智能匹配
+                            ci = sh.c.findIndex(col => col.replace(/^#/, '').trim() === key.trim());
+                        }
+
+                        if (ci !== -1) {
+                            mappedData[ci] = val;
+                            if (ci === 0) primaryKeyValue = val; // 假设所有表的第0列都是“姓名/主键”
+                        }
+                    });
+
+                    // 如果找到了第0列(姓名)，自动判断是更新还是插入
+                    if (primaryKeyValue !== null) {
+                        const ri = sh.r.findIndex(r => r[0] == primaryKeyValue);
+                        if (ri !== -1) {
+                            cs.push({ t: 'update', ti: ti, ri: ri, d: mappedData });
+                        } else {
+                            cs.push({ t: 'insert', ti: ti, ri: null, d: mappedData });
+                        }
+                    } else if (Object.keys(mappedData).length > 0) {
+                        // 如果没写姓名，默认做插入处理
+                        cs.push({ t: 'insert', ti: ti, ri: null, d: mappedData });
+                    }
+                }
+            } catch (e) { console.warn('Row Parser Error:', e); }
+        }
 
         // ==========================================
         // 🟢 策略 A: 脚本格式解析 (insertRow(...))
@@ -9186,6 +9234,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         <fieldset id="api-config-section" style="border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:12px; ${API_CONFIG.useIndependentAPI ? '' : 'opacity:0.5; pointer-events:none;'}">
             <legend style="font-size:11px; font-weight:600;">独立API配置</legend>
 
+            <!-- ================= 新增：云端账号预设管理 ================= -->
+            <label style="display:flex; align-items:center; gap:5px;">
+                ☁️ 云端账号预设 
+                <span style="font-size:10px; color:var(--g-tc); opacity:0.6; font-weight:normal;">(保存在酒馆服务端)</span>
+            </label>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px; border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:12px;">
+                <select id="gg_api_profile_select" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:4px; font-size:11px; background:var(--g-bg, #fff); color:var(--g-tc);">
+                    <option value="">-- 选择已保存的账号 --</option>
+                </select>
+                <div style="display:flex; gap:8px; width:100%;">
+                    <button id="gg_api_profile_save" style="flex:1; padding:6px 8px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">💾 存为预设</button>
+                    <button id="gg_api_profile_del" style="flex:1; padding:6px 8px; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">🗑️ 删除预设</button>
+                </div>
+            </div>
+            <!-- ================= 新增结束 ================= -->
+
             <label>API提供商：</label>
             <select id="gg_api_provider" style="width:100%; padding:5px; border:1px solid #ddd; border-radius:4px; margin-bottom:10px;">
                 <optgroup label="━━━ 后端代理 ━━━">
@@ -9259,6 +9323,97 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
 
+            // ================= 新增：云端账号预设管理逻辑 =================
+            // 确保 API_CONFIG.profiles 数组存在（它会自动随 API_CONFIG 同步到酒馆后端）
+            if (!Array.isArray(API_CONFIG.profiles)) {
+                API_CONFIG.profiles = [];
+            }
+
+            function renderApiProfiles() {
+                const $sel = $('#gg_api_profile_select');
+                $sel.find('option:not(:first)').remove();
+                API_CONFIG.profiles.forEach((p, i) => {
+                    $sel.append(`<option value="${i}">${p.name}</option>`);
+                });
+            }
+            renderApiProfiles(); // 初始化渲染下拉列表
+
+            // 1. 监听下拉框选择 -> 自动填入 URL 和 Key
+            $('#gg_api_profile_select').on('change', function () {
+                const idx = $(this).val();
+                if (idx === '') return;
+                const p = API_CONFIG.profiles[idx];
+                if (p) {
+                    if (p.provider) $('#gg_api_provider').val(p.provider).trigger('change');
+                    if (p.url) $('#gg_api_url').val(p.url);
+                    if (p.key) $('#gg_api_key').val(p.key);
+                    if (p.model) {
+                        $('#gg_api_model').val(p.model);
+                        $('#gg_api_model_select').val('__manual__').hide();
+                        $('#gg_api_model').show();
+                    }
+                    if (typeof toastr !== 'undefined') toastr.success(`已加载账号: ${p.name}`);
+                }
+            });
+
+            // 2. 保存当前输入为云端预设
+            $('#gg_api_profile_save').on('click', async function () {
+                const name = prompt('请输入此 API 账号的备注名称\n（例如：OpenAI-主力、DeepSeek-备用）：');
+                if (!name || !name.trim()) return;
+
+                const newProfile = {
+                    name: name.trim(),
+                    provider: $('#gg_api_provider').val(),
+                    url: $('#gg_api_url').val().trim(),
+                    key: $('#gg_api_key').val().trim(),
+                    model: $('#gg_api_model').val().trim()
+                };
+
+                const existingIdx = API_CONFIG.profiles.findIndex(p => p.name === newProfile.name);
+                if (existingIdx >= 0) {
+                    if (confirm(`预设 "${newProfile.name}" 已存在，是否覆盖更新？`)) {
+                        API_CONFIG.profiles[existingIdx] = newProfile;
+                    } else return;
+                } else {
+                    API_CONFIG.profiles.push(newProfile);
+                }
+
+                renderApiProfiles();
+                $('#gg_api_profile_select').val(existingIdx >= 0 ? existingIdx : API_CONFIG.profiles.length - 1);
+
+                // 🚀 核心：触发全局保存，写入酒馆服务器的 settings.json
+                try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
+                if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                    await window.Gaigai.saveAllSettingsToCloud();
+                }
+
+                if (typeof toastr !== 'undefined') toastr.success(`已保存云端预设: ${newProfile.name}`);
+            });
+
+            // 3. 删除当前选中的预设
+            $('#gg_api_profile_del').on('click', async function () {
+                const idx = $('#gg_api_profile_select').val();
+                if (idx === '') {
+                    alert('请先在下拉框中选择一个要删除的预设');
+                    return;
+                }
+                const p = API_CONFIG.profiles[idx];
+                if (confirm(`确定要从酒馆云端删除预设 "${p.name}" 吗？此操作无法撤销。`)) {
+                    API_CONFIG.profiles.splice(idx, 1);
+
+                    renderApiProfiles();
+                    $('#gg_api_profile_select').val('');
+
+                    // 🚀 核心：触发全局保存，写入酒馆服务器的 settings.json
+                    try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
+                    if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                        await window.Gaigai.saveAllSettingsToCloud();
+                    }
+
+                    if (typeof toastr !== 'undefined') toastr.info(`已删除云端预设: ${p.name}`);
+                }
+            });
+            // ================= 新增逻辑结束 =================
             $('input[name="gg_api_mode"]').on('change', function () {
                 const isIndependent = $(this).val() === 'independent';
                 if (isIndependent) {
@@ -13445,13 +13600,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>新增大总结：</strong>新增大总结功能</li>
-                        <li><strong>新增楼层计算功能：</strong>填表或总结时，可勾选自动计算保证数值的合理化</li>
-                        <li><strong>新增AI分析：</strong>对不会填写过滤标签的用户可使用AI进行帮忙分析标签,并一键填写</li>
-                        <li><strong>新增过滤标签：</strong>黑白名单过滤标签支持对方括号标签进行清洗。</li>
-                        <li><strong>新增总结移动：</strong>在记忆总结的目录导航处可对当前页面进行上下页调整</li>
-                        <li><strong>优化布局：</strong>微调部分css样式布局</li>
-                        <li><strong>修复bug：</strong>修复部分已知bug</li>
+                        <li><strong>新增api预设：</strong>可保存多个api配置</li>
                     </ul>
                 </div>
 

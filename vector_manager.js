@@ -1386,8 +1386,9 @@
                                 currentBookId = line.substring(4);
                             } else if (line.startsWith('书名: ')) {
                                 currentEntry.name = line.substring(4);
-                            } else if (line.startsWith('创建时间: ')) {
-                                currentEntry.createTime = parseInt(line.substring(7));
+                            } else if (line.startsWith('创建时间:')) {
+                                const tsStr = line.replace('创建时间:', '').trim();
+                                currentEntry.createTime = parseInt(tsStr) || Date.now();
                             } else if (line.startsWith('片段数量: ')) {
                                 // 忽略，从实际数据获取
                             }
