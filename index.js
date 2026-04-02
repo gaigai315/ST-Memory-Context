@@ -1,5 +1,5 @@
 // ========================================================================
-// 记忆表格 v2.2.7
+// 记忆表格 v2.2.8
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.7 启动');
+    console.log('🚀 记忆表格 v2.2.8 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.7';
+    const V = 'v2.2.8';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2821,11 +2821,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // ==========================================
         // 🌟 策略 S: 智能 Row 格式解析 (按列名和人名自动 Upsert)
-        // 匹配格式: Row(0, {"姓名": "张三", "地点": "客厅"}) 或 (0, {"姓名": "张三"...})
         // ==========================================
         const rowRegex = /(?:Row)?\s*\(\s*(\d+)\s*,\s*(\{[\s\S]*?\})\s*\)/gi;
         let rowMatch;
         while ((rowMatch = rowRegex.exec(cleanTx)) !== null) {
+            
+            // 检查匹配到的内容前面是不是 insert/update/delete
+            const matchStart = rowMatch.index;
+            const prefix = cleanTx.slice(Math.max(0, matchStart - 10), matchStart).toLowerCase();
+            if (prefix.endsWith('insert') || prefix.endsWith('update') || prefix.endsWith('delete')) {
+                continue; // 拦截：这是标准指令，跳过它，留给后面的策略A处理
+            }
+
             try {
                 const ti = parseInt(rowMatch[1]);
                 const dObj = pob(rowMatch[2]); // 解析花括号里的对象
@@ -13600,7 +13607,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong>新增api预设：</strong>可保存多个api配置</li>
+                        <li><strong修复：</strong>修复填表功能重复记录的bug</li>
                     </ul>
                 </div>
 
