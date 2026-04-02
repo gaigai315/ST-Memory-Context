@@ -3217,6 +3217,58 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ============================================================
+        // 2.5 ✨✨✨ 核心新增：独立表格变量预扫描 (提取特定表) ✨✨✨
+        // 必须在主扫描前进行，确保特定表被从 tableMessages 中优先剔除
+        // ============================================================
+        for (let i = 0; i < ev.chat.length; i++) {
+            let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
+            let modified = false;
+
+            // 匹配所有的 {{MEMORY_TABLE_xxx}}
+            const specificTableRegex = /\{\{MEMORY_TABLE_(.+?)\}\}/g;
+            let match;
+            
+            while ((match = specificTableRegex.exec(msgContent)) !== null) {
+                const fullTag = match[0];
+                const targetTableName = match[1].trim();
+                
+                const tableIndex = tableMessages.findIndex(msg => msg.name === `SYSTEM (${targetTableName})`);
+                
+                if (tableIndex !== -1) {
+                    // ✅ 找到表，从总池子中抽出 (splice)
+                    const extractedTableMsg = tableMessages.splice(tableIndex, 1)[0];
+                    
+                    const varIndex = msgContent.indexOf(fullTag);
+                    const preText = msgContent.substring(0, varIndex).trim();
+                    const postText = msgContent.substring(varIndex + fullTag.length).trim();
+                    
+                    const newMessages = [];
+                    const originalMsg = ev.chat[i];
+                    
+                    if (preText) newMessages.push({ role: originalMsg.role, content: preText, name: originalMsg.name });
+                    newMessages.push(extractedTableMsg);
+                    if (postText) newMessages.push({ role: originalMsg.role, content: postText, name: originalMsg.name });
+                    
+                    // 原地拆分注入
+                    ev.chat.splice(i, 1, ...newMessages);
+                    i += newMessages.length - 1; // 修正外部循环索引
+                    
+                    console.log(`✨ [分裂注入] 表格 [${targetTableName}] 已单独注入并从总池剔除`);
+                    modified = true;
+                    break; // 拆分后结构改变，跳出 while，由 for 循环接管下一段
+                } else {
+                    // ❌ 没找到表（空表或名字错误），直接抹掉标签，防止漏给大变量
+                    msgContent = msgContent.replace(fullTag, '');
+                    if (ev.chat[i].content !== undefined) ev.chat[i].content = msgContent;
+                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    console.log(`🧹 [变量清洗] ${fullTag} 已清除（未找到该表或该表为空）`);
+                    specificTableRegex.lastIndex = 0; // 字符串变了，重置正则索引
+                }
+            }
+            if (modified) continue;
+        }
+
+        // ============================================================
         // 3. ✨✨✨ 核心逻辑：变量扫描与锚点置换 ✨✨✨
         // ============================================================
 
@@ -13608,6 +13660,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
                         <li><strong修复：</strong>修复填表功能重复记录的bug</li>
+                        <li><strong新增：</strong>新增对单表控制的变量{{MEMORY_TABLE_XXX}}</li>
                     </ul>
                 </div>
 
