@@ -3195,9 +3195,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         //     });
         // }
 
+        // 📱 新增检测：当前请求是否为手机插件发起的
+        const isPhoneChat = ev.chat && ev.chat.some(msg => msg.isPhoneMessage === true);
+
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
-        // 逻辑：如果开启了批量填表(autoBackfill)，强制屏蔽实时填表提示词，无论 C.enabled 是什么状态！
-        if (C.enabled && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
+        // 逻辑：如果开启了批量填表(autoBackfill)，或者检测到是手机专属聊天，强制屏蔽实时填表提示词！
+        if (C.enabled && !C.autoBackfill && !isPhoneChat && window.Gaigai.PromptManager.get('tablePrompt')) {
             strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
         }
 
