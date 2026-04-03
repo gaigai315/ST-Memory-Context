@@ -3195,8 +3195,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         //     });
         // }
 
-        // 📱 新增检测：当前请求是否为手机插件发起的
-        const isPhoneChat = ev.chat && ev.chat.some(msg => msg.isPhoneMessage === true);
+        // 📱 新增检测：当前请求是否为手机插件发起的（增强版：识别被降维成纯文本的手机提示词特征）
+        const isPhoneChat = ev.chat && ev.chat.some(msg => {
+            if (msg.isPhoneMessage === true) return true;
+            const content = msg.content || msg.mes || '';
+            if (typeof content === 'string') {
+                return content.includes('【微信单聊模式】') ||
+                       content.includes('【微信群聊模式】') ||
+                       content.includes('【语音通话模式】') ||
+                       content.includes('【视频通话模式】') ||
+                       content.includes('【📱 手机微信已有消息】');
+            }
+            return false;
+        });
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
         // 逻辑：如果开启了批量填表(autoBackfill)，或者检测到是手机专属聊天，强制屏蔽实时填表提示词！
