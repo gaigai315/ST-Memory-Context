@@ -1089,9 +1089,9 @@ ${lastError.message}
             try {
                 // ✅ 直接调用 API，不自动重试
                 if (window.Gaigai.config.useIndependentAPI) {
-                    result = await window.Gaigai.tools.callIndependentAPI(messages);
+                    result = await window.Gaigai.tools.callIndependentAPI(messages, { forceMemoryPrefill: true });
                 } else {
-                    result = await window.Gaigai.tools.callTavernAPI(messages);
+                    result = await window.Gaigai.tools.callTavernAPI(messages, { forceMemoryPrefill: true });
                 }
             } catch (e) {
                 console.error('❌ 请求失败', e);
@@ -1465,9 +1465,9 @@ ${lastError.message}
             window.isSummarizing = true;
             try {
                 if (API_CONFIG.useIndependentAPI) {
-                    result = await window.Gaigai.tools.callIndependentAPI(messages);
+                    result = await window.Gaigai.tools.callIndependentAPI(messages, { forceMemoryPrefill: true });
                 } else {
-                    result = await window.Gaigai.tools.callTavernAPI(messages);
+                    result = await window.Gaigai.tools.callTavernAPI(messages, { forceMemoryPrefill: true });
                 }
             } catch (e) {
                 console.error('❌ 请求失败', e);
@@ -2379,8 +2379,8 @@ ${lastError.message}
             let result;
             window.isSummarizing = true;
             try {
-                if (window.Gaigai.config.useIndependentAPI) result = await window.Gaigai.tools.callIndependentAPI(messages);
-                else result = await window.Gaigai.tools.callTavernAPI(messages);
+                if (window.Gaigai.config.useIndependentAPI) result = await window.Gaigai.tools.callIndependentAPI(messages, { forceMemoryPrefill: true });
+                else result = await window.Gaigai.tools.callTavernAPI(messages, { forceMemoryPrefill: true });
             } finally {
                 window.isSummarizing = false;
             }

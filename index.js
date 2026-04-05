@@ -7439,11 +7439,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     /* ==========================================
        智能双通道 API 请求函数 (全面防屏蔽版)
        ========================================== */
-    async function callIndependentAPI(prompt) {
+    async function callIndependentAPI(prompt, options = {}) {
         // 🔄 如果配置为使用酒馆 API，直接调用 callTavernAPI（使用酒馆的稳定接收端）
         if (!API_CONFIG.useIndependentAPI) {
             console.log('🔄 [API路由] 使用酒馆API模式，转发到 callTavernAPI（使用酒馆接收端）...');
-            return await callTavernAPI(prompt);
+            return await callTavernAPI(prompt, options);
         }
 
         console.log('🚀 [API-独立模式] 智能路由启动（使用自定义流式解析）...');
@@ -7631,15 +7631,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             };
         });
 
-        // ✨ [预填充补丁] 只要模型是 Gemini，且最后没有预填充，强制追加
-        if ((model || '').toLowerCase().includes('gemini') && cleanMessages.length > 0) {
+        const shouldForceMemoryPrefill = options?.forceMemoryPrefill === true;
+
+        // ✨ [预填充补丁] 仅填表场景：Gemini 且最后没有预填充时，强制追加
+        if (shouldForceMemoryPrefill && (model || '').toLowerCase().includes('gemini') && cleanMessages.length > 0) {
             const lastMsg = cleanMessages[cleanMessages.length - 1];
             if (lastMsg.role !== 'assistant' && lastMsg.role !== 'model') {
                 cleanMessages.push({
                     role: 'assistant',
                     content: '<Memory>\n'
                 });
-                console.log('✨ [预填充补丁] 检测到 Gemini 模型，已为独立 API 自动追加 <Memory> 预填充');
+                console.log('✨ [预填充补丁] 填表场景 + Gemini：已为独立 API 自动追加 <Memory> 预填充');
             }
         }
 
@@ -8805,7 +8807,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
 
-    async function callTavernAPI(prompt) {
+    async function callTavernAPI(prompt, options = {}) {
         try {
             const context = m.ctx();
             if (!context) return { success: false, error: '无法访问酒馆上下文' };
@@ -8848,15 +8850,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 finalPrompt = [{ role: 'user', content: String(prompt) }];
             }
 
-            // ✨ [预填充补丁] 只要模型是 Gemini，且最后没有预填充，强制追加
-            if (isGemini && finalPrompt.length > 0) {
+            const shouldForceMemoryPrefill = options?.forceMemoryPrefill === true;
+
+            // ✨ [预填充补丁] 仅填表场景：Gemini 且最后没有预填充时，强制追加
+            if (shouldForceMemoryPrefill && isGemini && finalPrompt.length > 0) {
                 const lastMsg = finalPrompt[finalPrompt.length - 1];
                 if (lastMsg.role !== 'assistant' && lastMsg.role !== 'model') {
                     finalPrompt.push({
                         role: 'assistant', // 注意：发送给酒馆后端的必须是 assistant
                         content: '<Memory>\n'
                     });
-                    console.log('✨[预填充补丁] 检测到 Gemini 模型，已为酒馆 API 自动追加 <Memory> 预填充');
+                    console.log('✨[预填充补丁] 填表场景 + Gemini：已为酒馆 API 自动追加 <Memory> 预填充');
                 }
             }
 
