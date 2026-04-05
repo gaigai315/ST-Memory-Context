@@ -2825,7 +2825,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const rowRegex = /(?:Row)?\s*\(\s*(\d+)\s*,\s*(\{[\s\S]*?\})\s*\)/gi;
         let rowMatch;
         while ((rowMatch = rowRegex.exec(cleanTx)) !== null) {
-            
+
             // 检查匹配到的内容前面是不是 insert/update/delete
             const matchStart = rowMatch.index;
             const prefix = cleanTx.slice(Math.max(0, matchStart - 10), matchStart).toLowerCase();
@@ -3197,14 +3197,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 📱 新增检测：当前请求是否为手机插件发起的（增强版：识别被降维成纯文本的手机提示词特征）
         const isPhoneChat = ev.chat && ev.chat.some(msg => {
-            if (msg.isPhoneMessage === true) return true;
             const content = msg.content || msg.mes || '';
             if (typeof content === 'string') {
+                // 只有这些是手机内部聊天/通话（线上模式）的专属特征
                 return content.includes('【微信单聊模式】') ||
-                       content.includes('【微信群聊模式】') ||
-                       content.includes('【语音通话模式】') ||
-                       content.includes('【视频通话模式】') ||
-                       content.includes('【📱 手机微信已有消息】');
+                    content.includes('【微信群聊模式】') ||
+                    content.includes('【语音通话模式】') ||
+                    content.includes('【视频通话模式】');
             }
             return false;
         });
@@ -3241,32 +3240,32 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // 匹配所有的 {{MEMORY_TABLE_xxx}}
             const specificTableRegex = /\{\{MEMORY_TABLE_(.+?)\}\}/g;
             let match;
-            
+
             while ((match = specificTableRegex.exec(msgContent)) !== null) {
                 const fullTag = match[0];
                 const targetTableName = match[1].trim();
-                
+
                 const tableIndex = tableMessages.findIndex(msg => msg.name === `SYSTEM (${targetTableName})`);
-                
+
                 if (tableIndex !== -1) {
                     // ✅ 找到表，从总池子中抽出 (splice)
                     const extractedTableMsg = tableMessages.splice(tableIndex, 1)[0];
-                    
+
                     const varIndex = msgContent.indexOf(fullTag);
                     const preText = msgContent.substring(0, varIndex).trim();
                     const postText = msgContent.substring(varIndex + fullTag.length).trim();
-                    
+
                     const newMessages = [];
                     const originalMsg = ev.chat[i];
-                    
+
                     if (preText) newMessages.push({ role: originalMsg.role, content: preText, name: originalMsg.name });
                     newMessages.push(extractedTableMsg);
                     if (postText) newMessages.push({ role: originalMsg.role, content: postText, name: originalMsg.name });
-                    
+
                     // 原地拆分注入
                     ev.chat.splice(i, 1, ...newMessages);
                     i += newMessages.length - 1; // 修正外部循环索引
-                    
+
                     console.log(`✨ [分裂注入] 表格 [${targetTableName}] 已单独注入并从总池剔除`);
                     modified = true;
                     break; // 拆分后结构改变，跳出 while，由 for 循环接管下一段
@@ -11778,17 +11777,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 tx = mg.swipes[swipeId];
                             } else {
                                 tx = mg.mes || ''; // 兜底
-                            }
-
-                            // 🛡️ 第一道防线：深层聊天 + 空表 = 加载失败
-                            // 计算当前内存中的总行数
-                            const currentTotalRows = m.s.reduce((acc, sheet) => acc + (sheet.r ? sheet.r.length : 0), 0);
-
-                            // 如果聊天已经进行到一定深度 (>2)，但表格依然完全为空，判定为加载异常。
-                            // 这里的 >2 是为了允许真正的新开局（i=0或1）进行正常的初始化写入。
-                            if (i > 2 && currentTotalRows === 0) {
-                                console.warn(`🛑 [熔断保护] 检测到聊天进行中(第${i}层)但表格完全为空，判定为加载失败。停止写入以防止数据丢失。`);
-                                return;
                             }
 
                             // 解析并执行指令
