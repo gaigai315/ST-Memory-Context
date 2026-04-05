@@ -7631,6 +7631,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             };
         });
 
+        // ✨ [预填充补丁] 只要模型是 Gemini，且最后没有预填充，强制追加
+        if ((model || '').toLowerCase().includes('gemini') && cleanMessages.length > 0) {
+            const lastMsg = cleanMessages[cleanMessages.length - 1];
+            if (lastMsg.role !== 'assistant' && lastMsg.role !== 'model') {
+                cleanMessages.push({
+                    role: 'assistant',
+                    content: '<Memory>\n'
+                });
+                console.log('✨ [预填充补丁] 检测到 Gemini 模型，已为独立 API 自动追加 <Memory> 预填充');
+            }
+        }
+
         // 🔍 [Prefill 探针] 显示最后发送的消息结构
         console.log('📤 [消息探针] 准备发送的消息数量:', cleanMessages.length);
         if (cleanMessages.length > 0) {
@@ -8834,6 +8846,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // ✅ 统一处理：确保 prompt 是数组格式
             if (!Array.isArray(prompt)) {
                 finalPrompt = [{ role: 'user', content: String(prompt) }];
+            }
+
+            // ✨ [预填充补丁] 只要模型是 Gemini，且最后没有预填充，强制追加
+            if (isGemini && finalPrompt.length > 0) {
+                const lastMsg = finalPrompt[finalPrompt.length - 1];
+                if (lastMsg.role !== 'assistant' && lastMsg.role !== 'model') {
+                    finalPrompt.push({
+                        role: 'assistant', // 注意：发送给酒馆后端的必须是 assistant
+                        content: '<Memory>\n'
+                    });
+                    console.log('✨[预填充补丁] 检测到 Gemini 模型，已为酒馆 API 自动追加 <Memory> 预填充');
+                }
             }
 
             // 🔍 [Tavern API Prefill 探针] 显示发送给酒馆的消息
