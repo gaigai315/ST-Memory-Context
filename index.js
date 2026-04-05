@@ -1905,7 +1905,11 @@
                 // 只保留最近10个
                 if (numericKeys.length > 10) {
                     const toDelete = numericKeys.slice(10);
-                    toDelete.forEach(key => delete snapshotHistory[key.toString()]);
+                    toDelete.forEach(key => {
+                        if (key.toString() !== '-1') {
+                            delete snapshotHistory[key.toString()];
+                        }
+                    });
                     console.log(`🧹 [快照深度限制] 已清理 ${toDelete.length} 个过旧快照，保留最近10个`);
                 }
             } catch (trimError) {
@@ -11761,7 +11765,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // 这通常发生在重Roll时丢失了上一个状态，继续写入会导致数据重复叠加
                             if (i > 0) {
                                 console.error(`🛑 [熔断] 第 ${i} 楼找不到前序快照，已停止自动写入以防止数据污染/重复。`);
-                                return; // 强制终止本次处理
                             }
                         }
 
