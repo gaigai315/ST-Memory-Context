@@ -32,6 +32,12 @@
         '【📱 手机微信消息记录】',
         '【📖 相关对话历史（手机引用',
         '【回复指南】',
+        '【蜜语 APP 核心生成规则】',
+        '请根据蜜语APP提示词生成剧情',
+        '---热门推荐---',
+        '---激情直播---',
+        '<Honey>',
+        '</Honey>',
         // 兼容旧版
         '📱 手机',
         '手机微信消息记录',
@@ -83,10 +89,18 @@
                     }
                     console.log(`📱 [手机适配] 消息 #${idx} 是合并消息，已追加手机标记: ${msg.name}`);
                 } else {
-                    // 纯手机消息
-                    msg.name = 'SYSTEM (📱手机)';
-                    msg.role = 'system';
-                    console.log(`📱 [手机适配] 消息 #${idx} 已标记为手机消息`);
+                    // 纯手机消息：仅添加标识，不覆盖原始 role（避免把 USER 误显示成 SYSTEM）
+                    const originalRole = String(msg.role || '').toLowerCase();
+                    if (originalRole === 'assistant' || originalRole === 'model') {
+                        msg.name = 'ASSISTANT (📱手机)';
+                    } else if (originalRole === 'user') {
+                        msg.name = 'USER (📱手机)';
+                    } else if (originalRole === 'system') {
+                        msg.name = 'SYSTEM (📱手机)';
+                    } else {
+                        msg.name = msg.name || '📱手机消息';
+                    }
+                    console.log(`📱 [手机适配] 消息 #${idx} 已标记为手机消息 (保留原角色: ${msg.role || 'unknown'})`);
                 }
 
                 markedCount++;

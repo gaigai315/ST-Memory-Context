@@ -3089,6 +3089,89 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         });
     }
 
+    // ============================================================
+    // 📱 手机/蜜语请求识别（用于记忆注入兜底）
+    // ============================================================
+    const PHONE_OR_HONEY_MARKERS = [
+        // 手机插件 - 微信/通话
+        '【手机系统】',
+        '【微信消息格式】',
+        '【微信单聊模式】',
+        '【微信群聊模式】',
+        '【语音通话模式】',
+        '【视频通话模式】',
+        '【📱 手机微信消息记录】',
+        '【📖 相关对话历史（手机引用',
+        '📱 手机',
+        '手机微信消息记录',
+        '<wechat to=',
+        // 蜜语
+        '【蜜语 APP 核心生成规则】',
+        '请根据蜜语APP提示词生成剧情',
+        '---热门推荐---',
+        '---激情直播---',
+        '<Honey>',
+        '</Honey>'
+    ];
+
+    function containsPhoneOrHoneyContent(content) {
+        if (!content || typeof content !== 'string') return false;
+        return PHONE_OR_HONEY_MARKERS.some(marker => content.includes(marker));
+    }
+
+    function isPhoneOrHoneyMessage(msg) {
+        if (!msg || typeof msg !== 'object') return false;
+        if (msg.isPhoneMessage === true) return true;
+
+        const name = typeof msg.name === 'string' ? msg.name : '';
+        if (name.includes('📱') || name.includes('SYSTEM (手机)')) return true;
+
+        const content = msg.content
+            || msg.mes
+            || msg.text
+            || (msg.parts && msg.parts[0] ? msg.parts[0].text : '')
+            || '';
+        return containsPhoneOrHoneyContent(content);
+    }
+
+    function isPhoneOrHoneyRequestPayload(bodyStr) {
+        if (!bodyStr || typeof bodyStr !== 'string') return false;
+
+        // 快速路径：直接命中 JSON 字符串中的 phone 标记
+        if (bodyStr.includes('"isPhoneMessage":true') || bodyStr.includes('"isPhoneMessage": true')) {
+            return true;
+        }
+
+        try {
+            const parsed = JSON.parse(bodyStr);
+            const stack = [parsed];
+
+            while (stack.length > 0) {
+                const current = stack.pop();
+                if (current === null || current === undefined) continue;
+
+                if (typeof current === 'string') {
+                    if (containsPhoneOrHoneyContent(current)) return true;
+                    continue;
+                }
+
+                if (Array.isArray(current)) {
+                    current.forEach(item => stack.push(item));
+                    continue;
+                }
+
+                if (typeof current === 'object') {
+                    if (current.isPhoneMessage === true) return true;
+                    Object.keys(current).forEach(k => stack.push(current[k]));
+                }
+            }
+        } catch (e) {
+            // ignore parse error and fallback to raw scan
+        }
+
+        return containsPhoneOrHoneyContent(bodyStr);
+    }
+
     function inj(ev) {
         // 🔴 全局主开关守卫
         if (!C.masterSwitch) return;
@@ -3124,6 +3207,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('🧹 [总结/追溯模式] 已清洗所有记忆变量，防止双重注入。');
             return; // ⛔️ 仅在此模式下拦截
         }
+        const isPhoneChat = ev.chat && ev.chat.some(msg => isPhoneOrHoneyMessage(msg));
+        if (isPhoneChat && ev.chat && Array.isArray(ev.chat)) {
+            // 手机/蜜语请求：保留总结回发，但禁止实时填表提示词
+            ev.chat.forEach(msg => {
+                let c = msg.content || msg.mes || '';
+                if (!c) return;
+                if (c.includes('{{MEMORY_PROMPT}}')) {
+                    c = c.split('{{MEMORY_PROMPT}}').join('');
+                    if (msg.content) msg.content = c;
+                    if (msg.mes) msg.mes = c;
+                }
+            });
+            console.log('📱 [手机兜底] 检测到手机/蜜语请求：已禁用实时填表提示词，保留总结上下文注入。');
+        }
+
         // ============================================================
         // 1. 准备数据组件 (拆解为原子部分，无论开关与否都准备，以备变量调用)
         // ============================================================
@@ -3198,19 +3296,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         //         isGaigaiData: true
         //     });
         // }
-
-        // 📱 新增检测：当前请求是否为手机插件发起的（增强版：识别被降维成纯文本的手机提示词特征）
-        const isPhoneChat = ev.chat && ev.chat.some(msg => {
-            const content = msg.content || msg.mes || '';
-            if (typeof content === 'string') {
-                // 只有这些是手机内部聊天/通话（线上模式）的专属特征
-                return content.includes('【微信单聊模式】') ||
-                    content.includes('【微信群聊模式】') ||
-                    content.includes('【语音通话模式】') ||
-                    content.includes('【视频通话模式】');
-            }
-            return false;
-        });
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
         // 逻辑：如果开启了批量填表(autoBackfill)，或者检测到是手机专属聊天，强制屏蔽实时填表提示词！
@@ -12996,8 +13081,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     window.hooks.addFilter('chat_completion_prompt_ready', async (chat) => {
                         // Hook Filter 接收 chat 数组，需要包装成 opmt 期望的格式
                         await opmt({ chat: chat });
-                        // 向量检索在 opmt 之后单独执行
-                        await executeVectorSearch(chat);
+                        // 向量检索在 opmt 之后单独执行（手机/蜜语请求跳过）
+                        const isPhoneRequest = Array.isArray(chat) && chat.some(msg => isPhoneOrHoneyMessage(msg));
+                        if (!isPhoneRequest) {
+                            await executeVectorSearch(chat);
+                        } else {
+                            console.log('📱 [Hook] 检测到手机/蜜语请求，跳过向量检索。');
+                        }
                         return chat; // Filter 必须返回修改后的数据
                     });
                 } else {
@@ -13031,6 +13121,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             url.includes('/v1/chat/completions') ||
                             (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
                         );
+
+                        if (isTextGeneration && args[1] && typeof args[1].body === 'string' && isPhoneOrHoneyRequestPayload(args[1].body)) {
+                            console.log('📱 [Fetch Hijack] 检测到手机/蜜语请求，跳过记忆注入与向量检索。');
+                            return originalFetch.apply(this, args);
+                        }
 
                         if (isTextGeneration && !window.isSummarizing) {
                             console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');

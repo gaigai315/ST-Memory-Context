@@ -11,6 +11,29 @@
 (function() {
     'use strict';
 
+    const PHONE_OR_HONEY_MARKERS = [
+        '【微信单聊模式】',
+        '【微信群聊模式】',
+        '【语音通话模式】',
+        '【视频通话模式】',
+        '【蜜语 APP 核心生成规则】',
+        '请根据蜜语APP提示词生成剧情',
+        '---热门推荐---',
+        '---激情直播---',
+        '<Honey>',
+        '</Honey>'
+    ];
+
+    function isPhoneOrHoneyMessage(msg) {
+        if (!msg || typeof msg !== 'object') return false;
+        if (msg.isPhoneMessage === true) return true;
+        const name = typeof msg.name === 'string' ? msg.name : '';
+        if (name.includes('📱') || name.includes('SYSTEM (手机)')) return true;
+        const text = String(msg.mes || msg.content || msg.text || '').trim();
+        if (!text) return false;
+        return PHONE_OR_HONEY_MARKERS.some(marker => text.includes(marker));
+    }
+
     class BackfillManager {
         constructor() {
             console.log('✅ [BackfillManager] 初始化完成');
@@ -1012,7 +1035,7 @@ ${lastError.message}
 
             for (let i = 0; i < chatSlice.length; i++) {
                 const msg = chatSlice[i];
-                if (msg.isGaigaiData || msg.isGaigaiPrompt) continue;
+                if (msg.isGaigaiData || msg.isGaigaiPrompt || isPhoneOrHoneyMessage(msg)) continue;
 
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
@@ -2238,7 +2261,7 @@ ${lastError.message}
             const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
 
             chatSlice.forEach(msg => {
-                if (msg.isGaigaiData || msg.isGaigaiPrompt) return;
+                if (msg.isGaigaiData || msg.isGaigaiPrompt || isPhoneOrHoneyMessage(msg)) return;
                 let content = msg.mes || msg.content || '';
                 content = cleanMemoryTags(content);
                 content = window.Gaigai.tools.filterContentByTags(content);

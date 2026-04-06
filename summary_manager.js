@@ -1441,8 +1441,9 @@
                 const cleanMemoryTags = window.Gaigai.cleanMemoryTags;
                 let validMsgCount = 0;
                 targetSlice.forEach((msg) => {
-                    if (msg.isGaigaiPrompt || msg.isGaigaiData || msg.isPhoneMessage) return;
                     let content = msg.mes || msg.content || '';
+                    const isPhoneLikeContent = /【微信单聊模式】|【微信群聊模式】|【语音通话模式】|【视频通话模式】|【蜜语 APP 核心生成规则】|请根据蜜语APP提示词生成剧情|---热门推荐---|---激情直播---|<Honey>|<\/Honey>/.test(String(content || ''));
+                    if (msg.isGaigaiPrompt || msg.isGaigaiData || msg.isPhoneMessage || isPhoneLikeContent) return;
 
                     // ✅ [图片清洗] 移除 Base64 图片，防止请求体过大
                     const base64ImageRegex = /<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi;
