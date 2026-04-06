@@ -3089,92 +3089,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         });
     }
 
-    // ============================================================
-    // 📱 手机/蜜语请求识别（用于记忆注入兜底）
-    // ============================================================
-    const PHONE_OR_HONEY_MARKERS = [
-        // 手机插件 - 微信/通话
-        '【手机系统】',
-        '【微信消息格式】',
-        '【微信单聊模式】',
-        '【微信群聊模式】',
-        '【语音通话模式】',
-        '【视频通话模式】',
-        '【📱 手机微信消息记录】',
-        '【📖 相关对话历史（手机引用',
-        '📱 手机',
-        '手机微信消息记录',
-        '<wechat to=',
-        // 蜜语
-        '【蜜语 APP 核心生成规则】',
-        '请根据蜜语APP提示词生成剧情',
-        '---热门推荐---',
-        '---激情直播---',
-        '<Honey>',
-        '</Honey>'
-    ];
-
-    function containsPhoneOrHoneyContent(content) {
-        if (!content || typeof content !== 'string') return false;
-        return PHONE_OR_HONEY_MARKERS.some(marker => content.includes(marker));
-    }
-
-    function isPhoneOrHoneyMessage(msg) {
-        if (!msg || typeof msg !== 'object') return false;
-        if (msg.isPhoneMessage === true) return true;
-
-        const name = typeof msg.name === 'string' ? msg.name : '';
-        if (name.includes('📱') || name.includes('SYSTEM (手机)')) return true;
-
-        const content = msg.content
-            || msg.mes
-            || msg.text
-            || (msg.parts && msg.parts[0] ? msg.parts[0].text : '')
-            || '';
-        return containsPhoneOrHoneyContent(content);
-    }
-
-    function isPhoneOrHoneyRequestPayload(bodyStr) {
-        if (!bodyStr || typeof bodyStr !== 'string') return false;
-
-        // 快速路径：直接命中 JSON 字符串中的 phone 标记
-        if (bodyStr.includes('"isPhoneMessage":true') || bodyStr.includes('"isPhoneMessage": true')) {
-            return true;
-        }
-
-        try {
-            const parsed = JSON.parse(bodyStr);
-            const stack = [parsed];
-
-            while (stack.length > 0) {
-                const current = stack.pop();
-                if (current === null || current === undefined) continue;
-
-                if (typeof current === 'string') {
-                    if (containsPhoneOrHoneyContent(current)) return true;
-                    continue;
-                }
-
-                if (Array.isArray(current)) {
-                    current.forEach(item => stack.push(item));
-                    continue;
-                }
-
-                if (typeof current === 'object') {
-                    if (current.isPhoneMessage === true) return true;
-                    Object.keys(current).forEach(k => stack.push(current[k]));
-                }
+    function extractPhoneSignal(chatArray) {
+        if (!Array.isArray(chatArray)) return null;
+        // 倒序查找，找到最新附带信号的消息
+        for (let i = chatArray.length - 1; i >= 0; i--) {
+            if (chatArray[i] && chatArray[i].gaigaiPhoneSignal) {
+                return chatArray[i].gaigaiPhoneSignal;
             }
-        } catch (e) {
-            // ignore parse error and fallback to raw scan
         }
-
-        return containsPhoneOrHoneyContent(bodyStr);
+        return null;
     }
 
     function inj(ev) {
         // 🔴 全局主开关守卫
         if (!C.masterSwitch) return;
+        const phoneSignal = extractPhoneSignal(ev.chat);
 
         // ✨✨✨ 1. [核心修复] 仅拦截总结/追溯生成的请求 (防止 Prompt 污染) ✨✨✨
         // 注意：批量填表 (autoBackfill) 期间用户在正常聊天，必须允许注入！
@@ -3207,9 +3136,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('🧹 [总结/追溯模式] 已清洗所有记忆变量，防止双重注入。');
             return; // ⛔️ 仅在此模式下拦截
         }
-        const isPhoneChat = ev.chat && ev.chat.some(msg => isPhoneOrHoneyMessage(msg));
-        if (isPhoneChat && ev.chat && Array.isArray(ev.chat)) {
-            // 手机/蜜语请求：保留总结回发，但禁止实时填表提示词
+        if (phoneSignal && phoneSignal.allowPrompt === false && ev.chat && Array.isArray(ev.chat)) {
             ev.chat.forEach(msg => {
                 let c = msg.content || msg.mes || '';
                 if (!c) return;
@@ -3219,7 +3146,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (msg.mes) msg.mes = c;
                 }
             });
-            console.log('📱 [手机兜底] 检测到手机/蜜语请求：已禁用实时填表提示词，保留总结上下文注入。');
+            console.log('[权限管控] 手机禁止了提示词注入，已清洗 {{MEMORY_PROMPT}} 残留');
         }
 
         // ============================================================
@@ -3251,6 +3178,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     isGaigaiData: true
                 });
             });
+        }
+        if (phoneSignal && phoneSignal.allowSummary === false) {
+            summaryMessages = [];
+            strSummary = '';
         }
 
         // B. 准备表格数据 (实时构建)
@@ -3285,6 +3216,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
             }
         });
+        if (phoneSignal && phoneSignal.allowTable === false) {
+            tableMessages = [];
+            strTable = '';
+        }
 
         // ✅ [优化] 移除兜底逻辑：当所有表格都为空时，不发送任何内容
         // 这样可以支持"只总结，不填表"的模式，保持聊天更干净
@@ -3299,8 +3234,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
         // 逻辑：如果开启了批量填表(autoBackfill)，或者检测到是手机专属聊天，强制屏蔽实时填表提示词！
-        if (C.enabled && !C.autoBackfill && !isPhoneChat && window.Gaigai.PromptManager.get('tablePrompt')) {
+        if (C.enabled && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
             strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
+        }
+        if (phoneSignal && phoneSignal.allowPrompt === false) {
+            strPrompt = '';
         }
 
         // ============================================================
@@ -13081,12 +13019,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     window.hooks.addFilter('chat_completion_prompt_ready', async (chat) => {
                         // Hook Filter 接收 chat 数组，需要包装成 opmt 期望的格式
                         await opmt({ chat: chat });
-                        // 向量检索在 opmt 之后单独执行（手机/蜜语请求跳过）
-                        const isPhoneRequest = Array.isArray(chat) && chat.some(msg => isPhoneOrHoneyMessage(msg));
-                        if (!isPhoneRequest) {
-                            await executeVectorSearch(chat);
+                        // 向量检索在 opmt 之后单独执行（读取 gaigaiPhoneSignal 权限对象）
+                        const phoneSignal = extractPhoneSignal(chat);
+                        if (phoneSignal && phoneSignal.allowVector === false) {
+                            console.log('[权限管控] 手机禁止了向量化，跳过。');
                         } else {
-                            console.log('📱 [Hook] 检测到手机/蜜语请求，跳过向量检索。');
+                            await executeVectorSearch(chat);
                         }
                         return chat; // Filter 必须返回修改后的数据
                     });
@@ -13146,6 +13084,26 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 // 在发送前获取当前 chat 状态
                                 const ctx = SillyTavern.getContext();
                                 if (ctx && ctx.chat) {
+                                    let requestChat = null;
+                                    if (args[1] && typeof args[1].body === 'string') {
+                                        try {
+                                            const requestBody = JSON.parse(args[1].body);
+                                            if (Array.isArray(requestBody.messages)) {
+                                                requestChat = requestBody.messages;
+                                            } else if (Array.isArray(requestBody.contents)) {
+                                                requestChat = requestBody.contents;
+                                            }
+                                        } catch (e) {
+                                            // ignore parse error
+                                        }
+                                    }
+
+                                    const phoneSignal = extractPhoneSignal(requestChat);
+                                    if (phoneSignal && phoneSignal.allowVector === false) {
+                                        console.log('[权限管控] 手机禁止了向量化，跳过。');
+                                        return originalFetch.apply(this, args);
+                                    }
+
                                     // 🔥 强制等待向量检索完成，并获取向量内容文本
                                     const vectorText = await executeVectorSearch(ctx.chat);
                                     console.log(`✅ [Fetch Hijack] 向量检索完成，内容长度: ${vectorText.length}`);
