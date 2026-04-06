@@ -13122,36 +13122,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
                         );
 
-                        if (isTextGeneration && args[1] && typeof args[1].body === 'string' && isPhoneOrHoneyRequestPayload(args[1].body)) {
-                            console.log('📱 [Fetch Hijack] 检测到手机/蜜语请求，跳过记忆注入与向量检索。');
-                            
-                            // ✅ 新增：虽然跳过了注入，但必须把数据喂给探针，否则探针显示为空
-                            try {
-                                let bodyObj = JSON.parse(args[1].body);
-                                let debugChat = [];
-                                
-                                // 兼容不同的 API 请求格式提取 messages
-                                if (bodyObj.messages) {
-                                    debugChat = bodyObj.messages;
-                                } else if (bodyObj.contents) {
-                                    debugChat = bodyObj.contents;
-                                } else if (bodyObj.prompt) {
-                                    debugChat = Array.isArray(bodyObj.prompt) ? bodyObj.prompt : [{ role: 'user', content: bodyObj.prompt }];
-                                }
-                                
-                                window.Gaigai.lastRequestData = {
-                                    chat: debugChat,
-                                    timestamp: Date.now(),
-                                    model: bodyObj.model || window.Gaigai.config?.model || 'Unknown'
-                                };
-                                console.log('✅ [探针] 已成功捕获手机/蜜语的独立请求数据');
-                            } catch (e) {
-                                console.error('❌ [探针] 捕获手机/蜜语请求失败:', e);
-                            }
-
-                            return originalFetch.apply(this, args);
-                        }
-
                         if (isTextGeneration && !window.isSummarizing) {
                             console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
 
