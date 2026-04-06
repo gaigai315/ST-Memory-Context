@@ -13234,6 +13234,52 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                 injectFallback(bodyObj);
                                             }
 
+                                            // === 第三轮：终极数组消息兜底 (如果前两轮都找不到注入点) ===
+                                            if (!injected) {
+                                                let targetArray = null;
+                                                let isGeminiFormat = false;
+
+                                                // 识别当前请求体使用的消息数组格式
+                                                if (Array.isArray(bodyObj.messages)) {
+                                                    targetArray = bodyObj.messages;
+                                                } else if (Array.isArray(bodyObj.contents)) {
+                                                    targetArray = bodyObj.contents;
+                                                    isGeminiFormat = true;
+                                                } else if (Array.isArray(bodyObj.prompt)) {
+                                                    targetArray = bodyObj.prompt;
+                                                }
+
+                                                if (targetArray) {
+                                                    if (isGeminiFormat) {
+                                                        // Gemini 原生格式 (contents 数组通常只接受 user 和 model)
+                                                        targetArray.unshift({
+                                                            role: 'user',
+                                                            parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }]
+                                                        });
+                                                    } else {
+                                                        // 标准 OpenAI / 兼容格式 (messages 数组)
+                                                        const newMsg = { 
+                                                            role: 'system', 
+                                                            content: '【系统检索到的历史记忆片段】\n\n' + vectorText,
+                                                            isGaigaiVector: true 
+                                                        };
+                                                        
+                                                        // 寻找最后一条 system 消息的位置，插在它后面；如果没找到，插在最前面 (索引0)
+                                                        let insertIndex = 0;
+                                                        for (let i = targetArray.length - 1; i >= 0; i--) {
+                                                            if (targetArray[i].role === 'system') {
+                                                                insertIndex = i + 1;
+                                                                break;
+                                                            }
+                                                        }
+                                                        targetArray.splice(insertIndex, 0, newMsg);
+                                                    }
+                                                    
+                                                    injected = true;
+                                                    console.log(' [智能注入-终极兜底] 成功将向量内容作为独立消息插入到数组');
+                                                }
+                                            }
+
                                             if (injected) {
                                                 // 更新请求体
                                                 args[1].body = JSON.stringify(bodyObj);
