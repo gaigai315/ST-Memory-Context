@@ -72,6 +72,7 @@
         autoBackfillDelay: true,       // ✅ 开启延迟
         autoBackfillDelayCount: 6,     // ✅ 延迟6楼
         log: true,
+        minimalLogMode: true,          // ✅ 最小日志模式：仅输出权限命中与拦截结果
         pc: true,
         hideTag: true,
         filterHistory: true,
@@ -3102,8 +3103,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
     function inj(ev) {
         // 🔴 全局主开关守卫
-        if (!C.masterSwitch) return;
         const phoneSignal = extractPhoneSignal(ev.chat);
+        if (!C.masterSwitch) return;
+        const cloneSplitMessage = (originalMsg, text) => {
+            const cloned = Object.assign({}, originalMsg, { content: text });
+            if (Object.prototype.hasOwnProperty.call(originalMsg, 'mes')) {
+                cloned.mes = text;
+            }
+            return cloned;
+        };
 
         // ✨✨✨ 1. [核心修复] 仅拦截总结/追溯生成的请求 (防止 Prompt 污染) ✨✨✨
         // 注意：批量填表 (autoBackfill) 期间用户在正常聊天，必须允许注入！
@@ -3179,10 +3187,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
             });
         }
-        if (phoneSignal && phoneSignal.allowSummary === false) {
-            summaryMessages = [];
-            strSummary = '';
-        }
 
         // B. 准备表格数据 (实时构建)
         // 1. 旧逻辑：合并字符串（用于兼容旧的文本变量替换）
@@ -3216,10 +3220,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
             }
         });
-        if (phoneSignal && phoneSignal.allowTable === false) {
-            tableMessages = [];
-            strTable = '';
-        }
 
         // ✅ [优化] 移除兜底逻辑：当所有表格都为空时，不发送任何内容
         // 这样可以支持"只总结，不填表"的模式，保持聊天更干净
@@ -3237,8 +3237,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (C.enabled && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
             strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
         }
-        if (phoneSignal && phoneSignal.allowPrompt === false) {
-            strPrompt = '';
+        // 核心权限拦截：必须在所有变量扫描之前执行！
+        if (phoneSignal) {
+            if (phoneSignal.allowSummary === false) {
+                summaryMessages = [];
+                strSummary = '';
+            }
+            if (phoneSignal.allowTable === false) {
+                tableMessages = [];
+                strTable = '';
+            }
+            if (phoneSignal.allowPrompt === false) {
+                strPrompt = '';
+            }
         }
 
         // ============================================================
@@ -3285,9 +3296,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const newMessages = [];
                     const originalMsg = ev.chat[i];
 
-                    if (preText) newMessages.push({ role: originalMsg.role, content: preText, name: originalMsg.name });
+                    if (preText) {
+                        newMessages.push(cloneSplitMessage(originalMsg, preText));
+                    }
+                    if (originalMsg.gaigaiPhoneSignal) {
+                        extractedTableMsg.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal;
+                    }
                     newMessages.push(extractedTableMsg);
-                    if (postText) newMessages.push({ role: originalMsg.role, content: postText, name: originalMsg.name });
+                    if (postText) {
+                        newMessages.push(cloneSplitMessage(originalMsg, postText));
+                    }
 
                     // 原地拆分注入
                     ev.chat.splice(i, 1, ...newMessages);
@@ -3392,23 +3410,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 如果变量前有内容，创建前半段消息
                     if (preText) {
-                        newMessages.push({
-                            role: originalMsg.role,
-                            content: preText,
-                            name: originalMsg.name
-                        });
+                        newMessages.push(cloneSplitMessage(originalMsg, preText));
                     }
 
                     // 插入预构建的总结消息数组（带有 isGaigaiData 和自定义 name）
+                    if (originalMsg.gaigaiPhoneSignal) {
+                        summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
+                    }
                     newMessages.push(...summaryMessages);
 
                     // 如果变量后有内容，创建后半段消息
                     if (postText) {
-                        newMessages.push({
-                            role: originalMsg.role,
-                            content: postText,
-                            name: originalMsg.name
-                        });
+                        newMessages.push(cloneSplitMessage(originalMsg, postText));
                     }
 
                     // 原地替换：将 1 条消息替换为多条消息
@@ -3453,23 +3466,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 如果变量前有内容，创建前半段消息
                     if (preText) {
-                        newMessages.push({
-                            role: originalMsg.role,
-                            content: preText,
-                            name: originalMsg.name
-                        });
+                        newMessages.push(cloneSplitMessage(originalMsg, preText));
                     }
 
                     // 插入预构建的表格消息数组（带有 isGaigaiData 和自定义 name）
+                    if (originalMsg.gaigaiPhoneSignal) {
+                        tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
+                    }
                     newMessages.push(...tableMessages);
 
                     // 如果变量后有内容，创建后半段消息
                     if (postText) {
-                        newMessages.push({
-                            role: originalMsg.role,
-                            content: postText,
-                            name: originalMsg.name
-                        });
+                        newMessages.push(cloneSplitMessage(originalMsg, postText));
                     }
 
                     // 原地替换：将 1 条消息替换为多条消息
@@ -3518,29 +3526,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 如果变量前有内容，创建前半段消息
                     if (preText) {
-                        newMessages.push({
-                            role: originalMsg.role,
-                            content: preText,
-                            name: originalMsg.name
-                        });
+                        newMessages.push(cloneSplitMessage(originalMsg, preText));
                     }
 
                     // 插入预构建的总结和表格消息数组（带有 isGaigaiData 和自定义 name）
                     // 根据 C.tableInj 开关决定是否注入表格
                     if (summaryMessages.length > 0) {
+                        if (originalMsg.gaigaiPhoneSignal) {
+                            summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
+                        }
                         newMessages.push(...summaryMessages);
                     }
                     if (C.tableInj && tableMessages.length > 0) {
+                        if (originalMsg.gaigaiPhoneSignal) {
+                            tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
+                        }
                         newMessages.push(...tableMessages);
                     }
 
                     // 如果变量后有内容，创建后半段消息
                     if (postText) {
-                        newMessages.push({
-                            role: originalMsg.role,
-                            content: postText,
-                            name: originalMsg.name
-                        });
+                        newMessages.push(cloneSplitMessage(originalMsg, postText));
                     }
 
                     // 原地替换：将 1 条消息替换为多条消息
@@ -13098,7 +13104,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         }
                                     }
 
-                                    const phoneSignal = extractPhoneSignal(requestChat);
+                                    // 核心修复：SillyTavern 最终请求会剥离自定义属性
+                                    // 必须优先从保留了完整属性的探针数据中提取手机信号
+                                    let phoneSignal = null;
+                                    if (window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
+                                        phoneSignal = extractPhoneSignal(window.Gaigai.lastRequestData.chat);
+                                    } else {
+                                        phoneSignal = extractPhoneSignal(requestChat); // 兜底
+                                    }
                                     if (phoneSignal && phoneSignal.allowVector === false) {
                                         console.log('[权限管控] 手机禁止了向量化，跳过。');
                                         return originalFetch.apply(this, args);

@@ -25,7 +25,9 @@
 
             // 劫持 console.log
             console.log = (...args) => {
-                this.originalConsole.log(...args);
+                if (this._shouldPrintInfo(args)) {
+                    this.originalConsole.log(...args);
+                }
                 this.addLog('info', args);
             };
 
@@ -55,6 +57,67 @@
             this._initNetworkCapture();
 
             console.log('✅ [DebugManager] 初始化完成');
+        }
+
+        /**
+         * 读取最小日志模式开关（优先运行时配置，兜底本地存储）
+         * @returns {boolean}
+         */
+        _isMinimalLogMode() {
+            const runtimeFlag = window.Gaigai?.config_obj?.minimalLogMode;
+            if (typeof runtimeFlag === 'boolean') return runtimeFlag;
+
+            try {
+                const raw = localStorage.getItem('gg_config');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (typeof parsed?.minimalLogMode === 'boolean') {
+                        return parsed.minimalLogMode;
+                    }
+                }
+            } catch (e) {
+                // ignore parse errors
+            }
+
+            return true; // 默认启用最小日志
+        }
+
+        /**
+         * 最小日志过滤：仅保留权限命中与拦截结果
+         * @param {Array} args
+         * @returns {boolean}
+         */
+        _shouldPrintInfo(args) {
+            if (!this._isMinimalLogMode()) return true;
+
+            const msg = args.map(arg => {
+                if (typeof arg === 'string') return arg;
+                if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
+                return '';
+            }).join(' ');
+
+            // 1) 权限命中日志
+            if (msg.includes('[权限管控]')) return true;
+
+            // 2) 拦截结果日志（仅保留结果，不保留过程噪音）
+            if (msg.includes('[Fetch Hijack]')) {
+                return (
+                    msg.includes('拦截') ||
+                    msg.includes('跳过') ||
+                    msg.includes('放行') ||
+                    msg.includes('完成') ||
+                    msg.includes('恢复请求发送') ||
+                    msg.includes('失败') ||
+                    msg.includes('出错')
+                );
+            }
+
+            // 3) 向量检索最终结果
+            if (msg.includes('[向量检索]')) {
+                return msg.includes('跳过') || msg.includes('检索完成') || msg.includes('未找到');
+            }
+
+            return false;
         }
 
         /**
