@@ -1,5 +1,5 @@
-// ========================================================================
-// 记忆表格 v2.2.8
+﻿// ========================================================================
+// 记忆表格 v2.2.9
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.8 启动');
+    console.log('🚀 记忆表格 v2.2.9 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.8';
+    const V = 'v2.2.9';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -13018,298 +13018,381 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 x.eventSource.on(x.event_types.CHAT_CHANGED, function () { ochat(); });
 
                 // 监听提示词准备事件（用于注入记忆表格）
-                // 🔥 [核心修复] 使用 Hook 系统或 Fetch Hijack 解决异步竞态条件
+                // ============================================================
+                // ️ 终极稳妥版：防污染、深克隆，保护酒馆底层数据
+                // ============================================================
+
+                // 辅助函数：安全深拷贝（优先使用原生的 structuredClone，失败则用 JSON 兜底）
+                const safeDeepClone = (obj) => {
+                    try {
+                        return structuredClone(obj);
+                    } catch (e) {
+                        // 如果原生的 structuredClone 报错（比如有DOM节点或函数），则使用 JSON 降级深拷贝
+                        return JSON.parse(JSON.stringify(obj));
+                    }
+                };
+
                 if (window.hooks && typeof window.hooks.addFilter === 'function') {
-                    // Modern SillyTavern: 使用 Hook 系统
-                    console.log('✅ [初始化] 使用 Modern Hook 系统注册 chat_completion_prompt_ready (支持异步等待)');
+                    // 1. Modern SillyTavern: 使用 Hook 系统 (支持异步等待)
+                    console.log('✅ [初始化] 使用 Modern Hook 系统注册 chat_completion_prompt_ready');
+
                     window.hooks.addFilter('chat_completion_prompt_ready', async (chat) => {
-                        // Hook Filter 接收 chat 数组，需要包装成 opmt 期望的格式
-                        await opmt({ chat: chat });
-                        // 向量检索在 opmt 之后单独执行（读取 gaigaiPhoneSignal 权限对象）
-                        const phoneSignal = extractPhoneSignal(chat);
+                        // ️ 稳妥版：彻底深拷贝 chat 数组，斩断所有 extra 等嵌套对象的引用！
+                        let safeChat = safeDeepClone(chat);
+
+                        let dataWrapper = { chat: safeChat };
+                        await opmt(dataWrapper);
+
+                        // 向量检索读取深拷贝后的数据
+                        const phoneSignal = extractPhoneSignal(dataWrapper.chat);
                         if (phoneSignal && phoneSignal.allowVector === false) {
                             console.log('[权限管控] 手机禁止了向量化，跳过。');
                         } else {
-                            await executeVectorSearch(chat);
+                            await executeVectorSearch(dataWrapper.chat);
                         }
-                        return chat; // Filter 必须返回修改后的数据
-                    });
-                } else {
-                    // Legacy SillyTavern: 使用 Fetch Hijack + 智能注入
 
-                    // 注册传统事件监听器（用于表格注入等功能）
+                        // 返回完全隔离并被插件修改过的新 chat 数组
+                        return dataWrapper.chat;
+                    });
+
+                } else {
+                    // 2. Legacy SillyTavern: 使用传统事件监听器
+                    console.log('✅ [初始化] 使用旧版事件注册 CHAT_COMPLETION_PROMPT_READY');
+
                     x.eventSource.on(x.event_types.CHAT_COMPLETION_PROMPT_READY, function (ev) {
-                        opmt(ev); // 处理快照和表格注入
+                        // ️ 稳妥版：优先选择“确实带 chat 数组”的事件载体
+                        const detailHasChat = !!(ev && ev.detail && Array.isArray(ev.detail.chat));
+                        const eventHasChat = !!(ev && Array.isArray(ev.chat));
+                        const data = detailHasChat ? ev.detail : (eventHasChat ? ev : (ev.detail || ev));
+
+                        // 如果当前版本事件结构特殊，回退到原始处理，避免直接跳过注入
+                        if (!data || !Array.isArray(data.chat)) {
+                            opmt(ev);
+                            return;
+                        }
+
+                        // 彻底深拷贝 chat 数组
+                        let safeChat = safeDeepClone(data.chat);
+
+                        // 关键：构造一个合成对象传给 opmt，覆盖掉 chat 属性
+                        // 这样既保留了 data 里的其他属性，又避开了 opmt 内部读取 ev.detail 的覆盖问题！
+                        const safeEvent = { ...data, chat: safeChat };
+                        opmt(safeEvent);
+
+                        // 关键回写：确保酒馆后续发送请求使用的是“已注入后的副本 chat”
+                        data.chat = safeEvent.chat;
+                        if (ev && ev.detail && typeof ev.detail === 'object') {
+                            ev.detail.chat = safeEvent.chat;
+                        }
+                        if (ev && typeof ev === 'object') {
+                            ev.chat = safeEvent.chat;
+                        }
                     });
 
                     // 🔥 劫持 window.fetch 以在发送请求前强制等待向量检索
-                    const originalFetch = window.fetch;
-                    window.fetch = async function (...args) {
-                        const url = args[0] ? args[0].toString() : '';
+                    if (!window.Gaigai.__fetchHijacked) {
+                        const originalFetch = window.fetch;
+                        window.fetch = async function (...args) {
+                            const url = args[0] ? args[0].toString() : '';
 
-                        // 🔴 全局主开关守卫
-                        const C = window.Gaigai.config_obj;
-                        if (!C || !C.masterSwitch) {
-                            return originalFetch.apply(this, args);
-                        }
+                            // 🔴 全局主开关守卫
+                            const C = window.Gaigai.config_obj;
+                            if (!C || !C.masterSwitch) {
+                                return originalFetch.apply(this, args);
+                            }
 
-                        // Safe check: Ensure body is a string before calling includes (skips FormData/File uploads)
-                        if (args[1] && typeof args[1].body === 'string' && args[1].body.includes("API连接测试是否成功")) {
-                            console.log('🧪 [Fetch Hijack] Detected API connection test, skipping vector search.');
-                            return originalFetch.apply(this, args);
-                        }
+                            // Safe check: Ensure body is a string before calling includes (skips FormData/File uploads)
+                            if (args[1] && typeof args[1].body === 'string' && args[1].body.includes("API连接测试是否成功")) {
+                                console.log('🧪 [Fetch Hijack] Detected API connection test, skipping vector search.');
+                                return originalFetch.apply(this, args);
+                            }
 
-                        // 检查是否是文本生成请求，严格排除画图(sd)、语音(tts)等无关请求
-                        const isTextGeneration = (
-                            url.includes('/api/backends/chat-completions/generate') ||
-                            url.includes('/v1/chat/completions') ||
-                            (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
-                        );
+                            // 检查是否是文本生成请求，严格排除画图(sd)、语音(tts)等无关请求
+                            const isTextGeneration = (
+                                url.includes('/api/backends/chat-completions/generate') ||
+                                url.includes('/v1/chat/completions') ||
+                                (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
+                            );
 
-                        if (isTextGeneration && !window.isSummarizing) {
-                            console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
+                            if (isTextGeneration && !window.isSummarizing) {
+                                console.log('🛑 [Fetch Hijack] 生成请求已拦截，暂停以执行向量检索...');
 
-                            try {
-                                // ✅ 【关键修复】先执行隐藏，再执行向量检索
-                                if (C.contextLimit && window.Gaigai.applyContextLimitHiding) {
-                                    console.log('🔍 [Fetch Hijack] 先执行留N层隐藏...');
-                                    await window.Gaigai.applyContextLimitHiding();
-                                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
-                                        window.Gaigai.updateCurrentSnapshot();
-                                    }
-                                }
-
-                                if (C.autoSummaryHideContext && window.Gaigai.applyNativeHiding) {
-                                    console.log('🔍 [Fetch Hijack] 先执行已总结隐藏...');
-                                    await window.Gaigai.applyNativeHiding();
-                                    if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
-                                        window.Gaigai.updateCurrentSnapshot();
-                                    }
-                                }
-
-                                // 在发送前获取当前 chat 状态
-                                const ctx = SillyTavern.getContext();
-                                if (ctx && ctx.chat) {
-                                    let requestChat = null;
+                                try {
+                                    // 兜底修复：若事件链路未生效，直接在请求体层执行一次 opmt 注入
                                     if (args[1] && typeof args[1].body === 'string') {
-                                        try {
-                                            const requestBody = JSON.parse(args[1].body);
-                                            if (Array.isArray(requestBody.messages)) {
-                                                requestChat = requestBody.messages;
-                                            } else if (Array.isArray(requestBody.contents)) {
-                                                requestChat = requestBody.contents;
+                                        const hasMemoryVars = /\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}|\{\{MEMORY_TABLE_.+?\}\}/.test(args[1].body);
+                                        const hasGaigaiInjectedMarkers = /"isGaigaiData"\s*:\s*true|"isGaigaiPrompt"\s*:\s*true|"isGaigaiVector"\s*:\s*true/.test(args[1].body);
+                                        if (!hasGaigaiInjectedMarkers) {
+                                            try {
+                                                const bodyObjForOpmt = JSON.parse(args[1].body);
+                                                const hasMessages = Array.isArray(bodyObjForOpmt.messages);
+                                                const hasPromptArray = Array.isArray(bodyObjForOpmt.prompt);
+
+                                                if (hasMessages || hasPromptArray) {
+                                                    const key = hasMessages ? 'messages' : 'prompt';
+                                                    const safeBodyChat = safeDeepClone(bodyObjForOpmt[key]);
+                                                    const safeBodyEvent = { chat: safeBodyChat };
+                                                    await opmt(safeBodyEvent);
+                                                    bodyObjForOpmt[key] = safeBodyEvent.chat;
+                                                    args[1].body = JSON.stringify(bodyObjForOpmt);
+                                                    console.log(hasMemoryVars
+                                                        ? '✅ [Fetch Hijack] 已在请求体层完成 MEMORY 变量替换与表格/总结注入'
+                                                        : '✅ [Fetch Hijack] 已在请求体层完成默认表格/总结注入（无变量模式）');
+                                                } else {
+                                                    console.warn('⚠️ [Fetch Hijack] 请求体未找到 messages/prompt 数组，跳过 opmt 兜底注入');
+                                                }
+                                            } catch (e) {
+                                                console.error('❌ [Fetch Hijack] opmt 请求体兜底注入失败:', e);
                                             }
-                                        } catch (e) {
-                                            // ignore parse error
+                                        } else {
+                                            console.log('ℹ️ [Fetch Hijack] 请求体已包含 Gaigai 注入标记，跳过 opmt 兜底注入');
                                         }
                                     }
 
-                                    // 核心修复：SillyTavern 最终请求会剥离自定义属性
-                                    // 必须优先从保留了完整属性的探针数据中提取手机信号
-                                    let phoneSignal = null;
-                                    if (window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
-                                        phoneSignal = extractPhoneSignal(window.Gaigai.lastRequestData.chat);
-                                    } else {
-                                        phoneSignal = extractPhoneSignal(requestChat); // 兜底
-                                    }
-                                    if (phoneSignal && phoneSignal.allowVector === false) {
-                                        console.log('[权限管控] 手机禁止了向量化，跳过。');
-                                        return originalFetch.apply(this, args);
+                                    // ✅ 【关键修复】先执行隐藏，再执行向量检索
+                                    if (C.contextLimit && window.Gaigai.applyContextLimitHiding) {
+                                        console.log('🔍 [Fetch Hijack] 先执行留N层隐藏...');
+                                        await window.Gaigai.applyContextLimitHiding();
+                                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                                            window.Gaigai.updateCurrentSnapshot();
+                                        }
                                     }
 
-                                    // 🔥 强制等待向量检索完成，并获取向量内容文本
-                                    const vectorText = await executeVectorSearch(ctx.chat);
-                                    console.log(`✅ [Fetch Hijack] 向量检索完成，内容长度: ${vectorText.length}`);
+                                    if (C.autoSummaryHideContext && window.Gaigai.applyNativeHiding) {
+                                        console.log('🔍 [Fetch Hijack] 先执行已总结隐藏...');
+                                        await window.Gaigai.applyNativeHiding();
+                                        if (typeof window.Gaigai.updateCurrentSnapshot === 'function') {
+                                            window.Gaigai.updateCurrentSnapshot();
+                                        }
+                                    }
 
-                                    // 🔥 CRITICAL: 智能注入 - 直接修改请求体
-                                    if (args[1] && args[1].body && vectorText) {
-                                        // 🛡️ SAFETY: 防止双重注入 - 如果请求体已包含向量内容，跳过
-                                        if (args[1].body.includes(vectorText)) {
-                                            console.warn('⚠️ [Fetch Hijack] 检测到向量内容已存在，跳过注入防止重复');
-                                            console.log('▶️ [Fetch Hijack] 直接放行请求');
+                                    // 在发送前获取当前 chat 状态
+                                    const ctx = SillyTavern.getContext();
+                                    if (ctx && ctx.chat) {
+                                        let requestChat = null;
+                                        if (args[1] && typeof args[1].body === 'string') {
+                                            try {
+                                                const requestBody = JSON.parse(args[1].body);
+                                                if (Array.isArray(requestBody.messages)) {
+                                                    requestChat = requestBody.messages;
+                                                } else if (Array.isArray(requestBody.contents)) {
+                                                    requestChat = requestBody.contents;
+                                                }
+                                            } catch (e) {
+                                                // ignore parse error
+                                            }
+                                        }
+
+                                        // 核心修复：SillyTavern 最终请求会剥离自定义属性
+                                        // 必须优先从保留了完整属性的探针数据中提取手机信号
+                                        let phoneSignal = null;
+                                        if (window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
+                                            phoneSignal = extractPhoneSignal(window.Gaigai.lastRequestData.chat);
+                                        } else {
+                                            phoneSignal = extractPhoneSignal(requestChat); // 兜底
+                                        }
+                                        if (phoneSignal && phoneSignal.allowVector === false) {
+                                            console.log('[权限管控] 手机禁止了向量化，跳过。');
                                             return originalFetch.apply(this, args);
                                         }
 
-                                        try {
-                                            let bodyObj = JSON.parse(args[1].body);
-                                            let injected = false; // 标记是否已注入
+                                        // 🔥 强制等待向量检索完成，并获取向量内容文本
+                                        const vectorText = await executeVectorSearch(ctx.chat);
+                                        console.log(`✅ [Fetch Hijack] 向量检索完成，内容长度: ${vectorText.length}`);
 
-                                            // 使用正则表达式匹配 [Start a new Chat]（不区分大小写）
-                                            const startChatRegex = /\[Start a new chat\]/i;
+                                        // 🔥 CRITICAL: 智能注入 - 直接修改请求体
+                                        if (args[1] && args[1].body && vectorText) {
+                                            // 🛡️ SAFETY: 防止双重注入 - 如果请求体已包含向量内容，跳过
+                                            if (args[1].body.includes(vectorText)) {
+                                                console.warn('⚠️ [Fetch Hijack] 检测到向量内容已存在，跳过注入防止重复');
+                                                console.log('▶️ [Fetch Hijack] 直接放行请求');
+                                                return originalFetch.apply(this, args);
+                                            }
 
-                                            // 第一轮：专门替换 {{VECTOR_MEMORY}} 变量
-                                            const replaceVariable = (obj) => {
-                                                for (let key in obj) {
-                                                    if (typeof obj[key] === 'string') {
-                                                        if (obj[key].includes('{{VECTOR_MEMORY}}')) {
-                                                            obj[key] = obj[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
-                                                            console.log(`🎯 [智能注入-变量替换] 在 ${key} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
-                                                            injected = true;
+                                            try {
+                                                let bodyObj = JSON.parse(args[1].body);
+                                                let injected = false; // 标记是否已注入
+
+                                                // 使用正则表达式匹配 [Start a new Chat]（不区分大小写）
+                                                const startChatRegex = /\[Start a new chat\]/i;
+
+                                                // 第一轮：专门替换 {{VECTOR_MEMORY}} 变量
+                                                const replaceVariable = (obj) => {
+                                                    for (let key in obj) {
+                                                        if (typeof obj[key] === 'string') {
+                                                            if (obj[key].includes('{{VECTOR_MEMORY}}')) {
+                                                                obj[key] = obj[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
+                                                                console.log(`🎯 [智能注入-变量替换] 在 ${key} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
+                                                                injected = true;
+                                                            }
+                                                        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                                            replaceVariable(obj[key]);
                                                         }
-                                                    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                                                        replaceVariable(obj[key]);
                                                     }
-                                                }
-                                            };
+                                                };
 
-                                            // 第二轮：兜底策略 - 在 [Start a new Chat] 前插入
-                                            const injectFallback = (obj) => {
-                                                for (let key in obj) {
-                                                    if (typeof obj[key] === 'string') {
-                                                        if (startChatRegex.test(obj[key])) {
-                                                            obj[key] = obj[key].replace(startChatRegex, (match) => {
-                                                                return vectorText + '\n\n' + match;
+                                                // 第二轮：兜底策略 - 在 [Start a new Chat] 前插入
+                                                const injectFallback = (obj) => {
+                                                    for (let key in obj) {
+                                                        if (typeof obj[key] === 'string') {
+                                                            if (startChatRegex.test(obj[key])) {
+                                                                obj[key] = obj[key].replace(startChatRegex, (match) => {
+                                                                    return vectorText + '\n\n' + match;
+                                                                });
+                                                                console.log(`🎯 [智能注入-兜底插入] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
+                                                                injected = true;
+                                                            }
+                                                        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                                            injectFallback(obj[key]);
+                                                        }
+                                                    }
+                                                };
+
+                                                // 执行两轮扫描：先变量替换，后兜底插入
+                                                replaceVariable(bodyObj);
+                                                if (!injected) {
+                                                    injectFallback(bodyObj);
+                                                }
+
+                                                // === 第三轮：终极数组消息兜底 (如果前两轮都找不到注入点) ===
+                                                if (!injected) {
+                                                    let targetArray = null;
+                                                    let isGeminiFormat = false;
+
+                                                    // 识别当前请求体使用的消息数组格式
+                                                    if (Array.isArray(bodyObj.messages)) {
+                                                        targetArray = bodyObj.messages;
+                                                    } else if (Array.isArray(bodyObj.contents)) {
+                                                        targetArray = bodyObj.contents;
+                                                        isGeminiFormat = true;
+                                                    } else if (Array.isArray(bodyObj.prompt)) {
+                                                        targetArray = bodyObj.prompt;
+                                                    }
+
+                                                    if (targetArray) {
+                                                        if (isGeminiFormat) {
+                                                            // Gemini 原生格式 (contents 数组通常只接受 user 和 model)
+                                                            targetArray.unshift({
+                                                                role: 'user',
+                                                                parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }]
                                                             });
-                                                            console.log(`🎯 [智能注入-兜底插入] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
-                                                            injected = true;
+                                                        } else {
+                                                            // 标准 OpenAI / 兼容格式 (messages 数组)
+                                                            const newMsg = {
+                                                                role: 'system',
+                                                                content: '【系统检索到的历史记忆片段】\n\n' + vectorText,
+                                                                isGaigaiVector: true
+                                                            };
+
+                                                            // 寻找最后一条 system 消息的位置，插在它后面；如果没找到，插在最前面 (索引0)
+                                                            let insertIndex = 0;
+                                                            for (let i = targetArray.length - 1; i >= 0; i--) {
+                                                                if (targetArray[i].role === 'system') {
+                                                                    insertIndex = i + 1;
+                                                                    break;
+                                                                }
+                                                            }
+                                                            targetArray.splice(insertIndex, 0, newMsg);
                                                         }
-                                                    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                                                        injectFallback(obj[key]);
+
+                                                        injected = true;
+                                                        console.log(' [智能注入-终极兜底] 成功将向量内容作为独立消息插入到数组');
                                                     }
                                                 }
-                                            };
 
-                                            // 执行两轮扫描：先变量替换，后兜底插入
-                                            replaceVariable(bodyObj);
-                                            if (!injected) {
-                                                injectFallback(bodyObj);
-                                            }
+                                                if (injected) {
+                                                    // 更新请求体
+                                                    args[1].body = JSON.stringify(bodyObj);
+                                                    console.log('✅ [Fetch Hijack] 智能注入完成');
 
-                                            // === 第三轮：终极数组消息兜底 (如果前两轮都找不到注入点) ===
-                                            if (!injected) {
-                                                let targetArray = null;
-                                                let isGeminiFormat = false;
+                                                    // 🔥 CRITICAL: 强制更新探针数据，确保向量内容显示为 SYSTEM
+                                                    try {
+                                                        const finalBody = JSON.parse(args[1].body);
+                                                        let debugChat = [];
 
-                                                // 识别当前请求体使用的消息数组格式
-                                                if (Array.isArray(bodyObj.messages)) {
-                                                    targetArray = bodyObj.messages;
-                                                } else if (Array.isArray(bodyObj.contents)) {
-                                                    targetArray = bodyObj.contents;
-                                                    isGeminiFormat = true;
-                                                } else if (Array.isArray(bodyObj.prompt)) {
-                                                    targetArray = bodyObj.prompt;
-                                                }
+                                                        // 提取 chat 数组（兼容多种 API 格式）
+                                                        if (finalBody.messages) {
+                                                            debugChat = finalBody.messages;
+                                                        } else if (finalBody.contents) {
+                                                            debugChat = finalBody.contents;
+                                                        } else if (finalBody.prompt) {
+                                                            debugChat = Array.isArray(finalBody.prompt)
+                                                                ? finalBody.prompt
+                                                                : [{ role: 'user', content: finalBody.prompt }];
+                                                        }
 
-                                                if (targetArray) {
-                                                    if (isGeminiFormat) {
-                                                        // Gemini 原生格式 (contents 数组通常只接受 user 和 model)
-                                                        targetArray.unshift({
-                                                            role: 'user',
-                                                            parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }]
+                                                        // 🔥 强制标记包含向量内容的消息为 SYSTEM
+                                                        let markedCount = 0;
+                                                        debugChat.forEach((msg, idx) => {
+                                                            let content = msg.content ||
+                                                                (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
+                                                                (msg.text) ||
+                                                                '';
+
+                                                            // 如果消息包含向量文本，强制设置为 SYSTEM
+                                                            if (vectorText && content.includes(vectorText)) {
+                                                                // 强制覆盖角色属性
+                                                                msg.role = 'system';
+                                                                msg.isGaigaiVector = true;
+
+                                                                // ✅ 智能命名：判断是否为合并消息
+                                                                if (content.length > vectorText.length + 500) {
+                                                                    // 内容长度远大于向量文本，说明是酒馆压缩后的合并消息
+                                                                    msg.name = 'SYSTEM (Merged)';
+                                                                    console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (Merged) - 检测到压缩合并 (${content.length} > ${vectorText.length + 500})`);
+                                                                } else {
+                                                                    // 内容长度接近向量文本，说明是纯向量消息
+                                                                    msg.name = 'SYSTEM (向量化)';
+                                                                    console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (向量化) - 纯向量注入`);
+                                                                }
+
+                                                                // 确保没有其他角色标记
+                                                                delete msg.is_user;
+
+                                                                markedCount++;
+                                                            }
                                                         });
-                                                    } else {
-                                                        // 标准 OpenAI / 兼容格式 (messages 数组)
-                                                        const newMsg = { 
-                                                            role: 'system', 
-                                                            content: '【系统检索到的历史记忆片段】\n\n' + vectorText,
-                                                            isGaigaiVector: true 
+
+                                                        // 保存到全局探针（覆盖 opmt 中的设置）
+                                                        window.Gaigai.lastRequestData = {
+                                                            chat: debugChat,
+                                                            timestamp: Date.now(),
+                                                            model: API_CONFIG.model || 'Unknown'
                                                         };
-                                                        
-                                                        // 寻找最后一条 system 消息的位置，插在它后面；如果没找到，插在最前面 (索引0)
-                                                        let insertIndex = 0;
-                                                        for (let i = targetArray.length - 1; i >= 0; i--) {
-                                                            if (targetArray[i].role === 'system') {
-                                                                insertIndex = i + 1;
-                                                                break;
-                                                            }
-                                                        }
-                                                        targetArray.splice(insertIndex, 0, newMsg);
-                                                    }
-                                                    
-                                                    injected = true;
-                                                    console.log(' [智能注入-终极兜底] 成功将向量内容作为独立消息插入到数组');
-                                                }
-                                            }
+                                                        console.log(`✅ [探针] 已更新 lastRequestData (标记了 ${markedCount} 条向量消息)`);
 
-                                            if (injected) {
-                                                // 更新请求体
-                                                args[1].body = JSON.stringify(bodyObj);
-                                                console.log('✅ [Fetch Hijack] 智能注入完成');
-
-                                                // 🔥 CRITICAL: 强制更新探针数据，确保向量内容显示为 SYSTEM
-                                                try {
-                                                    const finalBody = JSON.parse(args[1].body);
-                                                    let debugChat = [];
-
-                                                    // 提取 chat 数组（兼容多种 API 格式）
-                                                    if (finalBody.messages) {
-                                                        debugChat = finalBody.messages;
-                                                    } else if (finalBody.contents) {
-                                                        debugChat = finalBody.contents;
-                                                    } else if (finalBody.prompt) {
-                                                        debugChat = Array.isArray(finalBody.prompt)
-                                                            ? finalBody.prompt
-                                                            : [{ role: 'user', content: finalBody.prompt }];
+                                                    } catch (probeError) {
+                                                        console.error('❌ [探针] 更新失败:', probeError);
                                                     }
 
-                                                    // 🔥 强制标记包含向量内容的消息为 SYSTEM
-                                                    let markedCount = 0;
-                                                    debugChat.forEach((msg, idx) => {
-                                                        let content = msg.content ||
-                                                            (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
-                                                            (msg.text) ||
-                                                            '';
-
-                                                        // 如果消息包含向量文本，强制设置为 SYSTEM
-                                                        if (vectorText && content.includes(vectorText)) {
-                                                            // 强制覆盖角色属性
-                                                            msg.role = 'system';
-                                                            msg.isGaigaiVector = true;
-
-                                                            // ✅ 智能命名：判断是否为合并消息
-                                                            if (content.length > vectorText.length + 500) {
-                                                                // 内容长度远大于向量文本，说明是酒馆压缩后的合并消息
-                                                                msg.name = 'SYSTEM (Merged)';
-                                                                console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (Merged) - 检测到压缩合并 (${content.length} > ${vectorText.length + 500})`);
-                                                            } else {
-                                                                // 内容长度接近向量文本，说明是纯向量消息
-                                                                msg.name = 'SYSTEM (向量化)';
-                                                                console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (向量化) - 纯向量注入`);
-                                                            }
-
-                                                            // 确保没有其他角色标记
-                                                            delete msg.is_user;
-
-                                                            markedCount++;
-                                                        }
-                                                    });
-
-                                                    // 保存到全局探针（覆盖 opmt 中的设置）
-                                                    window.Gaigai.lastRequestData = {
-                                                        chat: debugChat,
-                                                        timestamp: Date.now(),
-                                                        model: API_CONFIG.model || 'Unknown'
-                                                    };
-                                                    console.log(`✅ [探针] 已更新 lastRequestData (标记了 ${markedCount} 条向量消息)`);
-
-                                                } catch (probeError) {
-                                                    console.error('❌ [探针] 更新失败:', probeError);
+                                                } else if (vectorText) {
+                                                    console.warn('⚠️ [Fetch Hijack] 未找到注入点，向量内容未被使用');
                                                 }
 
-                                            } else if (vectorText) {
-                                                console.warn('⚠️ [Fetch Hijack] 未找到注入点，向量内容未被使用');
+                                            } catch (parseError) {
+                                                console.error('❌ [Fetch Hijack] 解析请求体失败:', parseError);
+                                                console.error('请求体内容:', args[1].body.substring(0, 500));
                                             }
-
-                                        } catch (parseError) {
-                                            console.error('❌ [Fetch Hijack] 解析请求体失败:', parseError);
-                                            console.error('请求体内容:', args[1].body.substring(0, 500));
                                         }
                                     }
+                                } catch (e) {
+                                    console.error('❌ [Fetch Hijack] 向量检索过程出错:', e);
                                 }
-                            } catch (e) {
-                                console.error('❌ [Fetch Hijack] 向量检索过程出错:', e);
+
+                                console.log('▶️ [Fetch Hijack] 向量检索完成，恢复请求发送');
                             }
 
-                            console.log('▶️ [Fetch Hijack] 向量检索完成，恢复请求发送');
-                        }
+                            // 继续执行原始请求（使用原始或修改后的参数）
+                            return originalFetch.apply(this, args);
+                        };
 
-                        // 继续执行原始请求（使用原始或修改后的参数）
-                        return originalFetch.apply(this, args);
-                    };
-
-                    console.log('✅ [Fetch Hijack] window.fetch 已成功劫持');
+                        window.Gaigai.__fetchHijacked = true;
+                        console.log('✅ [Fetch Hijack] window.fetch 已成功劫持');
+                    } else {
+                        console.log('ℹ️ [Fetch Hijack] 已检测到 fetch 拦截，跳过重复劫持');
+                    }
                 }
-
+                // ============================================================
                 // 监听 Swipe 事件 (切换回复)
                 x.eventSource.on(x.event_types.MESSAGE_SWIPED, function (id) {
                     // 🛡️[Swipe拦截] 忽略酒馆初始化/加载聊天时自动触发的假 Swipe
@@ -13798,9 +13881,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>⚠️重要通知⚠️：</strong>从1.7.5版本前更新的用户，必须进入【提示词区】上方的【表格结构编辑区】，手动将表格【恢复默认】。</li>
-                        <li><strong修复：</strong>修复填表功能重复记录的bug</li>
-                        <li><strong新增：</strong>新增对单表控制的变量{{MEMORY_TABLE_XXX}}</li>
+                        <li><strong>修复：</strong>修复了在点击“重新生成 (Swipe)”或多次对话后，记忆表格被重复注入，导致 Token 消溢出的严重 Bug。</li>
                     </ul>
                 </div>
 
@@ -13948,3 +14029,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
 })();
+
+
+
