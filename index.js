@@ -3091,7 +3091,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     function extractPhoneSignal(chatArray) {
-        // 1. 🛡️ 终极防线：优先检查全局探针
+        // 1. 在传入的数组中找（优先使用“本次请求”的上下文，避免被旧探针误判）
+        if (Array.isArray(chatArray)) {
+            // 倒序查找，找到最新附带信号的消息
+            for (let i = chatArray.length - 1; i >= 0; i--) {
+                if (chatArray[i] && chatArray[i].gaigaiPhoneSignal) {
+                    return chatArray[i].gaigaiPhoneSignal;
+                }
+            }
+        }
+
+        // 2. 🛡️ 兜底检查全局探针
         // 解决独立 API 调用和 Fetch 拦截时，请求体的自定义属性被 JSON.parse 洗掉的问题
         if (window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
             const probeChat = window.Gaigai.lastRequestData.chat;
@@ -3099,16 +3109,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (probeChat[i] && probeChat[i].gaigaiPhoneSignal) {
                     console.log('📱 [权限探测] 从全局探针中成功找回手机信号！拦截生效。');
                     return probeChat[i].gaigaiPhoneSignal;
-                }
-            }
-        }
-
-        // 2. 在传入的数组中找 (常规情况)
-        if (Array.isArray(chatArray)) {
-            // 倒序查找，找到最新附带信号的消息
-            for (let i = chatArray.length - 1; i >= 0; i--) {
-                if (chatArray[i] && chatArray[i].gaigaiPhoneSignal) {
-                    return chatArray[i].gaigaiPhoneSignal;
                 }
             }
         }
@@ -12413,6 +12413,32 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 3. 正常执行检索
             if (isVectorReady && chatData.chat && chatData.chat.length > 0) {
+                // 兼容 OpenAI/Gemini/多模态结构，统一抽取可检索文本
+                const extractTextFromNode = (node) => {
+                    if (node === null || node === undefined) return '';
+                    if (typeof node === 'string') return node;
+                    if (typeof node === 'number' || typeof node === 'boolean') return String(node);
+
+                    if (Array.isArray(node)) {
+                        return node.map(extractTextFromNode).filter(Boolean).join('\n');
+                    }
+
+                    if (typeof node === 'object') {
+                        if (typeof node.text === 'string') return node.text;
+                        if (typeof node.mes === 'string') return node.mes;
+                        if (typeof node.content === 'string') return node.content;
+                        if (Array.isArray(node.content)) return extractTextFromNode(node.content);
+                        if (Array.isArray(node.parts)) return extractTextFromNode(node.parts);
+
+                        const partType = String(node.type || '').toLowerCase();
+                        if (partType === 'image_url' || partType === 'input_image' || node.image_url || node.inline_data) {
+                            return '[图片]';
+                        }
+                    }
+
+                    return '';
+                };
+
                 // === 增强版：多轮上下文检索 ===
                 let userQuery = '';
 
@@ -12436,8 +12462,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     const isAssistant = !isUser && (msg.role === 'assistant' || msg.name !== 'System');
 
                     if (isUser || isAssistant) {
-                        // 尝试获取内容
-                        let candidateText = msg.mes || msg.content || msg.text || '';
+                        // 尝试获取内容（兼容字符串/数组/对象消息）
+                        let candidateText = extractTextFromNode(msg?.mes ?? msg?.content ?? msg?.parts ?? msg?.text ?? '');
+                        if (typeof candidateText !== 'string') {
+                            candidateText = String(candidateText || '');
+                        }
 
                         // ✅ 新增：执行清洗，去除 Memory 标签和用户黑名单标签(如 think)
                         candidateText = window.Gaigai.cleanMemoryTags(candidateText);
@@ -13151,7 +13180,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                     if (args[1] && typeof args[1].body === 'string') {
                                         const hasMemoryVars = /\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}|\{\{MEMORY_TABLE_.+?\}\}/.test(args[1].body);
                                         const hasGaigaiInjectedMarkers = /"isGaigaiData"\s*:\s*true|"isGaigaiPrompt"\s*:\s*true|"isGaigaiVector"\s*:\s*true/.test(args[1].body);
-                                        if (!hasGaigaiInjectedMarkers) {
+
+                                        if (!hasMemoryVars && !hasGaigaiInjectedMarkers) {
+                                            console.log('ℹ️ [Fetch Hijack] 请求体无 MEMORY 变量且无注入标记，跳过 opmt 请求体兜底注入');
+                                        } else if (!hasGaigaiInjectedMarkers) {
                                             try {
                                                 const bodyObjForOpmt = JSON.parse(args[1].body);
                                                 const hasMessages = Array.isArray(bodyObjForOpmt.messages);
@@ -13164,9 +13196,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                     await opmt(safeBodyEvent);
                                                     bodyObjForOpmt[key] = safeBodyEvent.chat;
                                                     args[1].body = JSON.stringify(bodyObjForOpmt);
-                                                    console.log(hasMemoryVars
-                                                        ? '✅ [Fetch Hijack] 已在请求体层完成 MEMORY 变量替换与表格/总结注入'
-                                                        : '✅ [Fetch Hijack] 已在请求体层完成默认表格/总结注入（无变量模式）');
+                                                    console.log('✅ [Fetch Hijack] 已在请求体层完成 MEMORY 变量替换与表格/总结注入');
                                                 } else {
                                                     console.warn('⚠️ [Fetch Hijack] 请求体未找到 messages/prompt 数组，跳过 opmt 兜底注入');
                                                 }
@@ -13206,27 +13236,37 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                     requestChat = requestBody.messages;
                                                 } else if (Array.isArray(requestBody.contents)) {
                                                     requestChat = requestBody.contents;
+                                                } else if (Array.isArray(requestBody.prompt)) {
+                                                    requestChat = requestBody.prompt;
                                                 }
                                             } catch (e) {
                                                 // ignore parse error
                                             }
                                         }
 
-                                        // 核心修复：SillyTavern 最终请求会剥离自定义属性
-                                        // 必须优先从保留了完整属性的探针数据中提取手机信号
-                                        let phoneSignal = null;
-                                        if (window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
+                                        // 优先识别“当前请求”上的手机权限信号，避免被旧探针污染
+                                        let phoneSignal = extractPhoneSignal(requestChat);
+                                        if (!phoneSignal && window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
                                             phoneSignal = extractPhoneSignal(window.Gaigai.lastRequestData.chat);
-                                        } else {
-                                            phoneSignal = extractPhoneSignal(requestChat); // 兜底
                                         }
                                         if (phoneSignal && phoneSignal.allowVector === false) {
                                             console.log('[权限管控] 手机禁止了向量化，跳过。');
                                             return originalFetch.apply(this, args);
                                         }
 
+                                        // 正文/手机双场景统一：优先使用当前请求体上下文，兜底再用正文上下文
+                                        const vectorContextChat =
+                                            (Array.isArray(requestChat) && requestChat.length > 0)
+                                                ? requestChat
+                                                : ctx.chat;
+                                        const vectorSource =
+                                            (Array.isArray(requestChat) && requestChat.length > 0)
+                                                ? 'requestBody'
+                                                : 'ctx.chat';
+
                                         // 🔥 强制等待向量检索完成，并获取向量内容文本
-                                        const vectorText = await executeVectorSearch(ctx.chat);
+                                        const vectorText = await executeVectorSearch(vectorContextChat);
+                                        console.log(`🧭 [Fetch Hijack] 向量检索上下文来源: ${vectorSource}`);
                                         console.log(`✅ [Fetch Hijack] 向量检索完成，内容长度: ${vectorText.length}`);
 
                                         // 🔥 CRITICAL: 智能注入 - 直接修改请求体
