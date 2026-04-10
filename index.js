@@ -3091,13 +3091,42 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     }
 
     function extractPhoneSignal(chatArray) {
-        if (!Array.isArray(chatArray)) return null;
-        // 倒序查找，找到最新附带信号的消息
-        for (let i = chatArray.length - 1; i >= 0; i--) {
-            if (chatArray[i] && chatArray[i].gaigaiPhoneSignal) {
-                return chatArray[i].gaigaiPhoneSignal;
+        // 1. 🛡️ 终极防线：优先检查全局探针
+        // 解决独立 API 调用和 Fetch 拦截时，请求体的自定义属性被 JSON.parse 洗掉的问题
+        if (window.Gaigai && window.Gaigai.lastRequestData && Array.isArray(window.Gaigai.lastRequestData.chat)) {
+            const probeChat = window.Gaigai.lastRequestData.chat;
+            for (let i = probeChat.length - 1; i >= 0; i--) {
+                if (probeChat[i] && probeChat[i].gaigaiPhoneSignal) {
+                    console.log('📱 [权限探测] 从全局探针中成功找回手机信号！拦截生效。');
+                    return probeChat[i].gaigaiPhoneSignal;
+                }
             }
         }
+
+        // 2. 在传入的数组中找 (常规情况)
+        if (Array.isArray(chatArray)) {
+            // 倒序查找，找到最新附带信号的消息
+            for (let i = chatArray.length - 1; i >= 0; i--) {
+                if (chatArray[i] && chatArray[i].gaigaiPhoneSignal) {
+                    return chatArray[i].gaigaiPhoneSignal;
+                }
+            }
+        }
+
+        // 3. 兜底：去酒馆最底层的全局主聊天记录里找
+        try {
+            const ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+            if (ctx && Array.isArray(ctx.chat)) {
+                for (let i = ctx.chat.length - 1; i >= 0; i--) {
+                    if (ctx.chat[i] && ctx.chat[i].gaigaiPhoneSignal) {
+                        return ctx.chat[i].gaigaiPhoneSignal;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('提取手机信号兜底失败:', e);
+        }
+
         return null;
     }
 
