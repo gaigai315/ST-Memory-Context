@@ -12570,9 +12570,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (userQuery.trim()) {
                     console.log(`🔍 [向量检索] 正在检索: "${userQuery.substring(0, 20)}..."`);
 
-                    // 🛡️ 创建超时 Promise (10秒宽限期，考虑 Rerank 和网络延迟)
+                    // 🛡️ 创建超时 Promise (20秒宽限期，移动端/中转站偶发较慢)
+                    const vectorSearchTimeoutMs = 20000;
                     const timeoutPromise = new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('向量检索超时 (10秒)')), 10000);
+                        setTimeout(() => reject(new Error(`向量检索超时 (${Math.round(vectorSearchTimeoutMs / 1000)}秒)`)), vectorSearchTimeoutMs);
                     });
 
                     let results;
@@ -12584,7 +12585,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         ]);
                     } catch (searchError) {
                         // 🛡️ 关键：静默处理，不影响主聊天流程
-                        console.warn('⚠️ [向量检索] 执行异常或超时，已跳过，不影响聊天:', searchError);
+                        console.warn('⚠️ [向量检索] 执行异常或超时，已跳过，不影响聊天。注意：后台检索请求可能仍会继续完成，但本次发送不会再等待它。', searchError);
                         return ''; // 直接返回空字符串，让聊天继续
                     }
 
