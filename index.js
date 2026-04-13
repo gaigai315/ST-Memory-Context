@@ -13196,6 +13196,79 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         return dataWrapper.chat;
                     });
 
+                    if (!window.Gaigai.__fetchHijacked) {
+                        const originalFetch = window.fetch;
+                        window.fetch = async function (...args) {
+                            const url = args[0] ? args[0].toString() : '';
+                            const C = window.Gaigai.config_obj;
+
+                            const isTextGeneration = (
+                                url.includes('/api/backends/chat-completions/generate') ||
+                                url.includes('/v1/chat/completions') ||
+                                (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
+                            );
+
+                            if (!C || !C.masterSwitch || !isTextGeneration || window.isSummarizing || !args[1] || typeof args[1].body !== 'string') {
+                                return originalFetch.apply(this, args);
+                            }
+
+                            try {
+                                const bodyObj = JSON.parse(args[1].body);
+                                const requestChat = Array.isArray(bodyObj.messages)
+                                    ? bodyObj.messages
+                                    : (Array.isArray(bodyObj.prompt)
+                                        ? bodyObj.prompt
+                                        : (Array.isArray(bodyObj.contents) ? bodyObj.contents : null));
+
+                                const phoneSignal = extractPhoneSignal(requestChat);
+                                if (phoneSignal && phoneSignal.allowVector === false) {
+                                    return originalFetch.apply(this, args);
+                                }
+
+                                const vectorText = await executeVectorSearch(
+                                    (Array.isArray(requestChat) && requestChat.length > 0)
+                                        ? requestChat
+                                        : (SillyTavern.getContext()?.chat || [])
+                                );
+
+                                if (!vectorText || args[1].body.includes(vectorText)) {
+                                    return originalFetch.apply(this, args);
+                                }
+
+                                let injected = false;
+                                if (Array.isArray(bodyObj.messages)) {
+                                    injected = injectVectorIntoChatArray(bodyObj.messages, vectorText);
+                                } else if (Array.isArray(bodyObj.prompt)) {
+                                    injected = injectVectorIntoChatArray(bodyObj.prompt, vectorText);
+                                } else if (Array.isArray(bodyObj.contents)) {
+                                    const alreadyInjected = bodyObj.contents.some(item => JSON.stringify(item).includes(vectorText));
+                                    if (!alreadyInjected) {
+                                        bodyObj.contents.unshift({
+                                            role: 'user',
+                                            parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }],
+                                            isGaigaiVector: true
+                                        });
+                                        injected = true;
+                                    }
+                                }
+
+                                if (injected) {
+                                    args[1].body = JSON.stringify(bodyObj);
+                                    console.log('✅ [Fetch Hijack-Modern] 已在最终请求体兜底注入向量内容');
+                                }
+                            } catch (e) {
+                                console.warn('⚠️ [Fetch Hijack-Modern] 请求体兜底注入失败，已跳过:', e);
+                            }
+
+                            return originalFetch.apply(this, args);
+                        };
+
+                        window.Gaigai.__fetchHijacked = true;
+                        console.log('✅ [Fetch Hijack-Modern] window.fetch 已成功劫持');
+                    } else {
+                        console.log('ℹ️ [Fetch Hijack-Modern] 已检测到 fetch 拦截，跳过重复劫持');
+                    }
+
                 } else {
                     // 2. Legacy SillyTavern: 使用传统事件监听器
                     console.log('✅ [初始化] 使用旧版事件注册 CHAT_COMPLETION_PROMPT_READY');
