@@ -12381,6 +12381,83 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     // ============================================================
     // 🔥 独立向量检索函数 (用于 Hook 和 Fetch Hijack)
     // ============================================================
+    function injectVectorIntoChatArray(chat, vectorText) {
+        if (!Array.isArray(chat) || !vectorText) {
+            return false;
+        }
+
+        let injected = false;
+        const startChatRegex = /\[Start a new chat\]/i;
+
+        const walkAndReplace = (node) => {
+            if (!node) return;
+
+            if (Array.isArray(node)) {
+                node.forEach(walkAndReplace);
+                return;
+            }
+
+            if (typeof node !== 'object') {
+                return;
+            }
+
+            for (const key in node) {
+                if (typeof node[key] === 'string') {
+                    if (node[key].includes('{{VECTOR_MEMORY}}')) {
+                        node[key] = node[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
+                        console.log(`🎯 [向量注入-Hook] 在 ${key} 中替换了 {{VECTOR_MEMORY}}`);
+                        injected = true;
+                    } else if (startChatRegex.test(node[key])) {
+                        node[key] = node[key].replace(startChatRegex, (match) => `${vectorText}\n\n${match}`);
+                        console.log(`🎯 [向量注入-Hook] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
+                        injected = true;
+                    }
+                } else if (node[key] && typeof node[key] === 'object') {
+                    walkAndReplace(node[key]);
+                }
+            }
+        };
+
+        walkAndReplace(chat);
+        if (injected) {
+            return true;
+        }
+
+        const alreadyInjected = chat.some((msg) => {
+            if (!msg || typeof msg !== 'object') return false;
+
+            const content = typeof msg.content === 'string'
+                ? msg.content
+                : (msg.parts && msg.parts[0] ? msg.parts[0].text : '');
+
+            return msg.isGaigaiVector === true || (vectorText && typeof content === 'string' && content.includes(vectorText));
+        });
+
+        if (alreadyInjected) {
+            console.log('ℹ️ [向量注入-Hook] 检测到已有向量消息，跳过重复注入');
+            return true;
+        }
+
+        const vectorMessage = {
+            role: 'system',
+            content: '【系统检索到的历史记忆片段】\n\n' + vectorText,
+            isGaigaiVector: true,
+            name: 'SYSTEM (向量化)'
+        };
+
+        let insertIndex = 0;
+        for (let i = chat.length - 1; i >= 0; i--) {
+            if (chat[i] && chat[i].role === 'system') {
+                insertIndex = i + 1;
+                break;
+            }
+        }
+
+        chat.splice(insertIndex, 0, vectorMessage);
+        console.log('✅ [向量注入-Hook] 已将向量内容作为独立 system 消息插入到 chat 数组');
+        return true;
+    }
+
     /**
      * 执行向量检索并替换 {{VECTOR_MEMORY}} 变量
      * @param {Object} data - 包含 .chat 数组的对象，或直接是 chat 数组
@@ -13106,7 +13183,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         if (phoneSignal && phoneSignal.allowVector === false) {
                             console.log('[权限管控] 手机禁止了向量化，跳过。');
                         } else {
-                            await executeVectorSearch(dataWrapper.chat);
+                            const vectorText = await executeVectorSearch(dataWrapper.chat);
+                            if (vectorText) {
+                                const injected = injectVectorIntoChatArray(dataWrapper.chat, vectorText);
+                                if (!injected) {
+                                    console.warn('⚠️ [向量注入-Hook] 检索成功，但未能注入到 chat 数组');
+                                }
+                            }
                         }
 
                         // 返回完全隔离并被插件修改过的新 chat 数组
