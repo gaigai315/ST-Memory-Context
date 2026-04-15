@@ -12405,10 +12405,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (typeof node[key] === 'string') {
                     if (node[key].includes('{{VECTOR_MEMORY}}')) {
                         node[key] = node[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
+                        node.isGaigaiVector = true;
+                        if (!node.name) node.name = 'SYSTEM (Merged)';
                         console.log(`🎯 [向量注入-Hook] 在 ${key} 中替换了 {{VECTOR_MEMORY}}`);
                         injected = true;
                     } else if (startChatRegex.test(node[key])) {
                         node[key] = node[key].replace(startChatRegex, (match) => `${vectorText}\n\n${match}`);
+                        node.isGaigaiVector = true;
+                        if (!node.name) node.name = 'SYSTEM (Merged)';
                         console.log(`🎯 [向量注入-Hook] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
                         injected = true;
                     }
@@ -12456,6 +12460,271 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         chat.splice(insertIndex, 0, vectorMessage);
         console.log('✅ [向量注入-Hook] 已将向量内容作为独立 system 消息插入到 chat 数组');
         return true;
+    }
+
+    function cloneForProbe(obj) {
+        try {
+            return structuredClone(obj);
+        } catch (e) {
+            return JSON.parse(JSON.stringify(obj));
+        }
+    }
+
+    function createVectorInjectionMeta(overrides = {}) {
+        return Object.assign({
+            mode: 'none',
+            merged: false,
+            verified: false,
+            alreadyPresent: false,
+            markerPresent: false,
+            arrayKey: '',
+            targetPath: '',
+            targetIndex: -1,
+            contentLength: 0,
+            replacementCount: 0
+        }, overrides);
+    }
+
+    function requestBodyContainsVectorMarker(node) {
+        if (!node) return false;
+
+        if (Array.isArray(node)) {
+            return node.some(item => requestBodyContainsVectorMarker(item));
+        }
+
+        if (typeof node === 'object') {
+            if (node.isGaigaiVector === true) {
+                return true;
+            }
+            for (const key in node) {
+                if (requestBodyContainsVectorMarker(node[key])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    function requestBodyContainsVectorText(node, vectorText) {
+        if (!node || !vectorText) return false;
+
+        if (typeof node === 'string') {
+            return node.includes(vectorText);
+        }
+
+        if (Array.isArray(node)) {
+            return node.some(item => requestBodyContainsVectorText(item, vectorText));
+        }
+
+        if (typeof node === 'object') {
+            for (const key in node) {
+                if (requestBodyContainsVectorText(node[key], vectorText)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    function detectPrimaryRequestArray(bodyObj) {
+        if (!bodyObj || typeof bodyObj !== 'object') return null;
+        if (Array.isArray(bodyObj.messages)) return { key: 'messages', array: bodyObj.messages, isGemini: false };
+        if (Array.isArray(bodyObj.prompt)) return { key: 'prompt', array: bodyObj.prompt, isGemini: false };
+        if (Array.isArray(bodyObj.contents)) return { key: 'contents', array: bodyObj.contents, isGemini: true };
+        return null;
+    }
+
+    function injectVectorIntoRequestBody(bodyObj, vectorText) {
+        const meta = createVectorInjectionMeta({
+            contentLength: vectorText ? vectorText.length : 0
+        });
+
+        if (!bodyObj || !vectorText) {
+            return { injected: false, meta };
+        }
+
+        const target = detectPrimaryRequestArray(bodyObj);
+        if (!target || !Array.isArray(target.array)) {
+            console.warn('⚠️ [向量注入] 未检测到标准的 messages/prompt/contents 结构，跳过注入');
+            return { injected: false, meta };
+        }
+
+        if (requestBodyContainsVectorMarker(target.array)) {
+            meta.mode = 'preexisting_marker';
+            meta.alreadyPresent = true;
+            meta.markerPresent = true;
+            meta.verified = true;
+            meta.arrayKey = target.key;
+            console.log('ℹ️ [向量注入] 目标数组已带 isGaigaiVector 标记，跳过重复注入');
+            return { injected: true, meta };
+        }
+
+        if (requestBodyContainsVectorText(target.array, vectorText)) {
+            meta.mode = 'preexisting';
+            meta.alreadyPresent = true;
+            meta.verified = true;
+            meta.arrayKey = target.key;
+            console.log('ℹ️ [向量注入] 目标数组已包含向量内容，跳过重复注入');
+            return { injected: true, meta };
+        }
+
+        let injected = false;
+        const startChatRegex = /\[Start a new chat\]/i;
+
+        const markMetaFromPath = (path, mode, merged) => {
+            if (!meta.targetPath) {
+                meta.mode = mode;
+                meta.merged = merged;
+                meta.targetPath = path;
+                const match = path.match(/\[(\d+)\]/);
+                if (match) {
+                    meta.targetIndex = Number(match[1]);
+                }
+            }
+            meta.replacementCount += 1;
+        };
+
+        const walkAndReplace = (node, path, mode = 'variable') => {
+            if (injected) return;
+            if (!node || typeof node !== 'object') return;
+
+            if (Array.isArray(node)) {
+                for (let index = 0; index < node.length; index++) {
+                    walkAndReplace(node[index], `${path}[${index}]`, mode);
+                    if (injected) return;
+                }
+                return;
+            }
+
+            for (const key in node) {
+                if (injected) return;
+                const nextPath = path ? `${path}.${key}` : key;
+                if (typeof node[key] === 'string') {
+                    if (mode === 'variable' && node[key].includes('{{VECTOR_MEMORY}}')) {
+                        node[key] = node[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
+                        node.isGaigaiVector = true;
+                        if (!node.name) node.name = 'SYSTEM (Merged)';
+                        console.log(`🎯 [智能注入-变量替换] 在 ${nextPath} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
+                        injected = true;
+                        markMetaFromPath(nextPath, 'variable_replace', true);
+                        return;
+                    } else if (mode === 'fallback' && startChatRegex.test(node[key])) {
+                        node[key] = node[key].replace(startChatRegex, (match) => `${vectorText}\n\n${match}`);
+                        node.isGaigaiVector = true;
+                        if (!node.name) node.name = 'SYSTEM (Merged)';
+                        console.log(`🎯 [智能注入-兜底插入] 在 ${nextPath} 的 [Start a new Chat] 前插入向量内容`);
+                        injected = true;
+                        markMetaFromPath(nextPath, 'start_chat_insert', true);
+                        return;
+                    }
+                } else if (node[key] && typeof node[key] === 'object') {
+                    walkAndReplace(node[key], nextPath, mode);
+                }
+            }
+        };
+
+        walkAndReplace(target.array, target.key, 'variable');
+        if (!injected) {
+            walkAndReplace(target.array, target.key, 'fallback');
+        }
+
+        const ensureStandaloneInsert = () => {
+            if (target.isGemini) {
+                target.array.unshift({
+                    role: 'user',
+                    parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }],
+                    isGaigaiVector: true
+                });
+                meta.mode = 'array_insert_gemini';
+                meta.merged = false;
+                meta.arrayKey = target.key;
+                meta.targetIndex = 0;
+                meta.targetPath = `${target.key}[0].parts[0].text`;
+            } else {
+                const newMsg = {
+                    role: 'system',
+                    content: '【系统检索到的历史记忆片段】\n\n' + vectorText,
+                    isGaigaiVector: true
+                };
+
+                let insertIndex = 0;
+                for (let i = target.array.length - 1; i >= 0; i--) {
+                    if (target.array[i] && target.array[i].role === 'system') {
+                        insertIndex = i + 1;
+                        break;
+                    }
+                }
+
+                target.array.splice(insertIndex, 0, newMsg);
+                meta.mode = 'array_insert';
+                meta.merged = false;
+                meta.arrayKey = target.key;
+                meta.targetIndex = insertIndex;
+                meta.targetPath = `${target.key}[${insertIndex}].content`;
+            }
+
+            meta.replacementCount += 1;
+            console.log('✅ [智能注入-终极兜底] 已将向量内容作为独立消息插入到数组');
+            return true;
+        };
+
+        meta.arrayKey = target.key;
+        meta.markerPresent = requestBodyContainsVectorMarker(target.array);
+        meta.verified = meta.markerPresent || requestBodyContainsVectorText(target.array, vectorText);
+
+        if (!meta.verified) {
+            const fallbackInjected = ensureStandaloneInsert();
+            injected = injected || fallbackInjected;
+            meta.markerPresent = requestBodyContainsVectorMarker(target.array);
+            meta.verified = meta.markerPresent || requestBodyContainsVectorText(target.array, vectorText);
+        }
+
+        return { injected: injected || meta.verified, meta };
+    }
+
+    function updateVectorProbeFromBody(bodyObj, vectorText, injectionMeta) {
+        try {
+            const finalBody = cloneForProbe(bodyObj);
+            const target = detectPrimaryRequestArray(finalBody);
+            let debugChat = target && Array.isArray(target.array) ? target.array : [];
+
+            let markedCount = 0;
+            debugChat.forEach((msg, idx) => {
+                const content = msg.content ||
+                    (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
+                    msg.text ||
+                    '';
+
+                if (vectorText && typeof content === 'string' && content.includes(vectorText)) {
+                    msg.role = 'system';
+                    msg.isGaigaiVector = true;
+
+                    if (content.length > vectorText.length + 500) {
+                        msg.name = 'SYSTEM (Merged)';
+                        console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (Merged) - 检测到压缩合并 (${content.length} > ${vectorText.length + 500})`);
+                    } else {
+                        msg.name = 'SYSTEM (向量化)';
+                        console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (向量化) - 纯向量注入`);
+                    }
+
+                    delete msg.is_user;
+                    markedCount++;
+                }
+            });
+
+            const vectorInjection = createVectorInjectionMeta(injectionMeta || {});
+            window.Gaigai.lastRequestData = {
+                chat: debugChat,
+                timestamp: Date.now(),
+                model: API_CONFIG.model || 'Unknown',
+                vectorInjection
+            };
+            console.log(`✅ [探针] 已更新 lastRequestData (标记了 ${markedCount} 条向量消息, 模式: ${vectorInjection.mode}, 已验证: ${vectorInjection.verified})`);
+        } catch (probeError) {
+            console.error('❌ [探针] 更新失败:', probeError);
+        }
     }
 
     /**
@@ -13178,20 +13447,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         let dataWrapper = { chat: safeChat };
                         await opmt(dataWrapper);
-
-                        // 向量检索读取深拷贝后的数据
-                        const phoneSignal = extractPhoneSignal(dataWrapper.chat);
-                        if (phoneSignal && phoneSignal.allowVector === false) {
-                            console.log('[权限管控] 手机禁止了向量化，跳过。');
-                        } else {
-                            const vectorText = await executeVectorSearch(dataWrapper.chat);
-                            if (vectorText) {
-                                const injected = injectVectorIntoChatArray(dataWrapper.chat, vectorText);
-                                if (!injected) {
-                                    console.warn('⚠️ [向量注入-Hook] 检索成功，但未能注入到 chat 数组');
-                                }
-                            }
-                        }
+                        // 向量注入统一下沉到 fetch 最终请求体阶段执行，避免 Hook 与 Fetch 双注入。
 
                         // 返回完全隔离并被插件修改过的新 chat 数组
                         return dataWrapper.chat;
@@ -13232,29 +13488,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         : (SillyTavern.getContext()?.chat || [])
                                 );
 
-                                if (!vectorText || args[1].body.includes(vectorText)) {
+                                if (!vectorText) {
                                     return originalFetch.apply(this, args);
                                 }
 
-                                let injected = false;
-                                if (Array.isArray(bodyObj.messages)) {
-                                    injected = injectVectorIntoChatArray(bodyObj.messages, vectorText);
-                                } else if (Array.isArray(bodyObj.prompt)) {
-                                    injected = injectVectorIntoChatArray(bodyObj.prompt, vectorText);
-                                } else if (Array.isArray(bodyObj.contents)) {
-                                    const alreadyInjected = bodyObj.contents.some(item => JSON.stringify(item).includes(vectorText));
-                                    if (!alreadyInjected) {
-                                        bodyObj.contents.unshift({
-                                            role: 'user',
-                                            parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }],
-                                            isGaigaiVector: true
-                                        });
-                                        injected = true;
-                                    }
-                                }
+                                const { injected, meta } = injectVectorIntoRequestBody(bodyObj, vectorText);
 
                                 if (injected) {
                                     args[1].body = JSON.stringify(bodyObj);
+                                    updateVectorProbeFromBody(bodyObj, vectorText, meta);
                                     console.log('✅ [Fetch Hijack-Modern] 已在最终请求体兜底注入向量内容');
                                 }
                             } catch (e) {
@@ -13428,169 +13670,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                                         // 🔥 CRITICAL: 智能注入 - 直接修改请求体
                                         if (args[1] && args[1].body && vectorText) {
-                                            // 🛡️ SAFETY: 防止双重注入 - 如果请求体已包含向量内容，跳过
-                                            if (args[1].body.includes(vectorText)) {
-                                                console.warn('⚠️ [Fetch Hijack] 检测到向量内容已存在，跳过注入防止重复');
-                                                console.log('▶️ [Fetch Hijack] 直接放行请求');
-                                                return originalFetch.apply(this, args);
-                                            }
-
                                             try {
                                                 let bodyObj = JSON.parse(args[1].body);
-                                                let injected = false; // 标记是否已注入
-
-                                                // 使用正则表达式匹配 [Start a new Chat]（不区分大小写）
-                                                const startChatRegex = /\[Start a new chat\]/i;
-
-                                                // 第一轮：专门替换 {{VECTOR_MEMORY}} 变量
-                                                const replaceVariable = (obj) => {
-                                                    for (let key in obj) {
-                                                        if (typeof obj[key] === 'string') {
-                                                            if (obj[key].includes('{{VECTOR_MEMORY}}')) {
-                                                                obj[key] = obj[key].replace(/\{\{VECTOR_MEMORY\}\}/g, vectorText);
-                                                                console.log(`🎯 [智能注入-变量替换] 在 ${key} 中找到并替换 {{VECTOR_MEMORY}} 标签`);
-                                                                injected = true;
-                                                            }
-                                                        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                                                            replaceVariable(obj[key]);
-                                                        }
-                                                    }
-                                                };
-
-                                                // 第二轮：兜底策略 - 在 [Start a new Chat] 前插入
-                                                const injectFallback = (obj) => {
-                                                    for (let key in obj) {
-                                                        if (typeof obj[key] === 'string') {
-                                                            if (startChatRegex.test(obj[key])) {
-                                                                obj[key] = obj[key].replace(startChatRegex, (match) => {
-                                                                    return vectorText + '\n\n' + match;
-                                                                });
-                                                                console.log(`🎯 [智能注入-兜底插入] 在 ${key} 的 [Start a new Chat] 前插入向量内容`);
-                                                                injected = true;
-                                                            }
-                                                        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                                                            injectFallback(obj[key]);
-                                                        }
-                                                    }
-                                                };
-
-                                                // 执行两轮扫描：先变量替换，后兜底插入
-                                                replaceVariable(bodyObj);
-                                                if (!injected) {
-                                                    injectFallback(bodyObj);
-                                                }
-
-                                                // === 第三轮：终极数组消息兜底 (如果前两轮都找不到注入点) ===
-                                                if (!injected) {
-                                                    let targetArray = null;
-                                                    let isGeminiFormat = false;
-
-                                                    // 识别当前请求体使用的消息数组格式
-                                                    if (Array.isArray(bodyObj.messages)) {
-                                                        targetArray = bodyObj.messages;
-                                                    } else if (Array.isArray(bodyObj.contents)) {
-                                                        targetArray = bodyObj.contents;
-                                                        isGeminiFormat = true;
-                                                    } else if (Array.isArray(bodyObj.prompt)) {
-                                                        targetArray = bodyObj.prompt;
-                                                    }
-
-                                                    if (targetArray) {
-                                                        if (isGeminiFormat) {
-                                                            // Gemini 原生格式 (contents 数组通常只接受 user 和 model)
-                                                            targetArray.unshift({
-                                                                role: 'user',
-                                                                parts: [{ text: '【系统检索到的历史记忆片段 (System Context)】\n\n' + vectorText }]
-                                                            });
-                                                        } else {
-                                                            // 标准 OpenAI / 兼容格式 (messages 数组)
-                                                            const newMsg = {
-                                                                role: 'system',
-                                                                content: '【系统检索到的历史记忆片段】\n\n' + vectorText,
-                                                                isGaigaiVector: true
-                                                            };
-
-                                                            // 寻找最后一条 system 消息的位置，插在它后面；如果没找到，插在最前面 (索引0)
-                                                            let insertIndex = 0;
-                                                            for (let i = targetArray.length - 1; i >= 0; i--) {
-                                                                if (targetArray[i].role === 'system') {
-                                                                    insertIndex = i + 1;
-                                                                    break;
-                                                                }
-                                                            }
-                                                            targetArray.splice(insertIndex, 0, newMsg);
-                                                        }
-
-                                                        injected = true;
-                                                        console.log(' [智能注入-终极兜底] 成功将向量内容作为独立消息插入到数组');
-                                                    }
-                                                }
+                                                const { injected, meta } = injectVectorIntoRequestBody(bodyObj, vectorText);
 
                                                 if (injected) {
                                                     // 更新请求体
                                                     args[1].body = JSON.stringify(bodyObj);
                                                     console.log('✅ [Fetch Hijack] 智能注入完成');
-
-                                                    // 🔥 CRITICAL: 强制更新探针数据，确保向量内容显示为 SYSTEM
-                                                    try {
-                                                        const finalBody = JSON.parse(args[1].body);
-                                                        let debugChat = [];
-
-                                                        // 提取 chat 数组（兼容多种 API 格式）
-                                                        if (finalBody.messages) {
-                                                            debugChat = finalBody.messages;
-                                                        } else if (finalBody.contents) {
-                                                            debugChat = finalBody.contents;
-                                                        } else if (finalBody.prompt) {
-                                                            debugChat = Array.isArray(finalBody.prompt)
-                                                                ? finalBody.prompt
-                                                                : [{ role: 'user', content: finalBody.prompt }];
-                                                        }
-
-                                                        // 🔥 强制标记包含向量内容的消息为 SYSTEM
-                                                        let markedCount = 0;
-                                                        debugChat.forEach((msg, idx) => {
-                                                            let content = msg.content ||
-                                                                (msg.parts && msg.parts[0] ? msg.parts[0].text : '') ||
-                                                                (msg.text) ||
-                                                                '';
-
-                                                            // 如果消息包含向量文本，强制设置为 SYSTEM
-                                                            if (vectorText && content.includes(vectorText)) {
-                                                                // 强制覆盖角色属性
-                                                                msg.role = 'system';
-                                                                msg.isGaigaiVector = true;
-
-                                                                // ✅ 智能命名：判断是否为合并消息
-                                                                if (content.length > vectorText.length + 500) {
-                                                                    // 内容长度远大于向量文本，说明是酒馆压缩后的合并消息
-                                                                    msg.name = 'SYSTEM (Merged)';
-                                                                    console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (Merged) - 检测到压缩合并 (${content.length} > ${vectorText.length + 500})`);
-                                                                } else {
-                                                                    // 内容长度接近向量文本，说明是纯向量消息
-                                                                    msg.name = 'SYSTEM (向量化)';
-                                                                    console.log(`🏷️ [探针] 消息 #${idx} 已标记为 SYSTEM (向量化) - 纯向量注入`);
-                                                                }
-
-                                                                // 确保没有其他角色标记
-                                                                delete msg.is_user;
-
-                                                                markedCount++;
-                                                            }
-                                                        });
-
-                                                        // 保存到全局探针（覆盖 opmt 中的设置）
-                                                        window.Gaigai.lastRequestData = {
-                                                            chat: debugChat,
-                                                            timestamp: Date.now(),
-                                                            model: API_CONFIG.model || 'Unknown'
-                                                        };
-                                                        console.log(`✅ [探针] 已更新 lastRequestData (标记了 ${markedCount} 条向量消息)`);
-
-                                                    } catch (probeError) {
-                                                        console.error('❌ [探针] 更新失败:', probeError);
-                                                    }
-
+                                                    updateVectorProbeFromBody(bodyObj, vectorText, meta);
                                                 } else if (vectorText) {
                                                     console.warn('⚠️ [Fetch Hijack] 未找到注入点，向量内容未被使用');
                                                 }
