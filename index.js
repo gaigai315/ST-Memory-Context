@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.2.9
+// 记忆表格 v2.3.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.2.9 启动');
+    console.log('🚀 记忆表格 v2.3.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.2.9';
+    const V = 'v2.3.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -2250,13 +2250,15 @@
                 position: 'fixed',
                 top: 0,
                 left: 0,
-                right: 0,
-                bottom: 0,
+                width: '100vw',
+                height: '100dvh',
                 background: 'rgba(0, 0, 0, 0.1)', // 几乎透明
                 zIndex: 10000005,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                padding: 'max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left))',
+                boxSizing: 'border-box'
             }
         });
 
@@ -2551,6 +2553,37 @@
         $overlay.append($box);
         $('body').append($overlay);
 
+        // ✅ 视口自适应：在手机浏览器地址栏/底栏变化时保持“可视区域居中”
+        const positionViewOverlay = () => {
+            const vv = window.visualViewport;
+            if (vv) {
+                $overlay.css({
+                    top: `${vv.offsetTop}px`,
+                    left: `${vv.offsetLeft}px`,
+                    width: `${vv.width}px`,
+                    height: `${vv.height}px`,
+                    right: 'auto',
+                    bottom: 'auto'
+                });
+            } else {
+                $overlay.css({
+                    top: 0,
+                    left: 0,
+                    width: '100vw',
+                    height: '100dvh',
+                    right: 'auto',
+                    bottom: 'auto'
+                });
+            }
+        };
+
+        positionViewOverlay();
+        $(window).on('resize.viewSettings', positionViewOverlay);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', positionViewOverlay, { passive: true });
+            window.visualViewport.addEventListener('scroll', positionViewOverlay, { passive: true });
+        }
+
         // --- 逻辑绑定 ---
 
         // 实时更新行高
@@ -2612,6 +2645,11 @@
         // 窗口移除时清理事件
         $overlay.on('remove', () => {
             $(document).off('keydown.viewSettings');
+            $(window).off('resize.viewSettings');
+            if (window.visualViewport) {
+                window.visualViewport.removeEventListener('resize', positionViewOverlay);
+                window.visualViewport.removeEventListener('scroll', positionViewOverlay);
+            }
         });
     }
 
@@ -3198,9 +3236,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         let summaryMessages = [];
         let tableMessages = [];
 
-        // A. 准备总结数据 (如果有且未开启世界书同步)
-        // 互斥逻辑：开启世界书同步后，由酒馆的世界书系统负责发送总结，插件不再重复注入
-        if (m.sm.has() && !C.syncWorldInfo) {
+        // A. 准备总结数据
+        // 互斥逻辑：开启世界书同步 或 自动向量化时，插件都不再注入总结（变量也不例外）
+        // 目的：统一为“只发表格内容”，避免总结重复发送。
+        const shouldSuppressSummaryInjection = !!(C.syncWorldInfo || C.autoVectorizeSummary);
+        if (m.sm.has() && !shouldSuppressSummaryInjection) {
             // 1. 旧逻辑：合并字符串（用于兼容旧的文本变量替换）
             strSummary = '=== 📚 记忆总结（历史存档） ===\n\n' + m.sm.load() + '\n\n';
 
@@ -4381,7 +4421,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         #gai-main-pop ::-webkit-scrollbar-thumb:hover { background: ${bg_header} !important; filter: brightness(0.8); }
         
         @media (max-width: 600px) {
-            .g-w { width: 100vw !important; height: 85vh !important; bottom: 0 !important; border-radius: 12px 12px 0 0 !important; position: absolute !important; }
+            .g-w { width: 100vw !important; height: 85dvh !important; min-height: 85vh !important; bottom: auto !important; border-radius: 12px !important; position: relative !important; margin: auto !important; }
             .g-ts { flex-wrap: nowrap !important; overflow-x: auto !important; }
             .g-row-resizer { height: 12px !important; bottom: -6px !important; }
             .g-col-resizer { width: 20px !important; right: -10px !important; }
@@ -4521,13 +4561,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         /* 📱 手机端最终修复：限制高度，强制内部滚动 */
         @media (max-width: 600px) {
+            /* 0. 遮罩容器：改为垂直居中，并给安全区留白 */
+            .g-ov {
+                align-items: center !important;
+                padding: max(8px, env(safe-area-inset-top)) 0 max(8px, env(safe-area-inset-bottom)) !important;
+            }
+
             /* 1. 弹窗固定大小，留出上下边距 */
             .g-w { 
                 width: 100vw !important; 
-                height: 85vh !important; /* 限制高度，不要撑满 */
-                bottom: 0 !important; 
-                border-radius: 12px 12px 0 0 !important; 
-                position: absolute !important; 
+                height: 85dvh !important; /* 限制高度，不要撑满 */
+                min-height: 85vh !important;
+                bottom: auto !important; 
+                border-radius: 12px !important; 
+                position: relative !important; 
+                margin: auto !important;
                 display: flex !important;
                 flex-direction: column !important;
                 overflow: hidden !important; /* 关键：禁止整个弹窗滚动 */
@@ -10798,7 +10846,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <span>🌏 同步到世界书</span>
             </label>
             <div style="font-size: 10px; color: #666; margin-top: 6px; margin-left: 22px; line-height: 1.4;">
-                将总结内容自动写入名为 <strong>[Memory_Context_Auto]</strong> 的世界书（常驻条目，触发词：总结/summary/前情提要/memory）
+                默认世界书名称以 <strong>[Memory_Context_]</strong> 开头；勾选后将不发送记忆总结，改由世界书发送。
             </div>
 
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
@@ -10814,8 +10862,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <span>⚡ 总结后自动向量化</span>
             </label>
             <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
-                总结完成后,自动将内容同步到专属向量书并执行向量化<br>
-                (注:勾选后,总结表中已被向量化的内容将自动标记为隐藏/绿色)
+                勾选后将不发送记忆总结，改由向量化发送。
             </div>
 
             ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
@@ -11024,7 +11071,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <div style="margin-bottom: 12px;">如需调整表格里面的内容在上下文的位置，用户需手动将对应的变量，新增条目插入到预设中：</div>
                         <div style="margin-bottom: 8px;">• 全部内容(表格+总结)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY}}</code> (跟随实时填表开关)</div>
                         <div style="margin-bottom: 8px;">• 表格插入变量(不含总结表)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE}}</code> (强制发送表格内容)</div>
-                        <div style="margin-bottom: 8px;">• 总结插入变量(不含其他表格)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_SUMMARY}}</code> (强制发送总结内容)</div>
+                        <div style="margin-bottom: 8px;">• 总结插入变量(不含其他表格)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_SUMMARY}}</code> (默认发送总结；若开启同步世界书或自动向量化则不发送)</div>
                         <div>• 实时填表提示词插入变量：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_PROMPT}}</code></div>
                     `
                 });
@@ -14195,7 +14242,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复：</strong>修复了在点击“重新生成 (Swipe)”或多次对话后，记忆表格被重复注入，导致 Token 消溢出的严重 Bug。</li>
+                        <li><strong>提醒：</strong>因修改注入逻辑，如发现记忆没有注入请手动将对应变量注入预设内！</li>
+                        <li><strong>发送逻辑统一：</strong>开启「同步世界书」或「总结后自动向量化」时，默认不再发送记忆总结（含变量场景），仅发送表格内容。</li>
+                        <li><strong>世界书强制覆盖：</strong>编辑总结后可通过「强制用总结表覆盖世界书」快速把当前目标记忆世界书更新为最新内容。</li>
+                        <li><strong>移动端弹窗优化：</strong>主窗口改为居中显示并适配安全区；「视图设置」弹窗修复为可视区居中（不再偏上）。</li>
                     </ul>
                 </div>
 

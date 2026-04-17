@@ -473,8 +473,9 @@
 
     /* 1. 弹窗主体最大化，利用屏幕空间 */
     .g-ov {
-        padding: 0 !important;
-        align-items: flex-end !important;
+        /* 纵向居中，并预留安全区，避免被手机浏览器底栏遮挡 */
+        padding: max(8px, env(safe-area-inset-top)) 0 max(8px, env(safe-area-inset-bottom)) !important;
+        align-items: center !important;
     }
 
     .g-w {
@@ -485,9 +486,9 @@
         height: 85dvh !important;
         min-height: 85vh !important;
 
-        border-radius: 12px 12px 0 0 !important;
+        border-radius: 12px !important;
         max-height: none !important;
-        margin: 0 !important;
+        margin: auto !important;
         border: none !important;
 
         /* ✅ 修复闪烁的核心 2：删除绝对定位 (absolute/bottom)，交给外层 g-ov 的 flex-end 自动沉底 */

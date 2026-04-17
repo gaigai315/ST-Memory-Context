@@ -1456,12 +1456,14 @@
 
             const html = `
                 <style>
-                    /* 强制指定主窗口大小，防止被全局样式或小弹窗样式影响 */
+                    /* 与主界面保持一致的窗口尺寸（避免向量化页和其他页面大小不一致） */
                     #gai-main-pop .g-w {
-                        width: 900px !important;        /* 宽度改小 */
-                        height: 700px !important;       /* 高度改小 */
-                        max-width: 95vw !important;     /* 防止溢出屏幕 */
-                        max-height: 90vh !important;
+                        width: 90vw !important;
+                        height: 80vh !important;
+                        max-width: 1200px !important;
+                        max-height: calc(100vh - 40px) !important;
+                        min-width: 280px !important;
+                        min-height: 250px !important;
                     }
 
                     /* 内部容器自适应 */
@@ -1521,19 +1523,29 @@
                     @media (max-width: 768px) {
                         /* 强制主弹窗在手机上全屏且允许滚动 */
                         #gai-main-pop .g-w {
-                            width: 100vw !important;
-                            height: 90vh !important;
-                            max-height: 90vh !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            height: 85dvh !important;
+                            min-height: 85vh !important;
+                            max-height: 85dvh !important;
+                            margin: auto !important;
+                            box-sizing: border-box !important;
                             display: flex !important;
                             flex-direction: column !important;
+                        }
+
+                        /* 和主弹窗移动端规则保持一致，防止左右偏移 */
+                        #gai-main-pop .g-bd {
+                            padding: 0 !important;
                         }
 
                         /* 内部容器允许滚动 */
                         .gg-vm-container {
                             flex-direction: column;
                             height: 100%;
-                            padding: 10px;
+                            padding: 10px max(10px, env(safe-area-inset-right)) 12px max(10px, env(safe-area-inset-left));
                             overflow-y: auto; /* 关键：允许垂直滚动 */
+                            overflow-x: hidden;
                             gap: 15px;
                             display: flex;
                         }
@@ -1577,24 +1589,21 @@
                             flex-shrink: 0; /* 防止按钮被压缩 */
                         }
 
-                        /* 📱 手机端适配 */
-                        @media (max-width: 768px) {
-                            .gg-model-row {
-                                flex-direction: column; /* 改为垂直排列 */
-                                align-items: stretch;
-                                gap: 8px !important;
-                            }
-                            .gg-model-btns {
-                                width: 100%;
-                                display: grid; /* 使用网格布局 */
-                                grid-template-columns: 1fr 1fr; /* 两个按钮平分宽度 */
-                                gap: 10px;
-                            }
-                            .gg-model-btns button {
-                                width: 100% !important;
-                                justify-content: center;
-                                padding: 8px !important; /* 增加手机端点击区域 */
-                            }
+                        .gg-model-row {
+                            flex-direction: column; /* 改为垂直排列 */
+                            align-items: stretch;
+                            gap: 8px !important;
+                        }
+                        .gg-model-btns {
+                            width: 100%;
+                            display: grid; /* 使用网格布局 */
+                            grid-template-columns: 1fr 1fr; /* 两个按钮平分宽度 */
+                            gap: 10px;
+                        }
+                        .gg-model-btns button {
+                            width: 100% !important;
+                            justify-content: center;
+                            padding: 8px !important; /* 增加手机端点击区域 */
                         }
                     }
                 </style>
