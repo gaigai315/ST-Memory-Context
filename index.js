@@ -3396,7 +3396,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         // ============================================================
-        // 3. ✨✨✨ 核心逻辑：变量扫描与锚点置换 ✨✨✨
+        // 3. ✨✨✨ 核心逻辑：变量扫描与锚点置换 (修复多变量并存Bug版) ✨✨✨
         // ============================================================
 
         const varSmart = '{{MEMORY}}';          // 智能组合 (跟随开关)
@@ -3406,261 +3406,166 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         let replacedSmart = false;
         let replacedPrompt = false;
-        let replacedSummary = false;  // ✅ 新增：标记 Summary 是否已通过变量替换
-        let replacedTable = false;    // ✅ 新增：标记 Table 是否已通过变量替换
+        let replacedSummary = false;  
+        let replacedTable = false;    
         let foundAnchor = false;
         let anchorIndex = -1;
 
-        // ✨ 新增：记录各变量的位置索引
-        let idxTableVar = -1;      // {{MEMORY_TABLE}} 的位置
-        let idxSummaryVar = -1;    // {{MEMORY_SUMMARY}} 的位置
-        let idxSmartVar = -1;      // {{MEMORY}} 的位置
+        let idxTableVar = -1;      
+        let idxSummaryVar = -1;    
+        let idxSmartVar = -1;      
 
-        // ✅ 1. 判定提示词管理 (Prompt Manager) 开关
-        // 只有开启了提示词管理，变量作为锚点才有效；否则视为“开关已关”，忽略变量位置
         let isPromptManagerOn = true;
         if (typeof SillyTavern !== 'undefined' && SillyTavern.power_user) {
             if (SillyTavern.power_user.prompt_manager_enabled === false) isPromptManagerOn = false;
         }
 
-        // ✅ 2. 判定是否启用锚点模式
-        // 【最终修复】强制设为 true。
-        // 这确保了只要预设中写了 {{MEMORY}}，插件就一定会把表格插在这个位置。
-        // 这不会影响 {{MEMORY_PROMPT}} 的清洗逻辑（它由 strPrompt 变量独立控制）。
         const allowAnchorMode = true;
-
-        // 记录被删除的消息数量，用于修正锚点索引
         let deletedCountBeforeAnchor = 0;
 
-        // ✅ 3. 扫描并清洗变量
+        // ✅ 3. 扫描并清洗变量 (核心修复：支持同一消息内存在任意顺序的多个变量)
         for (let i = 0; i < ev.chat.length; i++) {
             let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
-            let modified = false;
+            let splitted = false; // 标记是否发生了数组分裂
 
-            // 1️⃣ 优先处理长变量：{{MEMORY_PROMPT}} (特殊逻辑：根据条件决定锚点替换或清洗)
+            // 1️⃣ 处理长变量：{{MEMORY_PROMPT}} (纯文本替换，不破坏数组结构)
             if (msgContent.includes(varPrompt)) {
-                // 检查是否满足锚点替换条件：提示词存在 且 提示词管理开关已开启
                 if (strPrompt && isPromptManagerOn) {
-                    // ✅ 条件满足：直接在锚点位置替换为实际提示词内容
                     msgContent = msgContent.replace(varPrompt, strPrompt);
-                    replacedPrompt = true; // 标记已处理，阻止后续默认注入
-
-                    // 🎨 UI 增强：标记为提示词消息，使其在 Last Request/Probe 中显示为橙色 PROMPT
+                    replacedPrompt = true;
                     ev.chat[i].isGaigaiPrompt = true;
-
                     console.log(`🎯 [锚点替换] 提示词已注入至 {{MEMORY_PROMPT}} 位置`);
                 } else {
-                    // ⚠️ 条件不满足：仅清空变量文本，不标记为已替换
-                    // 这样可以让默认注入逻辑（Step 5）在标准位置注入提示词
                     msgContent = msgContent.replace(varPrompt, '');
-                    // 关键：不设置 replacedPrompt = true
-                    console.log(`🧹 [变量清洗] {{MEMORY_PROMPT}} 已清空 (将使用默认位置注入)`);
+                    console.log(`🧹 [变量清洗] {{MEMORY_PROMPT}} 已清空`);
                 }
-                modified = true;
+                ev.chat[i].content = msgContent;
+                if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
             }
 
-            // 2️⃣ 处理：{{MEMORY_SUMMARY}} (总结专属变量) - 原地拆分注入
+            // 2️⃣ 处理：{{MEMORY_SUMMARY}} 
             if (msgContent.includes(varSum)) {
-                if (idxSummaryVar === -1) {
-                    idxSummaryVar = i;
-                    console.log(`🎯 [变量扫描] 发现 ${varSum} | 位置: #${i}`);
-                }
+                if (idxSummaryVar === -1) idxSummaryVar = i;
 
-                // ✅ 安全检查：只有当有数据时才执行拆分注入
                 if (summaryMessages.length > 0) {
-                    // ✨ 原地拆分注入逻辑
                     const varIndex = msgContent.indexOf(varSum);
                     const preText = msgContent.substring(0, varIndex).trim();
                     const postText = msgContent.substring(varIndex + varSum.length).trim();
-
-                    // 构建新消息队列
                     const newMessages = [];
                     const originalMsg = ev.chat[i];
 
-                    // 如果变量前有内容，创建前半段消息
-                    if (preText) {
-                        newMessages.push(cloneSplitMessage(originalMsg, preText));
-                    }
-
-                    // 插入预构建的总结消息数组（带有 isGaigaiData 和自定义 name）
-                    if (originalMsg.gaigaiPhoneSignal) {
-                        summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
-                    }
+                    if (preText) newMessages.push(cloneSplitMessage(originalMsg, preText));
+                    if (originalMsg.gaigaiPhoneSignal) summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
                     newMessages.push(...summaryMessages);
+                    if (postText) newMessages.push(cloneSplitMessage(originalMsg, postText));
 
-                    // 如果变量后有内容，创建后半段消息
-                    if (postText) {
-                        newMessages.push(cloneSplitMessage(originalMsg, postText));
-                    }
-
-                    // 原地替换：将 1 条消息替换为多条消息
                     ev.chat.splice(i, 1, ...newMessages);
-
-                    // 更新循环索引：跳过刚插入的消息
-                    i += newMessages.length - 1;
-
-                    // 标记已替换，防止后续重复注入
                     replacedSummary = true;
-
-                    console.log(`✨ [原地拆分注入] ${varSum} 已拆分为 ${newMessages.length} 条消息 (前:${preText ? '有' : '无'}, 数据:${summaryMessages.length}条, 后:${postText ? '有' : '无'})`);
-
-                    // 跳过后续的 modified 处理，因为已经完成替换
-                    continue;
+                    splitted = true;
+                    console.log(`✨ [原地拆分注入] ${varSum} 处理完成`);
                 } else {
-                    // 没有数据时，仅清除变量标签
                     msgContent = msgContent.replace(varSum, '');
+                    ev.chat[i].content = msgContent;
+                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
                     replacedSummary = true;
-                    console.log(`🧹 [变量清洗] ${varSum} 已清除（无数据可注入）`);
-                    modified = true;
+                    console.log(`🧹 [变量清洗] ${varSum} 已清除`);
                 }
             }
 
-            // 3️⃣ 处理：{{MEMORY_TABLE}} (表格专属变量) - 原地拆分注入
-            if (msgContent.includes(varTable)) {
-                if (idxTableVar === -1) {
-                    idxTableVar = i;
-                    console.log(`🎯 [变量扫描] 发现 ${varTable} | 位置: #${i}`);
-                }
+            // ⚠️ 核心修复：如果发生了分裂，当前索引 i 的消息已经变成了切片。
+            // 我们必须让游标后退一步，让下一轮循环重新扫描这个切片，防止漏掉里面的其他变量(如 {{MEMORY_TABLE}})
+            if (splitted) {
+                i--;
+                continue;
+            }
 
-                // ✅ 安全检查：只有当有数据时才执行拆分注入
+            // 3️⃣ 处理：{{MEMORY_TABLE}}
+            if (msgContent.includes(varTable)) {
+                if (idxTableVar === -1) idxTableVar = i;
+
                 if (tableMessages.length > 0) {
-                    // ✨ 原地拆分注入逻辑
                     const varIndex = msgContent.indexOf(varTable);
                     const preText = msgContent.substring(0, varIndex).trim();
                     const postText = msgContent.substring(varIndex + varTable.length).trim();
-
-                    // 构建新消息队列
                     const newMessages = [];
                     const originalMsg = ev.chat[i];
 
-                    // 如果变量前有内容，创建前半段消息
-                    if (preText) {
-                        newMessages.push(cloneSplitMessage(originalMsg, preText));
-                    }
-
-                    // 插入预构建的表格消息数组（带有 isGaigaiData 和自定义 name）
-                    if (originalMsg.gaigaiPhoneSignal) {
-                        tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
-                    }
+                    if (preText) newMessages.push(cloneSplitMessage(originalMsg, preText));
+                    if (originalMsg.gaigaiPhoneSignal) tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
                     newMessages.push(...tableMessages);
+                    if (postText) newMessages.push(cloneSplitMessage(originalMsg, postText));
 
-                    // 如果变量后有内容，创建后半段消息
-                    if (postText) {
-                        newMessages.push(cloneSplitMessage(originalMsg, postText));
-                    }
-
-                    // 原地替换：将 1 条消息替换为多条消息
                     ev.chat.splice(i, 1, ...newMessages);
-
-                    // 更新循环索引：跳过刚插入的消息
-                    i += newMessages.length - 1;
-
-                    // 标记已替换，防止后续重复注入
                     replacedTable = true;
-
-                    console.log(`✨ [原地拆分注入] ${varTable} 已拆分为 ${newMessages.length} 条消息 (前:${preText ? '有' : '无'}, 数据:${tableMessages.length}条, 后:${postText ? '有' : '无'})`);
-
-                    // 跳过后续的 modified 处理，因为已经完成替换
-                    continue;
+                    splitted = true;
+                    console.log(`✨ [原地拆分注入] ${varTable} 处理完成`);
                 } else {
-                    // 没有数据时，仅清除变量标签
                     msgContent = msgContent.replace(varTable, '');
+                    ev.chat[i].content = msgContent;
+                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
                     replacedTable = true;
-                    console.log(`🧹 [变量清洗] ${varTable} 已清除（无数据可注入）`);
-                    modified = true;
+                    console.log(`🧹 [变量清洗] ${varTable} 已清除`);
                 }
             }
 
-            // 4️⃣ 最后处理短变量：{{MEMORY}} (智能变量) - 原地拆分注入
-            // 必须放最后，防止误伤上面的变量
+            if (splitted) {
+                i--;
+                continue;
+            }
+
+            // 4️⃣ 处理短变量：{{MEMORY}}
             if (msgContent.includes(varSmart)) {
-                // 记录第一次出现的位置
-                if (idxSmartVar === -1) {
-                    idxSmartVar = i;
-                    console.log(`🎯 [变量扫描] 发现 ${varSmart} | 位置: #${i}`);
-                }
+                if (idxSmartVar === -1) idxSmartVar = i;
 
-                // ✅ 安全检查：只有当有数据时才执行拆分注入
                 const hasData = (summaryMessages.length > 0) || (C.tableInj && tableMessages.length > 0);
-
                 if (hasData) {
-                    // ✨ 原地拆分注入逻辑
                     const varIndex = msgContent.indexOf(varSmart);
                     const preText = msgContent.substring(0, varIndex).trim();
                     const postText = msgContent.substring(varIndex + varSmart.length).trim();
-
-                    // 构建新消息队列
                     const newMessages = [];
                     const originalMsg = ev.chat[i];
 
-                    // 如果变量前有内容，创建前半段消息
-                    if (preText) {
-                        newMessages.push(cloneSplitMessage(originalMsg, preText));
-                    }
-
-                    // 插入预构建的总结和表格消息数组（带有 isGaigaiData 和自定义 name）
-                    // 根据 C.tableInj 开关决定是否注入表格
+                    if (preText) newMessages.push(cloneSplitMessage(originalMsg, preText));
+                    
                     if (summaryMessages.length > 0) {
-                        if (originalMsg.gaigaiPhoneSignal) {
-                            summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
-                        }
+                        if (originalMsg.gaigaiPhoneSignal) summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
                         newMessages.push(...summaryMessages);
                     }
                     if (C.tableInj && tableMessages.length > 0) {
-                        if (originalMsg.gaigaiPhoneSignal) {
-                            tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
-                        }
+                        if (originalMsg.gaigaiPhoneSignal) tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
                         newMessages.push(...tableMessages);
                     }
 
-                    // 如果变量后有内容，创建后半段消息
-                    if (postText) {
-                        newMessages.push(cloneSplitMessage(originalMsg, postText));
-                    }
+                    if (postText) newMessages.push(cloneSplitMessage(originalMsg, postText));
 
-                    // 原地替换：将 1 条消息替换为多条消息
                     ev.chat.splice(i, 1, ...newMessages);
-
-                    // 更新循环索引：跳过刚插入的消息
-                    i += newMessages.length - 1;
-
-                    // 标记已替换，防止后续重复注入
                     replacedSummary = true;
                     replacedTable = true;
+                    splitted = true;
 
-                    // 记录锚点位置（用于兼容旧逻辑）
                     if (anchorIndex === -1) anchorIndex = i;
                     foundAnchor = true;
-
-                    console.log(`✨ [原地拆分注入] ${varSmart} 已拆分为 ${newMessages.length} 条消息 (前:${preText ? '有' : '无'}, 总结:${summaryMessages.length}条, 表格:${tableMessages.length}条, 后:${postText ? '有' : '无'})`);
-
-                    // 跳过后续的 modified 处理，因为已经完成替换
-                    continue;
+                    console.log(`✨ [原地拆分注入] ${varSmart} 处理完成`);
                 } else {
-                    // 没有数据时，仅清除变量标签
                     msgContent = msgContent.replace(varSmart, '');
+                    ev.chat[i].content = msgContent;
+                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
                     replacedSummary = true;
                     replacedTable = true;
-                    console.log(`🧹 [变量清洗] ${varSmart} 已清除（无数据可注入）`);
-                    modified = true;
+                    console.log(`🧹 [变量清洗] ${varSmart} 已清除`);
                 }
             }
 
-            // 更新消息内容 & 标记幽灵气泡
-            if (modified) {
-                ev.chat[i].content = msgContent;
+            if (splitted) {
+                i--;
+                continue;
+            }
 
-                // ✅ [修复] 判定当前消息是否为锚点 (刚刚是否发现了变量)
-                // 只要该消息触发了任意一个变量索引记录，就视为锚点，必须保留
-                const isAnchor = (i === idxTableVar) || (i === idxSmartVar) || (i === idxSummaryVar) || (i === anchorIndex);
-
-                // 👻 幽灵气泡判定：只有当内容为空 且 不是锚点消息时，才删除
-                if (msgContent.trim() === '' && !isAnchor) {
-                    ev.chat[i]._toDelete = true;
-                } else if (msgContent.trim() === '' && isAnchor) {
-                    // 调试日志
-                    console.log(`🛡️ [锚点保护] 第 ${i} 楼是变量锚点，虽然内容为空但予以保留，等待注入。`);
-                }
+            // 👻 幽灵气泡判定：只有当内容为空 且 不是锚点消息时，才删除
+            // 因为执行到这里说明没有发生分裂，可以安全判定
+            const isAnchor = (i === idxTableVar) || (i === idxSmartVar) || (i === idxSummaryVar) || (i === anchorIndex);
+            if (msgContent.trim() === '' && !isAnchor) {
+                ev.chat[i]._toDelete = true;
             }
         }
 
@@ -3668,7 +3573,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         if (ev.chat.some(msg => msg._toDelete)) {
             ev.chat = ev.chat.filter((msg, index) => {
                 const keep = !msg._toDelete;
-                // 如果删除了变量位置之前的消息，所有索引需要减 1，保证位置准确
                 if (!keep) {
                     if (anchorIndex !== -1 && index < anchorIndex) deletedCountBeforeAnchor++;
                     if (idxSmartVar !== -1 && index < idxSmartVar) idxSmartVar--;
@@ -3680,7 +3584,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('👻 [清理] 已销毁空的 User 消息对象');
         }
 
-        // 修正锚点位置
         if (anchorIndex !== -1) {
             anchorIndex = anchorIndex - deletedCountBeforeAnchor;
         }
