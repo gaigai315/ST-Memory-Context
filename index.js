@@ -82,6 +82,7 @@
         syncWorldInfoPanelCollapsed: false, // 📁 世界书分区折叠状态
         worldInfoVectorized: false,    // ❌ 默认关闭世界书自带向量化（已移除UI选项）
         autoVectorizeSummary: false,   // ❌ 默认关闭总结后自动向量化（每聊隔离）
+        summaryRulePanelCollapsed: true, // 📁 记忆发送规则分区折叠状态（默认折叠）
         // ==================== 独立向量检索配置 ====================
         vectorEnabled: false,          // ❌ 默认关闭独立向量检索
         vectorPanelCollapsed: false,   // 📁 向量化分区折叠状态
@@ -1681,6 +1682,7 @@
                 C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : false;
                 C.syncWorldInfoPanelCollapsed = globalConfig.syncWorldInfoPanelCollapsed !== undefined ? globalConfig.syncWorldInfoPanelCollapsed : false;
                 C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : false;
+                C.summaryRulePanelCollapsed = globalConfig.summaryRulePanelCollapsed !== undefined ? globalConfig.summaryRulePanelCollapsed : true;
                 // ✅ 向量检索配置
                 C.vectorEnabled = globalConfig.vectorEnabled !== undefined ? globalConfig.vectorEnabled : false;
                 C.vectorPanelCollapsed = globalConfig.vectorPanelCollapsed !== undefined ? globalConfig.vectorPanelCollapsed : false;
@@ -10869,23 +10871,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
 
         <div class="gg-sync-vector-zone">
-            <div class="gg-summary-send-notice">
-                <div class="gg-summary-send-notice-title">📌 记忆发送规则（默认）</div>
-                <div class="gg-summary-send-notice-main">
-                    ✅ 默认情况下，插件会自动发送「记忆总结」，无需勾选任何额外开关。
+            <div class="gg-config-card gg-summary-rule-card ${C.summaryRulePanelCollapsed ? 'gg-card-collapsed' : ''}">
+                <div class="gg-config-card-header">
+                    <div class="gg-config-card-title">📌 记忆总结（默认设置）</div>
+                    <button
+                        type="button"
+                        id="gg_toggle_summary_rule_panel"
+                        class="gg-config-card-toggle"
+                        aria-expanded="${C.summaryRulePanelCollapsed ? 'false' : 'true'}"
+                        aria-controls="gg_summary_rule_panel_body"
+                    >${C.summaryRulePanelCollapsed ? '>' : '<'}</button>
                 </div>
-                <div class="gg-summary-send-notice-list">
-                    <div class="gg-summary-send-notice-list-title">三选一发送逻辑：</div>
-                    <div>1. 默认：发送记忆总结</div>
-                    <div>2. 开启「同步到世界书」：改为世界书发送（不再注入记忆总结）</div>
-                    <div>3. 开启「总结后自动向量化」：改为向量化发送（不再注入记忆总结）</div>
+                <div id="gg_summary_rule_panel_body" class="gg-config-card-body">
+                    <div class="gg-summary-default-option">
+                        <span class="gg-summary-fake-checkbox" aria-hidden="true">✓</span>
+                        <span>记忆总结（默认发送）</span>
+                        <span class="gg-summary-default-state">已开启（默认）</span>
+                    </div>
+                    <div class="gg-summary-rule-tip">
+                        若需世界书/向量化发送记忆总结，请在对应区域配置；配置后，默认选项将被覆盖。
+                    </div>
                 </div>
             </div>
 
             <div class="gg-sync-vector-grid">
                 <div class="gg-config-card gg-worldbook-card ${C.syncWorldInfoPanelCollapsed ? 'gg-card-collapsed' : ''}">
                     <div class="gg-config-card-header">
-                        <div class="gg-config-card-title">🌏 世界书同步</div>
+                        <div class="gg-config-card-title">🌏 世界书总结</div>
                         <button
                             type="button"
                             id="gg_toggle_worldbook_panel"
@@ -10916,7 +10928,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 <div class="gg-config-card gg-vector-card ${C.vectorPanelCollapsed ? 'gg-card-collapsed' : ''}">
                     <div class="gg-config-card-header">
-                        <div class="gg-config-card-title">💠 向量化</div>
+                        <div class="gg-config-card-title">💠 向量化总结</div>
                         <button
                             type="button"
                             id="gg_toggle_vector_panel"
@@ -10929,11 +10941,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <div id="gg_vector_panel_body" class="gg-config-card-body">
                         <label class="gg-cfg-option">
                             <input type="checkbox" id="gg_c_vector_enabled" ${C.vectorEnabled ? 'checked' : ''}>
-                            <span>🔍 启用插件独立向量检索</span>
+                            <span>🔍 启用向量化</span>
                         </label>
-                        <div class="gg-cfg-hint">
-                            使用外部 API 实现语义检索，不依赖酒馆（点击下方"💠 向量化"按钮配置详细参数）
-                        </div>
 
                         <label class="gg-cfg-option">
                             <input type="checkbox" id="gg_c_auto_vectorize" ${C.autoVectorizeSummary ? 'checked' : ''}>
@@ -11054,11 +11063,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             const $worldbookCard = $('.gg-worldbook-card');
             const $vectorCard = $('.gg-vector-card');
+            const $summaryRuleCard = $('.gg-summary-rule-card');
             const $toggleWorldbook = $('#gg_toggle_worldbook_panel');
             const $toggleVector = $('#gg_toggle_vector_panel');
+            const $toggleSummaryRule = $('#gg_toggle_summary_rule_panel');
 
             setPanelCollapsed($worldbookCard, $toggleWorldbook, !!C.syncWorldInfoPanelCollapsed, 'syncWorldInfoPanelCollapsed');
             setPanelCollapsed($vectorCard, $toggleVector, !!C.vectorPanelCollapsed, 'vectorPanelCollapsed');
+            setPanelCollapsed($summaryRuleCard, $toggleSummaryRule, !!C.summaryRulePanelCollapsed, 'summaryRulePanelCollapsed');
 
             $toggleWorldbook.off('click').on('click', function () {
                 const nextCollapsed = !$worldbookCard.hasClass('gg-card-collapsed');
@@ -11069,6 +11081,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $toggleVector.off('click').on('click', function () {
                 const nextCollapsed = !$vectorCard.hasClass('gg-card-collapsed');
                 setPanelCollapsed($vectorCard, $toggleVector, nextCollapsed, 'vectorPanelCollapsed');
+                persistPanelFoldState();
+            });
+
+            $toggleSummaryRule.off('click').on('click', function () {
+                const nextCollapsed = !$summaryRuleCard.hasClass('gg-card-collapsed');
+                setPanelCollapsed($summaryRuleCard, $toggleSummaryRule, nextCollapsed, 'summaryRulePanelCollapsed');
                 persistPanelFoldState();
             });
 

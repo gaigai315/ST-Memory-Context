@@ -1182,11 +1182,8 @@
 }
 
 /* ========== 配置页：世界书与向量化分区 ========== */
-.gg-summary-send-notice {
+.gg-summary-rule-card {
     margin: 0 0 10px 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
 }
 
 .gg-summary-send-notice-title {
@@ -1213,6 +1210,57 @@
 .gg-summary-send-notice-list-title {
     font-weight: 700;
     margin-bottom: 2px;
+}
+
+.gg-summary-default-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--g-tc);
+    line-height: 1.4;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.gg-summary-fake-checkbox {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    background: #4caf50;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.gg-summary-default-state {
+    font-size: 10px;
+    font-weight: 700;
+    color: #2e7d32;
+    background: rgba(76, 175, 80, 0.16);
+    border: 1px solid rgba(76, 175, 80, 0.35);
+    border-radius: 999px;
+    padding: 1px 8px;
+}
+
+.g-w.g-gl .gg-summary-default-state {
+    color: #bdf2c2;
+    border-color: rgba(156, 230, 162, 0.45);
+    background: rgba(76, 175, 80, 0.22);
+}
+
+.gg-summary-rule-tip {
+    font-size: 10px;
+    line-height: 1.55;
+    color: var(--g-tc);
+    opacity: 0.85;
 }
 
 .gg-sync-vector-zone {
@@ -1710,7 +1758,7 @@
         padding: 8px;
     }
 
-    .gg-summary-send-notice {
+    .gg-summary-rule-card {
         margin-bottom: 8px;
     }
 
