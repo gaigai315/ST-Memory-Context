@@ -552,25 +552,25 @@
             const bookName = config?.bookName || '';
 
             return `
-                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.2);">
-                    <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; color: var(--g-tc);">
+                <div class="gg-wi-settings">
+                    <div class="gg-wi-settings-title">
                         📚 世界书自定义设置
                     </div>
 
-                    <div style="margin-bottom: 8px;">
-                        <label style="display: block; font-size: 10px; opacity: 0.7; margin-bottom: 4px;">
+                    <div class="gg-wi-field">
+                        <label class="gg-wi-label">
                             世界书名称
                         </label>
                         <input
                             type="text"
                             id="gg_wi_book_name"
+                            class="gg-wi-input"
                             value="${this._escapeHtml(bookName)}"
                             placeholder="例: 我的冒险传记 (留空则自动生成)"
-                            style="width: 100%; padding: 6px 8px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(0,0,0,0.2); color: inherit; font-size: 11px; box-sizing: border-box;"
                         />
                     </div>
 
-                    <div style="font-size: 9px; opacity: 0.5; margin-top: 6px; line-height: 1.3;">
+                    <div class="gg-wi-tip">
                         💡 提示：世界书条目的标题将自动引用总结表中的【备注】内容作为前缀，方便查找。
                     </div>
                 </div>

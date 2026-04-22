@@ -1181,6 +1181,221 @@
     font-size: 9px;
 }
 
+/* ========== 配置页：世界书与向量化分区 ========== */
+.gg-summary-send-notice {
+    margin: 0 0 10px 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.gg-summary-send-notice-title {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--g-tc);
+}
+
+.gg-summary-send-notice-main {
+    font-size: 11px;
+    line-height: 1.45;
+    margin-bottom: 6px;
+    color: var(--g-tc);
+}
+
+.gg-summary-send-notice-list {
+    font-size: 10px;
+    line-height: 1.55;
+    color: var(--g-tc);
+    opacity: 0.85;
+}
+
+.gg-summary-send-notice-list-title {
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.gg-sync-vector-zone {
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.gg-sync-vector-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+
+.gg-config-card {
+    min-width: 0;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.g-w.g-gl .gg-config-card {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.gg-config-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+    min-height: 24px;
+}
+
+.gg-config-card-title {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 22px;
+    color: var(--g-tc);
+}
+
+.gg-config-card-toggle {
+    margin: 0 !important;
+    margin-left: auto !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    color: var(--g-tc) !important;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+    font-size: 18px !important;
+    line-height: 22px !important;
+    font-weight: 700;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    flex: 0 0 auto !important;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.g-p .gg-config-card-toggle {
+    width: 22px !important;
+    min-width: 22px !important;
+    max-width: 22px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    max-height: 22px !important;
+    flex: 0 0 22px !important;
+    margin-left: auto !important;
+}
+
+.gg-config-card-toggle:hover {
+    opacity: 0.75;
+}
+
+.gg-config-card-body {
+    overflow: hidden;
+    max-height: 3200px;
+    opacity: 1;
+    transition: max-height 0.24s ease, opacity 0.2s ease;
+}
+
+.gg-config-card.gg-card-collapsed .gg-config-card-body {
+    max-height: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.gg-cfg-option {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px;
+    cursor: pointer;
+    margin-bottom: 0 !important;
+    font-weight: 500;
+}
+
+.gg-cfg-option + .gg-cfg-hint {
+    margin-top: 4px;
+}
+
+.gg-cfg-option-strong {
+    font-weight: 600;
+}
+
+.gg-vector-card .gg-cfg-option:not(:first-of-type) {
+    margin-top: 10px;
+}
+
+.gg-cfg-hint {
+    margin: 4px 0 0 22px;
+    font-size: 10px;
+    line-height: 1.45;
+    color: #666;
+}
+
+.g-w.g-gl .gg-cfg-hint {
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.gg-wi-settings {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.12);
+}
+
+.g-w.g-gl .gg-wi-settings {
+    border-top-color: rgba(255, 255, 255, 0.22);
+}
+
+.gg-wi-settings-title {
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--g-tc);
+}
+
+.gg-wi-field {
+    margin-bottom: 8px;
+}
+
+.gg-wi-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 10px;
+    opacity: 0.75;
+}
+
+.gg-wi-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.gg-wi-tip {
+    margin-top: 6px;
+    font-size: 9px;
+    line-height: 1.35;
+    opacity: 0.58;
+}
+
+.gg-world-sync-actions {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.g-w.g-gl .gg-world-sync-actions {
+    border-top-color: rgba(255, 255, 255, 0.22);
+}
+
 /* ========== 扩展按钮 ========== */
 #gai-btn {
     transition: all 0.3s;
@@ -1489,6 +1704,70 @@
     .g-p legend,
     .g-p div {
         touch-action: pan-y !important;
+    }
+
+    .gg-sync-vector-zone {
+        padding: 8px;
+    }
+
+    .gg-summary-send-notice {
+        margin-bottom: 8px;
+    }
+
+    .gg-sync-vector-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .gg-config-card {
+        padding: 8px;
+    }
+
+    .gg-config-card-header {
+        margin-bottom: 6px;
+    }
+
+    .gg-config-card-toggle {
+        width: 22px;
+        height: 22px;
+        min-width: 22px;
+        min-height: 22px;
+        font-size: 18px !important;
+        line-height: 22px !important;
+        margin: 0 0 0 auto !important;
+        flex: 0 0 22px !important;
+        padding: 0 !important;
+    }
+
+    .g-p .gg-config-card-toggle {
+        width: 22px !important;
+        min-width: 22px !important;
+        max-width: 22px !important;
+        height: 22px !important;
+        min-height: 22px !important;
+        max-height: 22px !important;
+        flex: 0 0 22px !important;
+        margin: 0 0 0 auto !important;
+    }
+
+    .gg-cfg-hint {
+        margin-left: 0;
+        padding-left: 24px;
+    }
+
+    .gg-world-sync-actions {
+        justify-content: stretch;
+    }
+
+    .gg-world-sync-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (min-width: 601px) and (max-width: 950px) {
+    .gg-sync-vector-grid {
+        grid-template-columns: 1fr;
     }
 }
 

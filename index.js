@@ -63,6 +63,7 @@
         autoSummaryDelayCount: 4,      // ✅ 延迟4楼
         autoBigSummary: false,         // ❌ 默认关闭大总结
         autoBigSummaryFloor: 100,      // ✅ 100层触发大总结
+        autoBigSummaryFloorManual: false, // ✅ 手动覆盖大总结层数（智能联动不再改写）
         autoBigSummaryDelay: false,    // ❌ 默认关闭大总结延迟
         autoBigSummaryDelayCount: 6,   // ✅ 延迟6楼
         autoBackfill: false,           // ❌ 默认关闭批量填表（避免与实时填表冲突）
@@ -78,10 +79,12 @@
         filterHistory: true,
         cloudSync: true,
         syncWorldInfo: false,          // ❌ 默认关闭世界书同步
+        syncWorldInfoPanelCollapsed: false, // 📁 世界书分区折叠状态
         worldInfoVectorized: false,    // ❌ 默认关闭世界书自带向量化（已移除UI选项）
         autoVectorizeSummary: false,   // ❌ 默认关闭总结后自动向量化（每聊隔离）
         // ==================== 独立向量检索配置 ====================
         vectorEnabled: false,          // ❌ 默认关闭独立向量检索
+        vectorPanelCollapsed: false,   // 📁 向量化分区折叠状态
         vectorProvider: 'openai',      // 向量服务提供商
         vectorUrl: '',                 // 向量 API 地址
         vectorKey: '',                 // 向量 API 密钥
@@ -1670,14 +1673,17 @@
                 C.autoBackfillSilent = globalConfig.autoBackfillSilent !== undefined ? globalConfig.autoBackfillSilent : true;
                 C.autoSummaryPrompt = globalConfig.autoSummaryPrompt !== undefined ? globalConfig.autoSummaryPrompt : true;
                 C.autoSummarySilent = globalConfig.autoSummarySilent !== undefined ? globalConfig.autoSummarySilent : true;
+                C.autoBigSummaryFloorManual = globalConfig.autoBigSummaryFloorManual !== undefined ? globalConfig.autoBigSummaryFloorManual : false;
                 C.contextLimit = globalConfig.contextLimit !== undefined ? globalConfig.contextLimit : true;
                 C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
                 C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
                 C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
                 C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : false;
+                C.syncWorldInfoPanelCollapsed = globalConfig.syncWorldInfoPanelCollapsed !== undefined ? globalConfig.syncWorldInfoPanelCollapsed : false;
                 C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : false;
                 // ✅ 向量检索配置
                 C.vectorEnabled = globalConfig.vectorEnabled !== undefined ? globalConfig.vectorEnabled : false;
+                C.vectorPanelCollapsed = globalConfig.vectorPanelCollapsed !== undefined ? globalConfig.vectorPanelCollapsed : false;
                 C.vectorUrl = globalConfig.vectorUrl !== undefined ? globalConfig.vectorUrl : '';
                 C.vectorKey = globalConfig.vectorKey !== undefined ? globalConfig.vectorKey : '';
                 C.vectorModel = globalConfig.vectorModel !== undefined ? globalConfig.vectorModel : 'BAAI/bge-m3';
@@ -3179,6 +3185,109 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
             return cloned;
         };
+        const hasAnyMemoryVar = (text) => /\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}|\{\{MEMORY_TABLE_.+?\}\}/i.test(String(text || ''));
+        const stripAllMemoryVars = (text) => String(text || '')
+            .replace(/\{\{MEMORY_TABLE_.+?\}\}/g, '')
+            .replace(/\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}/g, '');
+        const normalizeAnchorText = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+
+        // 读取世界书条目状态（enabled/disable），用于判断变量锚点是否来自关闭条目
+        const worldInfoAnchorEntries = (() => {
+            const collected = [];
+            try {
+                const wiRoot = window.world_info;
+                if (!wiRoot || typeof wiRoot !== 'object') return collected;
+
+                const books = Array.isArray(wiRoot) ? wiRoot : Object.values(wiRoot);
+                for (const book of books) {
+                    if (!book || typeof book !== 'object' || !book.entries || typeof book.entries !== 'object') continue;
+                    const entries = Object.values(book.entries);
+
+                    for (const entry of entries) {
+                        if (!entry || typeof entry !== 'object') continue;
+                        const rawContent = String(entry.content || '');
+                        if (!hasAnyMemoryVar(rawContent)) continue;
+
+                        collected.push({
+                            enabled: entry.enabled !== false && entry.disable !== true && entry.active !== false,
+                            normalizedContent: normalizeAnchorText(rawContent)
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ [锚点检测] 读取 world_info 状态失败:', e);
+            }
+            return collected;
+        })();
+
+        const worldInfoEntryMatchesMessage = (entryText, msgText) => {
+            if (!entryText || !msgText) return false;
+            if (msgText.includes(entryText) || entryText.includes(msgText)) return true;
+
+            // 去掉变量后再做一次弱匹配，兼容带包装文本的场景
+            const entrySkeleton = entryText
+                .replace(/\{\{memory_table_.+?\}\}/gi, '')
+                .replace(/\{\{memory(?:_summary|_table|_prompt)?\}\}/gi, '')
+                .trim();
+            return entrySkeleton.length >= 10 && msgText.includes(entrySkeleton);
+        };
+
+        const isAnchorBlockedByWorldInfoSwitch = (msgContent) => {
+            if (!worldInfoAnchorEntries.length) return false;
+            const normalizedMsg = normalizeAnchorText(msgContent);
+            if (!normalizedMsg) return false;
+
+            let hitEnabled = false;
+            let hitDisabled = false;
+
+            for (const entry of worldInfoAnchorEntries) {
+                if (!worldInfoEntryMatchesMessage(entry.normalizedContent, normalizedMsg)) continue;
+                if (entry.enabled) hitEnabled = true;
+                else hitDisabled = true;
+            }
+
+            return hitDisabled && !hitEnabled;
+        };
+
+        const escapeCssAttrValue = (value) => {
+            const raw = String(value || '');
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+                return CSS.escape(raw);
+            }
+            return raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        };
+
+        // 检测预设条目开关状态（Prompt Manager 单条开关）
+        const getPromptToggleStateByIdentifier = (identifier) => {
+            if (!identifier || typeof document === 'undefined') return null;
+            const escaped = escapeCssAttrValue(identifier);
+            const selectors = [
+                `[data-identifier="${escaped}"] .prompt-manager-toggle-action`,
+                `[data-id="${escaped}"] .prompt-manager-toggle-action`,
+                `[data-prompt-id="${escaped}"] .prompt-manager-toggle-action`
+            ];
+
+            for (const selector of selectors) {
+                const node = document.querySelector(selector);
+                if (!node) continue;
+                if (node.classList.contains('fa-toggle-off')) return false;
+                if (node.classList.contains('fa-toggle-on')) return true;
+            }
+            return null;
+        };
+
+        const isAnchorBlockedByPromptSwitch = (msg) => {
+            if (!msg || !msg.identifier) return false;
+            const toggleState = getPromptToggleStateByIdentifier(msg.identifier);
+            return toggleState === false;
+        };
+
+        const isAnchorMessageAllowed = (msg, msgContent) => {
+            if (!hasAnyMemoryVar(msgContent)) return true;
+            if (isAnchorBlockedByPromptSwitch(msg)) return false;
+            if (isAnchorBlockedByWorldInfoSwitch(msgContent)) return false;
+            return true;
+        };
 
         // ✨✨✨ 1. [核心修复] 仅拦截总结/追溯生成的请求 (防止 Prompt 污染) ✨✨✨
         // 注意：批量填表 (autoBackfill) 期间用户在正常聊天，必须允许注入！
@@ -3344,6 +3453,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
             let modified = false;
 
+            // 开关关闭时，锚点不参与替换，回退默认注入位置
+            if (hasAnyMemoryVar(msgContent) && !isAnchorMessageAllowed(ev.chat[i], msgContent)) {
+                const cleaned = stripAllMemoryVars(msgContent);
+                if (ev.chat[i].content !== undefined) ev.chat[i].content = cleaned;
+                if (ev.chat[i].mes !== undefined) ev.chat[i].mes = cleaned;
+                if (cleaned.trim() === '') ev.chat[i]._toDelete = true;
+                console.log('🚫 [锚点拦截] 检测到关闭条目，跳过变量锚点并回退默认注入');
+                continue;
+            }
+
             // 匹配所有的 {{MEMORY_TABLE_xxx}}
             const specificTableRegex = /\{\{MEMORY_TABLE_(.+?)\}\}/g;
             let match;
@@ -3427,6 +3546,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         for (let i = 0; i < ev.chat.length; i++) {
             let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
             let splitted = false; // 标记是否发生了数组分裂
+
+            // 开关关闭时，锚点不参与替换，回退默认注入位置
+            if (hasAnyMemoryVar(msgContent) && !isAnchorMessageAllowed(ev.chat[i], msgContent)) {
+                const cleaned = stripAllMemoryVars(msgContent);
+                if (ev.chat[i].content !== undefined) ev.chat[i].content = cleaned;
+                if (ev.chat[i].mes !== undefined) ev.chat[i].mes = cleaned;
+                if (cleaned.trim() === '') ev.chat[i]._toDelete = true;
+                console.log('🚫 [锚点拦截] 检测到关闭条目，已忽略变量锚点');
+                continue;
+            }
 
             // 1️⃣ 处理长变量：{{MEMORY_PROMPT}} (纯文本替换，不破坏数组结构)
             if (msgContent.includes(varPrompt)) {
@@ -10580,12 +10709,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <input type="checkbox" id="gg_c_table_inj" ${C.tableInj ? 'checked' : ''} style="transform: scale(1.2);">
             </div>
 
-            <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">👇 注入策略 (表格+总结)：</div>
-
-            <div style="background: rgba(0,0,0,0.03); padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); font-size: 11px; color: ${UI.tc}; opacity: 0.8; line-height: 1.5;">
-                插件中的所有内容将作为 <strong>系统 (System)</strong> 消息，自动插入到 <strong>聊天记录 (Chat History)</strong> 的上方。
-                <br>
-                💡 如需改变位置请点击上方i图标查看说明。
+            <div style="font-size: 11px; opacity: 0.8; line-height: 1.5;">
+                注入策略点击上方 i 图标查看。
             </div>
         </div>
 
@@ -10743,38 +10868,82 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </div>
         </div>
 
-        <div style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 6px; padding: 10px; margin-top: 10px;">
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 600;">
-                <input type="checkbox" id="gg_c_sync_wi" ${C.syncWorldInfo ? 'checked' : ''}>
-                <span>🌏 同步到世界书</span>
-            </label>
-            <div style="font-size: 10px; color: #666; margin-top: 6px; margin-left: 22px; line-height: 1.4;">
-                默认世界书名称以 <strong>[Memory_Context_]</strong> 开头；勾选后将不发送记忆总结，改由世界书发送。
+        <div class="gg-sync-vector-zone">
+            <div class="gg-summary-send-notice">
+                <div class="gg-summary-send-notice-title">📌 记忆发送规则（默认）</div>
+                <div class="gg-summary-send-notice-main">
+                    ✅ 默认情况下，插件会自动发送「记忆总结」，无需勾选任何额外开关。
+                </div>
+                <div class="gg-summary-send-notice-list">
+                    <div class="gg-summary-send-notice-list-title">三选一发送逻辑：</div>
+                    <div>1. 默认：发送记忆总结</div>
+                    <div>2. 开启「同步到世界书」：改为世界书发送（不再注入记忆总结）</div>
+                    <div>3. 开启「总结后自动向量化」：改为向量化发送（不再注入记忆总结）</div>
+                </div>
             </div>
 
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
-                <input type="checkbox" id="gg_c_vector_enabled" ${C.vectorEnabled ? 'checked' : ''}>
-                <span>🔍 启用插件独立向量检索</span>
-            </label>
-            <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
-                使用外部 API 实现语义检索，不依赖酒馆（点击下方"💠 向量化"按钮配置详细参数）
-            </div>
+            <div class="gg-sync-vector-grid">
+                <div class="gg-config-card gg-worldbook-card ${C.syncWorldInfoPanelCollapsed ? 'gg-card-collapsed' : ''}">
+                    <div class="gg-config-card-header">
+                        <div class="gg-config-card-title">🌏 世界书同步</div>
+                        <button
+                            type="button"
+                            id="gg_toggle_worldbook_panel"
+                            class="gg-config-card-toggle"
+                            aria-expanded="${C.syncWorldInfoPanelCollapsed ? 'false' : 'true'}"
+                            aria-controls="gg_worldbook_panel_body"
+                        >${C.syncWorldInfoPanelCollapsed ? '>' : '<'}</button>
+                    </div>
 
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight: 500; margin-top: 8px;">
-                <input type="checkbox" id="gg_c_auto_vectorize" ${C.autoVectorizeSummary ? 'checked' : ''}>
-                <span>⚡ 总结后自动向量化</span>
-            </label>
-            <div style="font-size: 10px; color: #666; margin-top: 4px; margin-left: 22px; line-height: 1.4;">
-                勾选后将不发送记忆总结，改由向量化发送。
-            </div>
+                    <div id="gg_worldbook_panel_body" class="gg-config-card-body">
+                        <label class="gg-cfg-option gg-cfg-option-strong">
+                            <input type="checkbox" id="gg_c_sync_wi" ${C.syncWorldInfo ? 'checked' : ''}>
+                            <span>同步到世界书</span>
+                        </label>
+                        <div class="gg-cfg-hint">
+                            默认世界书名称以 <strong>[Memory_Context_]</strong> 开头；勾选后将不发送记忆总结，改由世界书发送。
+                        </div>
 
-            ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
+                        ${window.Gaigai.WI.getSettingsUI(m.wiConfig)}
 
-            <!-- ✨✨✨ 新增：手动覆盖按钮区域 ✨✨✨ -->
-            <div style="margin-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 8px; display: flex; align-items: center; justify-content: flex-end;">
-                <button id="gg_btn_force_sync_wi" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                    <i class="fa-solid fa-arrows-rotate"></i> 强制用总结表覆盖世界书
-                </button>
+                        <div class="gg-world-sync-actions">
+                            <button id="gg_btn_force_sync_wi" style="background: #ff9800; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-arrows-rotate"></i> 强制用总结表覆盖世界书
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="gg-config-card gg-vector-card ${C.vectorPanelCollapsed ? 'gg-card-collapsed' : ''}">
+                    <div class="gg-config-card-header">
+                        <div class="gg-config-card-title">💠 向量化</div>
+                        <button
+                            type="button"
+                            id="gg_toggle_vector_panel"
+                            class="gg-config-card-toggle"
+                            aria-expanded="${C.vectorPanelCollapsed ? 'false' : 'true'}"
+                            aria-controls="gg_vector_panel_body"
+                        >${C.vectorPanelCollapsed ? '>' : '<'}</button>
+                    </div>
+
+                    <div id="gg_vector_panel_body" class="gg-config-card-body">
+                        <label class="gg-cfg-option">
+                            <input type="checkbox" id="gg_c_vector_enabled" ${C.vectorEnabled ? 'checked' : ''}>
+                            <span>🔍 启用插件独立向量检索</span>
+                        </label>
+                        <div class="gg-cfg-hint">
+                            使用外部 API 实现语义检索，不依赖酒馆（点击下方"💠 向量化"按钮配置详细参数）
+                        </div>
+
+                        <label class="gg-cfg-option">
+                            <input type="checkbox" id="gg_c_auto_vectorize" ${C.autoVectorizeSummary ? 'checked' : ''}>
+                            <span>⚡ 总结后自动向量化</span>
+                        </label>
+                        <div class="gg-cfg-hint">
+                            勾选后将不发送记忆总结，改由向量化发送。
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -10857,6 +11026,51 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('input[name="cfg-sum-src"]:checked').trigger('change');
 
             console.log(`✅ [配置面板] 总结模式 UI 已同步为: ${currentSummarySource}`);
+            // ✅ 用户手动修改过大总结层数时，智能联动不再改写该值
+            let bigSummaryFloorManualOverride = !!C.autoBigSummaryFloorManual;
+
+            // ==================== 世界书/向量化分区折叠状态 ====================
+            const persistPanelFoldState = () => {
+                try {
+                    localStorage.setItem(CK, JSON.stringify(C));
+                    localStorage.setItem('gg_timestamp', Date.now().toString());
+                } catch (e) {
+                    console.error('❌ [折叠状态] localStorage 写入失败:', e);
+                }
+            };
+
+            const setPanelCollapsed = ($card, $toggleBtn, collapsed, configKey) => {
+                if (collapsed) {
+                    $card.addClass('gg-card-collapsed');
+                    $toggleBtn.attr('aria-expanded', 'false');
+                    $toggleBtn.text('>');
+                } else {
+                    $card.removeClass('gg-card-collapsed');
+                    $toggleBtn.attr('aria-expanded', 'true');
+                    $toggleBtn.text('<');
+                }
+                C[configKey] = collapsed;
+            };
+
+            const $worldbookCard = $('.gg-worldbook-card');
+            const $vectorCard = $('.gg-vector-card');
+            const $toggleWorldbook = $('#gg_toggle_worldbook_panel');
+            const $toggleVector = $('#gg_toggle_vector_panel');
+
+            setPanelCollapsed($worldbookCard, $toggleWorldbook, !!C.syncWorldInfoPanelCollapsed, 'syncWorldInfoPanelCollapsed');
+            setPanelCollapsed($vectorCard, $toggleVector, !!C.vectorPanelCollapsed, 'vectorPanelCollapsed');
+
+            $toggleWorldbook.off('click').on('click', function () {
+                const nextCollapsed = !$worldbookCard.hasClass('gg-card-collapsed');
+                setPanelCollapsed($worldbookCard, $toggleWorldbook, nextCollapsed, 'syncWorldInfoPanelCollapsed');
+                persistPanelFoldState();
+            });
+
+            $toggleVector.off('click').on('click', function () {
+                const nextCollapsed = !$vectorCard.hasClass('gg-card-collapsed');
+                setPanelCollapsed($vectorCard, $toggleVector, nextCollapsed, 'vectorPanelCollapsed');
+                persistPanelFoldState();
+            });
 
             // ✅✅✅ 新增：重置追溯进度
 
@@ -10974,6 +11188,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <div style="margin-bottom: 12px;">如需调整表格里面的内容在上下文的位置，用户需手动将对应的变量，新增条目插入到预设中：</div>
                         <div style="margin-bottom: 8px;">• 全部内容(表格+总结)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY}}</code> (跟随实时填表开关)</div>
                         <div style="margin-bottom: 8px;">• 表格插入变量(不含总结表)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE}}</code> (强制发送表格内容)</div>
+                        <div style="margin-bottom: 8px;">• 单表插入变量：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE_xxx}}</code> (xxx=表格名，例如 <code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_TABLE_主线剧情}}</code>)</div>
                         <div style="margin-bottom: 8px;">• 总结插入变量(不含其他表格)：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_SUMMARY}}</code> (默认发送总结；若开启同步世界书或自动向量化则不发送)</div>
                         <div>• 实时填表提示词插入变量：<code style="background:${codeBg}; color:${accentColor}; padding:2px 6px; border-radius:3px; font-weight:bold;">{{MEMORY_PROMPT}}</code></div>
                     `
@@ -11165,6 +11380,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoSummaryHideContext = $('#gg_c_auto_sum_hide').is(':checked');
                 C.autoBigSummary = $('#gg_c_big_sum').is(':checked');
                 C.autoBigSummaryFloor = parseInt($('#gg_c_big_sum_floor').val()) || 100;
+                C.autoBigSummaryFloorManual = !!bigSummaryFloorManualOverride;
                 C.autoBigSummaryDelay = $('#gg_c_auto_big_delay').is(':checked');
                 C.autoBigSummaryDelayCount = parseInt($('#gg_c_auto_big_delay_count').val()) || 6;
                 C.filterTags = $('#gg_c_filter_tags').val();
@@ -11307,6 +11523,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // ✨ 智能计算开关保存
             $('#gg_c_auto_calc').on('change', function () {
                 C.autoCalculateParams = $(this).is(':checked');
+                // 重新开启智能联动时，清除手动覆盖状态，恢复自动计算
+                if (C.autoCalculateParams) {
+                    bigSummaryFloorManualOverride = false;
+                }
+                syncUIToConfig();
+                if (C.autoCalculateParams) {
+                    runSmartCalculation('summary', $('#gg_c_auto_floor').val());
+                }
                 m.save(false, true);
             });
 
@@ -11328,14 +11552,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 小总结滞后 = 3 楼
                     $('#gg_c_auto_sum_delay_count').val(3);
                     // 大总结 = 100 楼（固定值）
-                    $('#gg_c_big_sum_floor').val(100);
+                    if (!bigSummaryFloorManualOverride) {
+                        $('#gg_c_big_sum_floor').val(100);
+                    }
                     // 大总结滞后 = 4 楼
                     $('#gg_c_auto_big_delay_count').val(4);
                 } else if (source === 'summary') {
                     // 场景1：使用上下文管理（隐藏楼层关闭）
                     if (!$('#gg_c_limit_on').is(':checked')) {
-                        // 大总结 = 自动总结 × 5
-                        $('#gg_c_big_sum_floor').val(Math.max(50, v * 5));
+                        // 大总结 = 自动总结 × 5，但智能联动最高封顶 100
+                        if (!bigSummaryFloorManualOverride) {
+                            const smartBigFloor = Math.min(100, Math.max(50, v * 5));
+                            $('#gg_c_big_sum_floor').val(smartBigFloor);
+                        }
                         // 大总结滞后 = 5 楼
                         $('#gg_c_auto_big_delay_count').val(5);
                     }
@@ -11346,6 +11575,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // ✨ 绑定输入事件
             $('#gg_c_limit_count').on('input', function () { runSmartCalculation('limit', $(this).val()); });
             $('#gg_c_auto_floor').on('input', function () { runSmartCalculation('summary', $(this).val()); });
+            $('#gg_c_big_sum_floor').on('change', function () {
+                if (!$('#gg_c_auto_calc').is(':checked')) return;
+                bigSummaryFloorManualOverride = true;
+                syncUIToConfig();
+                m.save(false, true);
+            });
 
             // 🤖 AI 智能诊断提取标签
             $('#gg_btn_ai_extract_tags').on('click', async function () {
