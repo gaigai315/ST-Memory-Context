@@ -3543,6 +3543,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         const allowAnchorMode = true;
         let deletedCountBeforeAnchor = 0;
+        let hasAllowedSummaryAnchor = false;
+        let hasAllowedTableAnchor = false;
+
+        // 预扫描：只统计“允许参与替换”的锚点，供 {{MEMORY}} 做全局去重决策
+        for (let i = 0; i < ev.chat.length; i++) {
+            const rawContent = ev.chat[i].content || ev.chat[i].mes || '';
+            if (!rawContent || !hasAnyMemoryVar(rawContent)) continue;
+            if (!isAnchorMessageAllowed(ev.chat[i], rawContent)) continue;
+
+            if (rawContent.includes(varSum)) hasAllowedSummaryAnchor = true;
+            if (rawContent.includes(varTable)) hasAllowedTableAnchor = true;
+        }
 
         // ✅ 3. 扫描并清洗变量 (核心修复：支持同一消息内存在任意顺序的多个变量)
         for (let i = 0; i < ev.chat.length; i++) {
@@ -3578,7 +3590,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (msgContent.includes(varSum)) {
                 if (idxSummaryVar === -1) idxSummaryVar = i;
 
-                if (summaryMessages.length > 0) {
+                if (replacedSummary) {
+                    msgContent = msgContent.replace(varSum, '');
+                    ev.chat[i].content = msgContent;
+                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    console.log(`🧹 [去重清洗] ${varSum} 已在前文注入，当前占位符已清除`);
+                } else if (summaryMessages.length > 0) {
                     const varIndex = msgContent.indexOf(varSum);
                     const preText = msgContent.substring(0, varIndex).trim();
                     const postText = msgContent.substring(varIndex + varSum.length).trim();
@@ -3614,7 +3631,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (msgContent.includes(varTable)) {
                 if (idxTableVar === -1) idxTableVar = i;
 
-                if (tableMessages.length > 0) {
+                if (replacedTable) {
+                    msgContent = msgContent.replace(varTable, '');
+                    ev.chat[i].content = msgContent;
+                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    console.log(`🧹 [去重清洗] ${varTable} 已在前文注入，当前占位符已清除`);
+                } else if (tableMessages.length > 0) {
                     const varIndex = msgContent.indexOf(varTable);
                     const preText = msgContent.substring(0, varIndex).trim();
                     const postText = msgContent.substring(varIndex + varTable.length).trim();
@@ -3648,7 +3670,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if (msgContent.includes(varSmart)) {
                 if (idxSmartVar === -1) idxSmartVar = i;
 
-                const hasData = (summaryMessages.length > 0) || (C.tableInj && tableMessages.length > 0);
+                const shouldInjectSummaryViaSmart = summaryMessages.length > 0 && !replacedSummary && !hasAllowedSummaryAnchor;
+                const shouldInjectTableViaSmart = C.tableInj && tableMessages.length > 0 && !replacedTable && !hasAllowedTableAnchor;
+                const hasData = shouldInjectSummaryViaSmart || shouldInjectTableViaSmart;
+
                 if (hasData) {
                     const varIndex = msgContent.indexOf(varSmart);
                     const preText = msgContent.substring(0, varIndex).trim();
@@ -3658,11 +3683,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     if (preText) newMessages.push(cloneSplitMessage(originalMsg, preText));
                     
-                    if (summaryMessages.length > 0) {
+                    if (shouldInjectSummaryViaSmart) {
                         if (originalMsg.gaigaiPhoneSignal) summaryMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
                         newMessages.push(...summaryMessages);
                     }
-                    if (C.tableInj && tableMessages.length > 0) {
+                    if (shouldInjectTableViaSmart) {
                         if (originalMsg.gaigaiPhoneSignal) tableMessages.forEach(m => m.gaigaiPhoneSignal = originalMsg.gaigaiPhoneSignal);
                         newMessages.push(...tableMessages);
                     }
@@ -3670,20 +3695,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (postText) newMessages.push(cloneSplitMessage(originalMsg, postText));
 
                     ev.chat.splice(i, 1, ...newMessages);
-                    replacedSummary = true;
-                    replacedTable = true;
+                    if (shouldInjectSummaryViaSmart) replacedSummary = true;
+                    if (shouldInjectTableViaSmart) replacedTable = true;
+                    replacedSmart = true;
                     splitted = true;
 
                     if (anchorIndex === -1) anchorIndex = i;
                     foundAnchor = true;
-                    console.log(`✨ [原地拆分注入] ${varSmart} 处理完成`);
+                    console.log(`✨ [原地拆分注入] ${varSmart} 处理完成 (Summary=${shouldInjectSummaryViaSmart}, Table=${shouldInjectTableViaSmart})`);
                 } else {
                     msgContent = msgContent.replace(varSmart, '');
                     ev.chat[i].content = msgContent;
                     if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
-                    replacedSummary = true;
-                    replacedTable = true;
-                    console.log(`🧹 [变量清洗] ${varSmart} 已清除`);
+                    console.log(`🧹 [去重清洗] ${varSmart} 无可注入数据或已由专用变量接管，已清除`);
                 }
             }
 
@@ -13783,24 +13807,28 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         const hasMemoryVars = /\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}|\{\{MEMORY_TABLE_.+?\}\}/.test(args[1].body);
                                         const hasGaigaiInjectedMarkers = /"isGaigaiData"\s*:\s*true|"isGaigaiPrompt"\s*:\s*true|"isGaigaiVector"\s*:\s*true/.test(args[1].body);
 
-                                        if (!hasMemoryVars && !hasGaigaiInjectedMarkers) {
-                                            console.log('ℹ️ [Fetch Hijack] 请求体无 MEMORY 变量且无注入标记，跳过 opmt 请求体兜底注入');
-                                        } else if (!hasGaigaiInjectedMarkers) {
+                                        if (!hasGaigaiInjectedMarkers) {
                                             try {
                                                 const bodyObjForOpmt = JSON.parse(args[1].body);
                                                 const hasMessages = Array.isArray(bodyObjForOpmt.messages);
                                                 const hasPromptArray = Array.isArray(bodyObjForOpmt.prompt);
+                                                const hasContentsArray = Array.isArray(bodyObjForOpmt.contents);
 
-                                                if (hasMessages || hasPromptArray) {
-                                                    const key = hasMessages ? 'messages' : 'prompt';
+                                                if (hasMessages || hasPromptArray || hasContentsArray) {
+                                                    const key = hasMessages ? 'messages' : (hasPromptArray ? 'prompt' : 'contents');
                                                     const safeBodyChat = safeDeepClone(bodyObjForOpmt[key]);
                                                     const safeBodyEvent = { chat: safeBodyChat };
                                                     await opmt(safeBodyEvent);
                                                     bodyObjForOpmt[key] = safeBodyEvent.chat;
                                                     args[1].body = JSON.stringify(bodyObjForOpmt);
-                                                    console.log('✅ [Fetch Hijack] 已在请求体层完成 MEMORY 变量替换与表格/总结注入');
+
+                                                    if (hasMemoryVars) {
+                                                        console.log('✅ [Fetch Hijack] 已在请求体层完成 MEMORY 变量替换与表格/总结注入');
+                                                    } else {
+                                                        console.log('✅ [Fetch Hijack] 请求体未检测到 MEMORY 变量，已执行默认位置兜底注入');
+                                                    }
                                                 } else {
-                                                    console.warn('⚠️ [Fetch Hijack] 请求体未找到 messages/prompt 数组，跳过 opmt 兜底注入');
+                                                    console.warn('⚠️ [Fetch Hijack] 请求体未找到 messages/prompt/contents 数组，跳过 opmt 兜底注入');
                                                 }
                                             } catch (e) {
                                                 console.error('❌ [Fetch Hijack] opmt 请求体兜底注入失败:', e);
@@ -14399,11 +14427,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>配置分区重构：</strong>世界书与向量化拆分为独立区块，支持折叠且可记忆上次展开/收起状态。</li>
-                        <li><strong>发送规则可视化：</strong>新增「三选一发送逻辑」说明，明确默认会自动发送记忆总结；开启同步世界书或自动向量化后不再注入总结。</li>
-                        <li><strong>注入说明简化：</strong>注入策略改为点击 i 查看；变量说明新增单表变量 <code>{{MEMORY_TABLE_xxx}}</code> 示例。</li>
                         <li><strong>智能计算保护：</strong>自动联动时大总结上限封顶 100；若用户手动修改大总结阈值，后续联动不再覆盖。</li>
                         <li><strong>锚点注入安全：</strong>增加世界书/预设开关检测，关闭条目的锚点不再替换，自动回退默认注入位置。</li>
-                        <li><strong>移动端细节优化：</strong>世界书/向量化折叠按钮固定右对齐，不再被通用按钮样式拉伸为长按钮。</li>
+                        <li><strong>无变量兜底修复：</strong>当提示词中未放置任何 MEMORY 变量时，也会在最终请求体执行兜底注入，避免“界面显示替换但后端未实际发送”。</li>
+                        <li><strong>混合变量防重：</strong>优化 <code>{{MEMORY}}</code> 与 <code>{{MEMORY_SUMMARY}}</code>/<code>{{MEMORY_TABLE}}</code> 并存时的注入决策，同类数据单次发送，避免重复注入。</li>
                     </ul>
                 </div>
 
