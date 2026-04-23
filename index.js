@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.3.1
+// 记忆表格 v2.3.2
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.3.1 启动');
+    console.log('🚀 记忆表格 v2.3.2 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.3.1';
+    const V = 'v2.3.2';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -14431,6 +14431,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         <li><strong>锚点注入安全：</strong>增加世界书/预设开关检测，关闭条目的锚点不再替换，自动回退默认注入位置。</li>
                         <li><strong>无变量兜底修复：</strong>当提示词中未放置任何 MEMORY 变量时，也会在最终请求体执行兜底注入，避免“界面显示替换但后端未实际发送”。</li>
                         <li><strong>混合变量防重：</strong>优化 <code>{{MEMORY}}</code> 与 <code>{{MEMORY_SUMMARY}}</code>/<code>{{MEMORY_TABLE}}</code> 并存时的注入决策，同类数据单次发送，避免重复注入。</li>
+                        <li><strong>向量化端点兼容：</strong>向量化支持 Google OpenAI 兼容端点模型，API 地址右侧新增 i 图标可查看 URL 填写示例。</li>
                     </ul>
                 </div>
 

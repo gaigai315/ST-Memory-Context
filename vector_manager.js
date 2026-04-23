@@ -5,7 +5,7 @@
  * 支持：OpenAI、SiliconFlow、Ollama 等兼容 OpenAI API 的服务
  * 新架构：多书架 + 会话绑定系统
  *
- * @version 2.2.2
+ * @version 2.3.2
  * @author Gaigai Team
  */
 
@@ -536,12 +536,21 @@
          * @returns {Promise<number[]|number[][]>} - 单个向量或向量数组
          */
         async _fetchEmbedding(text, config) {
-            // ✅ 优化 URL 拼接逻辑，避免重复 /v1
-            let baseUrl = config.url.replace(/\/$/, ''); // 去除末尾斜杠
-            if (baseUrl.endsWith('/v1')) {
-                baseUrl = baseUrl.slice(0, -3); // 去除已存在的 /v1
+            // ✅ 智能拼接 Embeddings URL，兼容 Google 官方 OpenAI 兼容端点
+            let url = config.url.replace(/\/+$/, ''); // 去除末尾斜杠
+            // 如果用户没写 /embeddings，我们智能补全
+            if (!url.endsWith('/embeddings')) {
+                // 如果是谷歌官方 OpenAI 兼容接口，直接加 /embeddings
+                if (url.includes('googleapis.com') && url.includes('openai')) {
+                    url += '/embeddings';
+                } else {
+                    // 其他常规 OpenAI 接口，确保有 /v1
+                    if (!url.endsWith('/v1')) {
+                        url += '/v1';
+                    }
+                    url += '/embeddings';
+                }
             }
-            const url = baseUrl + '/v1/embeddings';
 
             const isBatch = Array.isArray(text);
             const payload = {
@@ -1631,7 +1640,10 @@
                             </div>
 
                             <div style="margin-bottom: 6px;">
-                                <label style="display: block; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">API 地址</label>
+                                <label style="display: flex; align-items: center; gap: 4px; font-size: 10px; opacity: 0.7; color: ${UI.tc}; margin-bottom: 2px;">
+                                    <span>API 地址</span>
+                                    <i class="fa-solid fa-circle-info" id="gg_vm_url_info" style="color: #17a2b8; cursor: pointer; font-size: 14px;" title="点击查看 URL 填写示例"></i>
+                                </label>
                                 <input type="text" id="gg_vm_url" value="${config.url || ''}" placeholder="https://api.siliconflow.cn" style="width: 100%; padding: 5px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; background: rgba(0,0,0,0.2); color: ${UI.tc}; font-size: 10px; box-sizing: border-box;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                             </div>
 
@@ -2326,6 +2338,21 @@
                 }
             });
 
+            // ℹ️ API 地址填写示例
+            $('#gg_vm_url_info').off('click').on('click', async function () {
+                await customAlert(
+                    '向量化 API 地址填写示例：\n\n' +
+                    '1) 轨迹流动（SiliconFlow）\n' +
+                    'https://api.siliconflow.cn/v1\n\n' +
+                    '2) Google OpenAI 兼容端点\n' +
+                    'https://generativelanguage.googleapis.com/v1beta/openai/\n\n' +
+                    '说明：\n' +
+                    '- 地址可直接填到 API 地址输入框\n' +
+                    '- 插件会自动补全 /embeddings（Google 端点不会强制追加 /v1）',
+                    'API 地址示例'
+                );
+            });
+
             // 🔄 拉取模型列表
             $('#gg_vm_fetch_models').off('click').on('click', async function () {
                 const btn = $(this);
@@ -2341,10 +2368,12 @@
                         return;
                     }
 
-                    // 智能处理 API URL (确保以 /v1 结尾)
                     let baseUrl = apiUrl.replace(/\/+$/, ''); // 移除尾部斜杠
-                    if (!baseUrl.endsWith('/v1')) {
-                        baseUrl += '/v1';
+                    // 智能处理：如果是谷歌的 OpenAI 兼容端点，跳过追加 /v1 的逻辑
+                    if (!(baseUrl.includes('googleapis.com') && baseUrl.includes('openai'))) {
+                        if (!baseUrl.endsWith('/v1')) {
+                            baseUrl += '/v1';
+                        }
                     }
                     const modelsUrl = `${baseUrl}/models`;
 
@@ -2469,12 +2498,18 @@
                         return;
                     }
 
-                    // 智能处理 API URL
-                    let baseUrl = apiUrl.replace(/\/+$/, '');
-                    if (!baseUrl.endsWith('/v1')) {
-                        baseUrl += '/v1';
+                    // 智能处理 API URL（兼容 Google 官方 OpenAI 兼容端点）
+                    let embeddingsUrl = apiUrl.replace(/\/+$/, '');
+                    if (!embeddingsUrl.endsWith('/embeddings')) {
+                        if (embeddingsUrl.includes('googleapis.com') && embeddingsUrl.includes('openai')) {
+                            embeddingsUrl += '/embeddings';
+                        } else {
+                            if (!embeddingsUrl.endsWith('/v1')) {
+                                embeddingsUrl += '/v1';
+                            }
+                            embeddingsUrl += '/embeddings';
+                        }
                     }
-                    const embeddingsUrl = `${baseUrl}/embeddings`;
 
                     // ✅ 构建请求头：仅在有 Key 时才添加 Authorization
                     const headers = {
