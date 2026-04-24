@@ -5243,16 +5243,16 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 navSwitchStabilizeTimer = setTimeout(() => {
                     $overlay.removeClass('gg-nav-switching');
                     navSwitchStabilizeTimer = null;
-                }, 180);
+                }, 320);
             });
         });
     }
 
     function pop(ttl, htm, showBack = false) {
-        $('#gai-main-pop').remove();
+        const $prevMainPop = $('#gai-main-pop').first();
         thm(); // 重新应用样式
 
-        const $o = $('<div>', { id: 'gai-main-pop', class: 'g-ov' });
+        const $o = $('<div>', { id: 'gai-main-pop', class: 'g-ov gg-nav-switching' });
         const $p = $('<div>', { class: 'g-w' });
         const $h = $('<div>', { class: 'g-hd' });
 
@@ -5297,7 +5297,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // ❌ [已禁用] 点击遮罩关闭 - 防止编辑时误触
         // $o.on('click', e => { if (e.target === $o[0]) { $o.remove(); pageStack = []; } });
-        $(document).on('keydown.g', e => {
+        $(document).off('keydown.g').on('keydown.g', e => {
             if (e.key === 'Escape') {
                 window.isEditingConfig = false; // Esc关闭时也重置编辑标志
                 if (navSwitchStabilizeTimer) {
@@ -5311,6 +5311,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         });
 
         $('body').append($o);
+        if ($prevMainPop.length > 0) $prevMainPop.remove();
         applyNavSwitchStabilizer($o);
         return $p;
     }
