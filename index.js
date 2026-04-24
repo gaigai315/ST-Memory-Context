@@ -184,6 +184,7 @@
     let lastManualEditTime = 0; // ✨ 新增：记录用户最后一次手动编辑的时间
     let lastInternalSaveTime = 0;
     let isSummarizing = false;
+    let navSwitchStabilizeTimer = null; // 兼容第三方主题：切页时短暂禁用过渡，防止弹窗闪烁/跳动
     let isInitCooling = true; // ✨ 初始化冷却：防止刚加载页面时自动触发任务
     let saveChatDebounceTimer = null; // 🧹 性能优化：saveChat 防抖计时器
     let hideTagDebounceTimer = null; // 🧹 性能优化：hideMemoryTags 防抖计时器，防止 Regex 脚本冲突
@@ -4275,6 +4276,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             transform: none !important; left: auto !important; top: auto !important;
         }
 
+        /* 2.1 页面切换稳定器：兼容主题自带全局 transition/transform */
+        #gai-main-pop.gg-nav-switching,
+        #gai-main-pop.gg-nav-switching *,
+        #gai-main-pop.gg-nav-switching *::before,
+        #gai-main-pop.gg-nav-switching *::after {
+            transition: none !important;
+            animation: none !important;
+            scroll-behavior: auto !important;
+        }
+        #gai-main-pop.gg-nav-switching .g-w,
+        #gai-main-pop.gg-nav-switching .g-bd,
+        #gai-main-pop.gg-nav-switching .g-vw,
+        #gai-main-pop.gg-nav-switching .g-p,
+        #gai-main-pop.gg-nav-switching .g-hd {
+            transform: none !important;
+        }
+
         /* 🌙 强制所有弹窗容器使用动态背景色 (覆盖 style.css 的固定白色) */
         #gai-backfill-pop .g-w,
         #gai-summary-pop .g-w,
@@ -5213,6 +5231,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         $('<style id="gaigai-theme">').text(style).appendTo('head');
     }
 
+    function applyNavSwitchStabilizer($overlay) {
+        if (!$overlay || $overlay.length === 0) return;
+        if (navSwitchStabilizeTimer) {
+            clearTimeout(navSwitchStabilizeTimer);
+            navSwitchStabilizeTimer = null;
+        }
+        $overlay.addClass('gg-nav-switching');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                navSwitchStabilizeTimer = setTimeout(() => {
+                    $overlay.removeClass('gg-nav-switching');
+                    navSwitchStabilizeTimer = null;
+                }, 180);
+            });
+        });
+    }
+
     function pop(ttl, htm, showBack = false) {
         $('#gai-main-pop').remove();
         thm(); // 重新应用样式
@@ -5244,6 +5279,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             text: '×'
         }).on('click', () => {
             window.isEditingConfig = false; // 关闭弹窗时重置编辑标志
+            if (navSwitchStabilizeTimer) {
+                clearTimeout(navSwitchStabilizeTimer);
+                navSwitchStabilizeTimer = null;
+            }
             $o.remove();
             pageStack = [];
         });
@@ -5261,6 +5300,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         $(document).on('keydown.g', e => {
             if (e.key === 'Escape') {
                 window.isEditingConfig = false; // Esc关闭时也重置编辑标志
+                if (navSwitchStabilizeTimer) {
+                    clearTimeout(navSwitchStabilizeTimer);
+                    navSwitchStabilizeTimer = null;
+                }
                 $o.remove();
                 pageStack = [];
                 $(document).off('keydown.g');
@@ -5268,6 +5311,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         });
 
         $('body').append($o);
+        applyNavSwitchStabilizer($o);
         return $p;
     }
 
