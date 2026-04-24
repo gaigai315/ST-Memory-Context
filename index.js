@@ -9654,6 +9654,72 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
     async function shapi() {
         await loadConfig(); // ✅ 强制刷新配置，确保读取到最新的 Provider 设置
         if (!API_CONFIG.summarySource) API_CONFIG.summarySource = 'chat';
+        if (!Array.isArray(API_CONFIG.profiles)) API_CONFIG.profiles = [];
+        if (typeof API_CONFIG.activeProfileId !== 'string') API_CONFIG.activeProfileId = '';
+
+        const escapeHtml = (t) => String(t || '').replace(/[&<>"']/g, c => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[c]));
+
+        // 预计算当前激活预设，避免弹窗打开后下拉框“先占位再跳变”
+        let profileChanged = false;
+        API_CONFIG.profiles = API_CONFIG.profiles
+            .filter(p => p && typeof p === 'object' && p.name)
+            .map(p => {
+                const hasId = typeof p.id === 'string' && p.id.trim();
+                if (!hasId) profileChanged = true;
+                return {
+                    id: hasId ? p.id : `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+                    name: String(p.name || '').trim(),
+                    provider: String(p.provider || ''),
+                    url: String(p.url || '').trim(),
+                    key: String(p.key || '').trim(),
+                    model: String(p.model || '').trim()
+                };
+            });
+
+        const isSameApiProfileOnOpen = (a, b) =>
+            String(a?.provider || '') === String(b?.provider || '') &&
+            String(a?.url || '').trim() === String(b?.url || '').trim() &&
+            String(a?.key || '').trim() === String(b?.key || '').trim() &&
+            String(a?.model || '').trim() === String(b?.model || '').trim();
+
+        const currentApiOnOpen = {
+            provider: String(API_CONFIG.provider || ''),
+            url: String(API_CONFIG.apiUrl || '').trim(),
+            key: String(API_CONFIG.apiKey || '').trim(),
+            model: String(API_CONFIG.model || '').trim()
+        };
+        const matchedOnOpen = API_CONFIG.profiles.find(p => isSameApiProfileOnOpen(p, currentApiOnOpen)) || null;
+
+        if (!API_CONFIG.profiles.some(p => p.id === API_CONFIG.activeProfileId)) {
+            API_CONFIG.activeProfileId = '';
+            profileChanged = true;
+        }
+        if (!API_CONFIG.activeProfileId && matchedOnOpen) {
+            API_CONFIG.activeProfileId = matchedOnOpen.id;
+            profileChanged = true;
+        }
+        if (profileChanged) {
+            try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
+        }
+
+        const activeProfileOnOpen = API_CONFIG.profiles.find(p => p.id === API_CONFIG.activeProfileId) || null;
+        const apiProfileOptionsHtml = [
+            '<option value="">-- 选择已保存的账号 --</option>',
+            ...API_CONFIG.profiles.map(p => {
+                const selected = p.id === API_CONFIG.activeProfileId ? ' selected' : '';
+                return `<option value="${escapeHtml(p.id)}"${selected}>${escapeHtml(p.name)}</option>`;
+            })
+        ].join('');
+        const activeHintTextOnOpen = activeProfileOnOpen
+            ? `当前使用预设：${activeProfileOnOpen.name}`
+            : '当前使用：自定义（未绑定预设）';
+        const activeHintOpacityOnOpen = activeProfileOnOpen ? '0.92' : '0.75';
 
         const h = `
     <div class="g-p">
@@ -9676,10 +9742,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             </label>
             <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px; border-bottom:1px dashed rgba(0,0,0,0.1); padding-bottom:12px;">
                 <select id="gg_api_profile_select" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:4px; font-size:11px; background:var(--g-bg, #fff); color:var(--g-tc);">
-                    <option value="">-- 选择已保存的账号 --</option>
+                    ${apiProfileOptionsHtml}
                 </select>
-                <div id="gg_api_profile_active_hint" style="font-size:10px; color:var(--g-tc); opacity:0.75; margin-top:-2px;">
-                    当前使用：自定义（未绑定预设）
+                <div id="gg_api_profile_active_hint" style="font-size:10px; color:var(--g-tc); opacity:${activeHintOpacityOnOpen}; margin-top:-2px;">
+                    ${activeHintTextOnOpen}
                 </div>
                 <div style="display:flex; gap:8px; width:100%;">
                     <button id="gg_api_profile_save" style="flex:1; padding:6px 8px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">💾 存为预设</button>
@@ -9807,6 +9873,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             const findMatchingProfile = (target) => {
                 return API_CONFIG.profiles.find(p => isSameApiProfile(p, target)) || null;
             };
+            let isApplyingApiProfileSelection = false;
 
             const updateApiProfileHint = () => {
                 const $hint = $('#gg_api_profile_active_hint');
@@ -9820,6 +9887,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             };
 
             const reconcileActiveProfileFromUi = () => {
+                if (isApplyingApiProfileSelection) return;
                 const current = readCurrentApiUi();
                 const matched = findMatchingProfile(current);
                 API_CONFIG.activeProfileId = matched ? matched.id : '';
@@ -9850,17 +9918,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
                 const p = API_CONFIG.profiles.find(x => x.id === selectedId);
                 if (p) {
-                    if (p.provider) $('#gg_api_provider').val(p.provider).trigger('change');
-                    if (p.url !== undefined) $('#gg_api_url').val(p.url);
-                    if (p.key !== undefined) $('#gg_api_key').val(p.key);
-                    if (p.model !== undefined) {
-                        $('#gg_api_model').val(p.model);
-                        $('#gg_api_model_select').val('__manual__').hide();
-                        $('#gg_api_model').show();
+                    isApplyingApiProfileSelection = true;
+                    try {
+                        if (p.provider) $('#gg_api_provider').val(p.provider).trigger('change');
+                        if (p.url !== undefined) $('#gg_api_url').val(p.url);
+                        if (p.key !== undefined) $('#gg_api_key').val(p.key);
+                        if (p.model !== undefined) {
+                            $('#gg_api_model').val(p.model);
+                            $('#gg_api_model_select').val('__manual__').hide();
+                            $('#gg_api_model').show();
+                        }
+                        API_CONFIG.activeProfileId = p.id;
+                        $('#gg_api_profile_select').val(p.id);
+                        updateApiProfileHint();
+                        if (typeof toastr !== 'undefined') toastr.success(`已加载账号: ${p.name}`);
+                    } finally {
+                        isApplyingApiProfileSelection = false;
                     }
-                    API_CONFIG.activeProfileId = p.id;
-                    updateApiProfileHint();
-                    if (typeof toastr !== 'undefined') toastr.success(`已加载账号: ${p.name}`);
                 }
             });
 
@@ -9868,6 +9942,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             $('#gg_api_provider, #gg_api_url, #gg_api_key, #gg_api_model')
                 .off('input.apiPreset change.apiPreset')
                 .on('input.apiPreset change.apiPreset', function () {
+                    if (isApplyingApiProfileSelection) return;
                     reconcileActiveProfileFromUi();
                 });
 
