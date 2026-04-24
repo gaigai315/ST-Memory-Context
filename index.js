@@ -5358,15 +5358,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             <div class="g-btn-group">
             <button id="gai-btn-add" title="新增一行"><i class="fa-solid fa-plus"></i> 新增</button>
             <button id="gai-btn-del" title="删除选中行"><i class="fa-solid fa-trash-can"></i> 删除</button>
-            <button id="gai-btn-toggle" title="切换选中行的已总结状态"><i class="fa-solid fa-ghost"></i> 显/隐</button>
-            <button id="gai-btn-sum" title="AI智能总结"><i class="fa-solid fa-pen-to-square"></i> 总结</button>
-            <button id="gai-btn-back" title="追溯历史剧情填表"><i class="fa-solid fa-bolt"></i> 追溯</button>
-            <button id="gai-btn-move" title="移动选中行到其他表格"><i class="fa-solid fa-rocket"></i> 移动</button>
             <button id="gai-btn-export" title="导出JSON备份"><i class="fa-solid fa-file-export"></i> 导出</button>
             <button id="gai-btn-import" title="从JSON恢复数据"><i class="fa-solid fa-file-import"></i> 导入</button>
-            <button id="gai-btn-view" title="视图设置"><i class="fa-solid fa-ruler-combined"></i> 视图</button>
+            <button id="gai-btn-move" title="移动选中行到其他表格"><i class="fa-solid fa-rocket"></i> 移动</button>
             <button id="gai-btn-cleanup" title="清理数据选项"><i class="fa-solid fa-broom"></i> 清表</button>
+            <button id="gai-btn-view" title="视图设置"><i class="fa-solid fa-ruler-combined"></i> 视图</button>
             <button id="gai-btn-theme" title="设置外观"><i class="fa-solid fa-palette"></i> 主题</button>
+            <button id="gai-btn-back" title="追溯历史剧情填表"><i class="fa-solid fa-bolt"></i> 追溯</button>
+            <button id="gai-btn-sum" title="AI智能总结"><i class="fa-solid fa-pen-to-square"></i> 总结</button>
+            <button id="gai-btn-toggle" title="切换选中行的已总结状态"><i class="fa-solid fa-ghost"></i> 显/隐</button>
             <button id="gai-btn-config" title="插件设置"><i class="fa-solid fa-gear"></i> 配置</button>
          </div>
         </div>

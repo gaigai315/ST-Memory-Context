@@ -363,13 +363,13 @@
 
 /* 3. 核心业务逻辑：科技感的靛蓝色 (Indigo) */
 #gai-btn-sum i, 
-#gai-btn-back i, 
-#gai-btn-move i { 
+#gai-btn-back i { 
     color: #4f46e5 !important; 
 }
 
 /* 4. 系统与辅助工具：统一的高级石板灰 (Slate) */
 #gai-btn-toggle i, 
+#gai-btn-move i, 
 #gai-btn-export i, 
 #gai-btn-import i, 
 #gai-btn-view i, 
