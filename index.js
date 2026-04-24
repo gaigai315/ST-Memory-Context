@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.3.2
+// 记忆表格 v2.3.3
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.3.2 启动');
+    console.log('🚀 记忆表格 v2.3.3 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.3.2';
+    const V = 'v2.3.3';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -46,6 +46,8 @@
         enabled: true,          // ✅ 默认开启实时填表
         filterTags: '',         // 黑名单标签（去除）
         filterTagsWhite: '',    // 白名单标签（仅留）
+        filterTagPresets: [],   // 标签过滤预设 [{id,name,black,white,createdAt,updatedAt}]
+        filterTagActivePresetId: '', // 当前激活的标签预设ID
         contextLimit: true,     // ✅ 默认开启隐藏楼层
         contextLimitCount: 30,  // ✅ 隐藏30楼
         autoCalculateParams: true, // ✨ 默认开启智能计算联动
@@ -114,7 +116,9 @@
         lastSummaryIndex: 0,
         lastBackfillIndex: 0,
         lastBigSummaryIndex: 0,    // 🆕 大总结进度指针
-        useStream: true            // ✅ 流式传输开关（默认开启）
+        useStream: true,           // ✅ 流式传输开关（默认开启）
+        profiles: [],              // ☁️ API 账号预设列表
+        activeProfileId: ''        // 当前激活预设ID（用于UI显示）
     };
 
     // ========================================================================
@@ -175,6 +179,7 @@
     let deletedMsgIndex = -1; // ✅ 记录被删除的消息索引
     let processedMessages = new Set(); // ✅✅ 新增：防止重复处理同一消息
     let pendingTimers = {}; // ✅✅ 新增：追踪各楼层的延迟定时器，防止重Roll竞态
+    let processedMessageSignatures = {}; // ✅ 记录每层消息签名，拦截重复渲染导致的二次回滚
     let beforeGenerateSnapshotKey = null;
     let lastManualEditTime = 0; // ✨ 新增：记录用户最后一次手动编辑的时间
     let lastInternalSaveTime = 0;
@@ -1354,6 +1359,8 @@
                     contextLimitCount: C.contextLimitCount,
                     filterTags: C.filterTags,
                     filterTagsWhite: C.filterTagsWhite,
+                    filterTagPresets: C.filterTagPresets,
+                    filterTagActivePresetId: C.filterTagActivePresetId,
                     syncWorldInfo: C.syncWorldInfo,
                     worldInfoVectorized: C.worldInfoVectorized,
                     // ✅ 向量检索配置
@@ -1679,6 +1686,8 @@
                 C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
                 C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
                 C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
+                C.filterTagPresets = Array.isArray(globalConfig.filterTagPresets) ? globalConfig.filterTagPresets : [];
+                C.filterTagActivePresetId = globalConfig.filterTagActivePresetId !== undefined ? globalConfig.filterTagActivePresetId : '';
                 C.syncWorldInfo = globalConfig.syncWorldInfo !== undefined ? globalConfig.syncWorldInfo : false;
                 C.syncWorldInfoPanelCollapsed = globalConfig.syncWorldInfoPanelCollapsed !== undefined ? globalConfig.syncWorldInfoPanelCollapsed : false;
                 C.worldInfoVectorized = globalConfig.worldInfoVectorized !== undefined ? globalConfig.worldInfoVectorized : false;
@@ -1851,6 +1860,66 @@
             hash |= 0; // 转换为32位整数
         }
         return hash;
+    }
+
+    /**
+     * 计算文本哈希（用于消息签名）
+     * @param {string} text
+     * @returns {number}
+     */
+    function calculateTextHash(text) {
+        const source = String(text || '');
+        let hash = 0;
+        if (!source.length) return hash;
+        for (let i = 0; i < source.length; i++) {
+            hash = ((hash << 5) - hash) + source.charCodeAt(i);
+            hash |= 0;
+        }
+        return hash;
+    }
+
+    /**
+     * 读取当前正在显示的消息正文（优先当前分支 swipe）
+     * @param {Object} msg
+     * @returns {string}
+     */
+    function getRenderedMessageText(msg) {
+        if (!msg) return '';
+        const swipeId = Number(msg.swipe_id ?? 0);
+        if (Array.isArray(msg.swipes) && msg.swipes.length > swipeId) {
+            return String(msg.swipes[swipeId] ?? '');
+        }
+        return String(msg.mes ?? '');
+    }
+
+    /**
+     * 去除记忆指令标签，提取“可见正文”
+     * 作用：避免其他插件在后处理阶段改写/清理 Memory 标签时触发重复回滚。
+     * @param {string} text
+     * @returns {string}
+     */
+    function stripMemoryInstructionTags(text) {
+        return String(text || '')
+            .replace(/<(Memory|GaigaiMemory|memory|tableEdit|gaigaimemory|tableedit)>[\s\S]*?<\/\1>/gi, '')
+            .trim();
+    }
+
+    /**
+     * 生成消息处理签名
+     * 目标：同楼层重复渲染时跳过二次回滚，但不影响真实 Swipe / 重Roll。
+     * @param {Object} msg
+     * @returns {string}
+     */
+    function buildMessageProcessSignature(msg) {
+        if (!msg) return '';
+        const swipeId = Number(msg.swipe_id ?? 0);
+        const swipesLength = Array.isArray(msg.swipes) ? msg.swipes.length : 0;
+        const renderedVisibleText = stripMemoryInstructionTags(getRenderedMessageText(msg));
+        const textHash = calculateTextHash(renderedVisibleText);
+        const extra = (msg.extra && typeof msg.extra === 'object') ? msg.extra : {};
+        const generationHint = String(extra.gen_id ?? extra.generation_id ?? extra.swipe_generation_id ?? '');
+        const timeHint = String(msg.send_date ?? '');
+        return `${msg.is_user ? 'u' : 'a'}|${swipeId}|${swipesLength}|${textHash}|${generationHint}|${timeHint}`;
     }
 
     function saveSnapshot(msgIndex) {
@@ -3451,6 +3520,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 2.5 ✨✨✨ 核心新增：独立表格变量预扫描 (提取特定表) ✨✨✨
         // 必须在主扫描前进行，确保特定表被从 tableMessages 中优先剔除
         // ============================================================
+        const normalizeTableAnchorName = (name) => String(name || '')
+            .normalize('NFKC')
+            .replace(/\s+/g, '')
+            .trim()
+            .toLowerCase();
+
+        const getTableNameFromSystemName = (name) => {
+            const m = String(name || '').match(/^SYSTEM\s*\(([\s\S]*?)\)\s*$/i);
+            return m ? m[1] : String(name || '');
+        };
+
         for (let i = 0; i < ev.chat.length; i++) {
             let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
             let modified = false;
@@ -3466,14 +3546,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
 
             // 匹配所有的 {{MEMORY_TABLE_xxx}}
-            const specificTableRegex = /\{\{MEMORY_TABLE_(.+?)\}\}/g;
+            const specificTableRegex = /\{\{MEMORY_TABLE_(.+?)\}\}/gi;
             let match;
 
             while ((match = specificTableRegex.exec(msgContent)) !== null) {
                 const fullTag = match[0];
                 const targetTableName = match[1].trim();
+                const targetTableKey = normalizeTableAnchorName(targetTableName);
 
-                const tableIndex = tableMessages.findIndex(msg => msg.name === `SYSTEM (${targetTableName})`);
+                const tableIndex = tableMessages.findIndex(msg => {
+                    const currentTableName = getTableNameFromSystemName(msg.name);
+                    return normalizeTableAnchorName(currentTableName) === targetTableKey;
+                });
 
                 if (tableIndex !== -1) {
                     // ✅ 找到表，从总池子中抽出 (splice)
@@ -3499,11 +3583,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                     // 原地拆分注入
                     ev.chat.splice(i, 1, ...newMessages);
-                    i += newMessages.length - 1; // 修正外部循环索引
 
                     console.log(`✨ [分裂注入] 表格 [${targetTableName}] 已单独注入并从总池剔除`);
                     modified = true;
-                    break; // 拆分后结构改变，跳出 while，由 for 循环接管下一段
+                    break; // 拆分后结构改变，跳出 while，由 for 循环重新扫描
                 } else {
                     // ❌ 没找到表（空表或名字错误），直接抹掉标签，防止漏给大变量
                     msgContent = msgContent.replace(fullTag, '');
@@ -3513,7 +3596,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     specificTableRegex.lastIndex = 0; // 字符串变了，重置正则索引
                 }
             }
-            if (modified) continue;
+            if (modified) {
+                i--; // 关键：防止同一条合并消息中的后续 {{MEMORY_TABLE_xxx}} 被跳过
+                continue;
+            }
         }
 
         // ============================================================
@@ -4114,17 +4200,32 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // ✅ 优化后的默认背景：米白色+微噪点质感（不刺眼，更像纸）
         const bookBgImage = UI.bookBg
             ? `url("${UI.bookBg}")`
-            : `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"), linear-gradient(to bottom, #fdfbf7, #f7f4ed)`;
+            : `linear-gradient(to bottom, #f9fbff, #f2f5fa)`;
 
         // 🌙【新增】定义深色纸张背景（深灰渐变 + 噪点）
         const bookBgImageDark = UI.bookBg
             ? `url("${UI.bookBg}")` // 如果用户自定义了图，就保持用户的
-            : `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"), linear-gradient(to bottom, #2b2b2b, #1a1a1a)`;
+            : `linear-gradient(to bottom, #2b2b2b, #1a1a1a)`;
 
         // ✅ 🌙 Dark Mode: 动态变量定义 (深色毛玻璃版)
         const isDark = UI.darkMode;
+        const bg_header_glass = isDark ? `rgba(${rgbStr}, 0.48)` : `rgba(${rgbStr}, 0.56)`;
+        const bg_toolbar_glass = isDark ? `rgba(${rgbStr}, 0.16)` : `rgba(${rgbStr}, 0.20)`;
+        const bg_button_glass = isDark ? `rgba(${rgbStr}, 0.24)` : `rgba(${rgbStr}, 0.26)`;
+        const bg_button_hover = isDark ? `rgba(${rgbStr}, 0.34)` : `rgba(${rgbStr}, 0.34)`;
+        const bg_button_active = isDark ? `rgba(${rgbStr}, 0.46)` : `rgba(${rgbStr}, 0.44)`;
+        const bg_tab_idle = isDark ? `rgba(${rgbStr}, 0.20)` : `rgba(${rgbStr}, 0.16)`;
+        const book_surface = isDark ? '#20242b' : '#f6f8fc';
+        const book_ink = isDark ? '#dbe2ee' : '#2e3642';
+        const book_sub_ink = isDark ? '#bbc4d3' : '#5c6678';
+        const book_line = isDark ? 'rgba(219, 226, 238, 0.22)' : 'rgba(46, 54, 66, 0.18)';
+        const book_btn_bg = isDark ? 'rgba(219, 226, 238, 0.10)' : 'rgba(46, 54, 66, 0.08)';
+        const book_btn_hover = isDark ? 'rgba(219, 226, 238, 0.16)' : 'rgba(46, 54, 66, 0.14)';
+        const bg_book_content = isDark ? `rgba(${rgbStr}, 0.10)` : `rgba(${rgbStr}, 0.12)`;
+        const bg_book_content_hover = isDark ? `rgba(${rgbStr}, 0.14)` : `rgba(${rgbStr}, 0.18)`;
+        const bg_book_content_focus = isDark ? `rgba(${rgbStr}, 0.20)` : `rgba(${rgbStr}, 0.24)`;
         // 窗口背景：降低透明度到 0.75，让模糊效果透出来，颜色改为深灰黑
-        const bg_window = isDark ? 'rgba(25, 25, 25, 0.75)' : 'rgba(252, 252, 252, 0.85)';
+        const bg_window = isDark ? 'rgba(30, 30, 30, 0.75)' : 'rgba(255, 255, 255, 0.75)';
         // 面板背景：不再用实色，改为半透明黑，叠加在窗口上增加层次感
         const bg_panel = isDark ? 'rgba(0, 0, 0, 0.25)' : '#fcfcfc';
         const bg_header = UI.c;
@@ -4137,6 +4238,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const bg_table_cell = isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.5)'; // 单元格极淡
         const bg_edit_focus = isDark ? 'rgba(60, 60, 60, 0.9)' : 'rgba(255, 249, 230, 0.95)';
         const bg_edit_hover = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 251, 240, 0.9)';
+        const bg_book_edit_focus = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.36)';
+        const bg_book_edit_hover = isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.18)';
         const bg_row_num = isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(200, 200, 200, 0.4)';
         const bg_summarized = isDark ? 'rgba(40, 167, 69, 0.25)' : 'rgba(40, 167, 69, 0.15)';
 
@@ -4224,7 +4327,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         .g-tbl-wrap th {
-            background: ${bg_header} !important;
+            background: ${bg_header_glass} !important;
             color: ${color_text} !important;
             border-right: 1px solid ${color_border} !important;
             border-bottom: 1px solid ${color_border} !important;
@@ -4298,7 +4401,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             border-bottom: 2px solid ${UI.c} !important; 
         }
 
-        .g-t.act { background: ${UI.c} !important; filter: brightness(0.9); color: ${UI.tc} !important; font-weight: bold !important; border: none !important; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.2) !important; }
+        /* 标签激活样式在后文统一定义（玻璃主题版） */
         .g-row.g-selected td { background-color: ${selectionBg} !important; }
         .g-row.g-selected { outline: 2px solid ${UI.c} !important; outline-offset: -2px !important; }
         .g-row {
@@ -4333,7 +4436,53 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             opacity: 1 !important;
         }
 
-        .g-hd { background: ${bg_header} !important; opacity: 0.98; border-bottom: 1px solid ${color_border} !important; padding: 0 16px !important; height: 50px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; flex-shrink: 0 !important; border-radius: 12px 12px 0 0 !important; }
+        .g-hd { background: ${bg_header_glass} !important; opacity: 0.98; border-bottom: 1px solid ${color_border} !important; padding: 0 16px !important; height: 50px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; flex-shrink: 0 !important; border-radius: 12px 12px 0 0 !important; backdrop-filter: blur(12px) saturate(140%) !important; -webkit-backdrop-filter: blur(12px) saturate(140%) !important; }
+
+        .g-tl-header {
+            background: ${bg_toolbar_glass} !important;
+            border: 1px solid ${color_border} !important;
+            border-radius: 10px !important;
+            padding: 8px !important;
+            backdrop-filter: blur(10px) saturate(125%) !important;
+            -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
+        }
+
+        .g-toolbar-panel {
+            background: ${bg_toolbar_glass} !important;
+            border: 1px solid ${color_border} !important;
+            border-radius: 10px !important;
+            padding: 8px !important;
+            backdrop-filter: blur(10px) saturate(125%) !important;
+            -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
+        }
+
+        .g-ts {
+            background: ${bg_toolbar_glass} !important;
+            border-top: 1px solid ${color_border} !important;
+            border-bottom: 1px solid ${color_border} !important;
+            border-radius: 10px !important;
+            backdrop-filter: blur(10px) saturate(125%) !important;
+            -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
+        }
+
+        .g-t {
+            background: ${bg_tab_idle} !important;
+            color: ${color_text} !important;
+            border: 1px solid ${color_border} !important;
+            opacity: 0.92 !important;
+        }
+
+        .g-t:hover {
+            background: ${bg_button_hover} !important;
+        }
+
+        .g-t.act {
+            background: ${bg_header_glass} !important;
+            color: ${color_text} !important;
+            border: 1px solid ${color_border} !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+            opacity: 1 !important;
+        }
 
         /* ✨✨✨ 标题栏优化：增大字号、强制颜色跟随主题 ✨✨✨ */
         .g-hd h3 {
@@ -4415,6 +4564,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         
         .g-e:focus { outline: 2px solid ${bg_header} !important; outline-offset: -2px; background: ${bg_edit_focus} !important; /* 🌙 动态背景 */ box-shadow: 0 4px 12px ${shadowColor} !important; z-index: 10; position: relative; overflow-y: auto !important; align-items: flex-start !important; }
         .g-e:hover { background: ${bg_edit_hover} !important; /* 🌙 动态背景 */ box-shadow: inset 0 0 0 1px var(--g-c); }
+
+        /* 📖 总结笔记本：去除米黄色聚焦底，改为中性玻璃白 */
+        .g-book-view .g-e:hover { background: ${bg_book_edit_hover} !important; box-shadow: none !important; }
+        .g-book-view .g-e:focus { background: ${bg_book_edit_focus} !important; box-shadow: none !important; outline: 1px solid ${color_border} !important; outline-offset: -1px !important; }
         
         /* 1. 基础状态：强制背景色和文字颜色 */
         #gai-main-pop input[type="number"], #gai-main-pop input[type="text"], #gai-main-pop input[type="password"], #gai-main-pop select, #gai-main-pop textarea { 
@@ -4468,11 +4621,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             background: ${bg_input} !important;
         }
         
-        .g-col-num { position: sticky !important; left: 0 !important; z-index: 11 !important; background: ${bg_header} !important; border-right: 1px solid ${color_border} !important; }
+        .g-col-num { position: sticky !important; left: 0 !important; z-index: 11 !important; background: ${bg_header_glass} !important; border-right: 1px solid ${color_border} !important; }
         tbody .g-col-num { background: ${bg_row_num} !important; /* 🌙 动态背景 */ z-index: 9 !important; }
         
-        .g-tl button, .g-p button { background: ${bg_header} !important; color: ${color_text} !important; border: 1px solid ${color_border} !important; border-radius: 6px !important; padding: 6px 12px !important; font-size: var(--g-fs, 12px) !important; font-weight: 600 !important; cursor: pointer !important; box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; transition: none !important; }
-        .g-tl button:active, .g-p button:active { transform: none !important; }
+        .g-tl button, .g-p button { background: ${bg_button_glass} !important; color: ${color_text} !important; border: 1px solid ${color_border} !important; border-radius: 8px !important; padding: 6px 12px !important; font-size: var(--g-fs, 12px) !important; font-weight: 600 !important; cursor: pointer !important; box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important; white-space: nowrap !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; transition: background 0.2s, box-shadow 0.2s !important; backdrop-filter: blur(8px) saturate(120%) !important; -webkit-backdrop-filter: blur(8px) saturate(120%) !important; }
+        .g-tl button:hover, .g-p button:hover { background: ${bg_button_hover} !important; box-shadow: 0 4px 10px rgba(0,0,0,0.14) !important; }
+        .g-tl button:active, .g-p button:active { transform: none !important; background: ${bg_button_active} !important; box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important; }
 
         #gai-main-pop ::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
         #gai-main-pop ::-webkit-scrollbar-thumb { background: ${bg_header} !important; border-radius: 10px !important; }
@@ -4485,29 +4639,30 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             .g-col-resizer { width: 20px !important; right: -10px !important; }
         }
 
-        /* 📖 优化的笔记本样式 (复古手账风) - 手机端修复版 */
+        /* 📖 优化的笔记本样式（中性灰白主题） */
         .g-book-view {
             width: 100%;
             height: 100%;
             display: flex;
             flex-direction: column;
-            background-color: #fdfbf7;
+            background-color: ${book_surface};
             background-image: ${bookBgImage} !important;
             background-size: cover !important;
             background-position: center !important;
             background-repeat: no-repeat !important;
-            box-shadow: inset 25px 0 30px -10px rgba(0,0,0,0.15);
+            box-shadow: none;
             padding: 30px 50px;
             box-sizing: border-box;
             font-family: "Georgia", "Songti SC", "SimSun", serif;
-            color: #4a3b32;
+            color: ${book_ink};
             position: relative;
+            overflow: hidden;
         }
 
         /* 头部：包含标题和翻页按钮 */
         .g-book-header {
             margin-bottom: 10px;
-            border-bottom: 2px solid #8d6e63;
+            border-bottom: 2px solid ${book_line};
             padding-bottom: 10px;
             display: flex;
             justify-content: space-between;
@@ -4520,7 +4675,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             font-size: 18px;
             font-weight: bold;
             letter-spacing: 1px;
-            color: #4a3b32;
+            color: ${book_ink};
             margin: 0;
             min-width: 100px;
         }
@@ -4530,7 +4685,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             overflow-y: auto;
             line-height: 1.8;
             font-size: 15px;
-            color: #4a3b32;
+            color: ${book_ink};
             outline: none;
             white-space: pre-wrap;
             text-align: justify;
@@ -4547,7 +4702,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             align-items: center;
             gap: 10px;
             font-size: 13px;
-            color: #5d4037;
+            color: ${book_sub_ink};
             margin: 0;
             padding: 0;
             border: none;
@@ -4556,11 +4711,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         .g-book-btn {
-            border: none;
-            background: rgba(141, 110, 99, 0.1); /* 给按钮加点底色方便按 */
+            border: 1px solid ${book_line};
+            background: ${book_btn_bg};
             cursor: pointer;
             font-size: 13px;
-            color: #5d4037;
+            color: ${book_sub_ink};
             padding: 4px 10px;
             border-radius: 4px;
             transition: all 0.2s;
@@ -4568,7 +4723,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
 
         .g-book-btn:hover:not(:disabled) {
-            background: rgba(93, 64, 55, 0.15);
+            background: ${book_btn_hover};
             transform: translateY(-1px);
         }
 
@@ -4578,7 +4733,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             background: transparent;
         }
 
-        .g-book-page-num { font-weight: bold; font-family: monospace; color: #555; }
+        .g-book-page-num { font-weight: bold; font-family: monospace; color: ${book_sub_ink}; }
 
         .g-book-view .g-e {
             position: relative !important;
@@ -4591,11 +4746,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         .g-book-content.g-e {
             padding: 10px 20px !important;
             min-height: 200px !important;
+            box-shadow: none !important;
+            border-left: none !important;
+            border-right: none !important;
+            background: ${bg_book_content} !important;
+            border-radius: 8px !important;
         }
+        .g-book-content.g-e:hover { background: ${bg_book_content_hover} !important; }
+        .g-book-content.g-e:focus { background: ${bg_book_content_focus} !important; }
 
         .g-book-meta-container {
-            background: linear-gradient(to bottom, rgba(141, 110, 99, 0.08), transparent);
-            border-bottom: 1px solid rgba(141, 110, 99, 0.25);
+            background: linear-gradient(to bottom, ${book_btn_bg}, transparent);
+            border-bottom: 1px solid ${book_line};
             padding: 8px 12px;
             margin: -5px 0 15px 0 !important;
             border-radius: 4px;
@@ -4604,17 +4766,17 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         .g-book-meta-tags { display: flex; flex-wrap: wrap; gap: 8px; line-height: 1.5; }
         
         .g-book-meta-tag {
-            font-size: 11px; padding: 2px 8px; background: rgba(255, 255, 255, 0.5);
-            border-radius: 4px; color: #6d4c41; border: 1px solid rgba(141, 110, 99, 0.3);
+            font-size: 11px; padding: 2px 8px; background: ${book_btn_bg};
+            border-radius: 4px; color: ${book_sub_ink}; border: 1px solid ${book_line};
             font-family: "Georgia", "Songti SC", serif; display: inline-flex; align-items: center; gap: 4px;
         }
         
-        .g-book-meta-label { font-weight: 600; color: #8d6e63; font-size: 11px; }
+        .g-book-meta-label { font-weight: 600; color: ${book_sub_ink}; font-size: 11px; }
 
         .g-book-page-input {
             width: 45px; text-align: center; font-weight: bold; font-family: monospace;
-            color: #555; border: 1px solid #cbb0a1; border-radius: 4px; padding: 2px 0;
-            background: rgba(255, 255, 255, 0.8); font-size: 12px;
+            color: ${book_sub_ink}; border: 1px solid ${book_line}; border-radius: 4px; padding: 2px 0;
+            background: ${bg_button_glass}; font-size: 12px;
         }
 
         /* 📱 手机端最终修复：限制高度，强制内部滚动 */
@@ -4896,7 +5058,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             }
             .g-tbl-wrap th {
                 border-color: rgba(255, 255, 255, 0.1) !important;
-                background: rgba(30, 30, 30, 0.9) !important; /* 表头稍微实一点 */
+                background: ${bg_header_glass} !important; /* 表头跟随主题玻璃色 */
             }
             /* 选中行 */
             .g-row.g-selected td {
@@ -4909,7 +5071,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 background-image: ${bookBgImageDark} !important;
                 background-color: #1a1a1a !important;
                 color: ${color_text} !important;
-                box-shadow: inset 0 0 50px rgba(0,0,0,0.8) !important;
+                box-shadow: none !important;
             }
             .g-book-btn {
                 background: rgba(255, 255, 255, 0.05) !important;
@@ -4932,18 +5094,23 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             width: 260px;
             background: ${bg_window};
             z-index: 100;
-            box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            box-shadow: none;
             transform: translateX(-100%);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s;
+            opacity: 0;
             display: flex;
             flex-direction: column;
             backdrop-filter: blur(10px);
             border-right: 1px solid ${color_border};
+            pointer-events: none;
         }
 
         /* 展开状态 */
         .g-book-toc-panel.active {
             transform: translateX(0);
+            opacity: 1;
+            box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            pointer-events: auto;
         }
 
         /* 目录头部 */
@@ -5189,19 +5356,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         </div>
         <div class="g-toolbar-panel" id="gai-toolbar-panel"${panelStyle}>
             <div class="g-btn-group">
-                <button id="gai-btn-add" title="新增一行">➕ 新增</button>
-                <button id="gai-btn-del" title="删除选中行">🗑️ 删除</button>
-                <button id="gai-btn-toggle" title="切换选中行的已总结状态">👻 显/隐</button>
-                <button id="gai-btn-sum" title="AI智能总结">📝 总结</button>
-                <button id="gai-btn-back" title="追溯历史剧情填表">⚡ 追溯</button>
-                <button id="gai-btn-move" title="移动选中行到其他表格">🚀 移动</button>
-                <button id="gai-btn-export" title="导出JSON备份">📤 导出</button>
-                <button id="gai-btn-import" title="从JSON恢复数据">📥 导入</button>
-                <button id="gai-btn-view" title="视图设置">📏 视图</button>
-                <button id="gai-btn-cleanup" title="清理数据选项">🧹 清表</button>
-                <button id="gai-btn-theme" title="设置外观">🎨 主题</button>
-                <button id="gai-btn-config" title="插件设置">⚙️ 配置</button>
-            </div>
+            <button id="gai-btn-add" title="新增一行"><i class="fa-solid fa-plus"></i> 新增</button>
+            <button id="gai-btn-del" title="删除选中行"><i class="fa-solid fa-trash-can"></i> 删除</button>
+            <button id="gai-btn-toggle" title="切换选中行的已总结状态"><i class="fa-solid fa-ghost"></i> 显/隐</button>
+            <button id="gai-btn-sum" title="AI智能总结"><i class="fa-solid fa-pen-to-square"></i> 总结</button>
+            <button id="gai-btn-back" title="追溯历史剧情填表"><i class="fa-solid fa-bolt"></i> 追溯</button>
+            <button id="gai-btn-move" title="移动选中行到其他表格"><i class="fa-solid fa-rocket"></i> 移动</button>
+            <button id="gai-btn-export" title="导出JSON备份"><i class="fa-solid fa-file-export"></i> 导出</button>
+            <button id="gai-btn-import" title="从JSON恢复数据"><i class="fa-solid fa-file-import"></i> 导入</button>
+            <button id="gai-btn-view" title="视图设置"><i class="fa-solid fa-ruler-combined"></i> 视图</button>
+            <button id="gai-btn-cleanup" title="清理数据选项"><i class="fa-solid fa-broom"></i> 清表</button>
+            <button id="gai-btn-theme" title="设置外观"><i class="fa-solid fa-palette"></i> 主题</button>
+            <button id="gai-btn-config" title="插件设置"><i class="fa-solid fa-gear"></i> 配置</button>
+         </div>
         </div>
     `;
 
@@ -5281,7 +5448,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 1. 空数据状态
         if (!sheet.r || sheet.r.length === 0) {
             return `<div class="g-tbc" data-i="${tableIndex}" style="${v}">
-                <div class="g-book-view" style="justify-content:center; align-items:center; color:#8d6e63;">
+                <div class="g-book-view" style="justify-content:center; align-items:center; color:var(--g-tc);">
                     <i class="fa-solid fa-book-open" style="font-size:48px; margin-bottom:10px; opacity:0.5;"></i>
                     <div>暂无记忆总结</div>
                     <div style="font-size:12px; margin-top:5px;">(请点击上方"总结"按钮生成)</div>
@@ -9511,6 +9678,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 <select id="gg_api_profile_select" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:4px; font-size:11px; background:var(--g-bg, #fff); color:var(--g-tc);">
                     <option value="">-- 选择已保存的账号 --</option>
                 </select>
+                <div id="gg_api_profile_active_hint" style="font-size:10px; color:var(--g-tc); opacity:0.75; margin-top:-2px;">
+                    当前使用：自定义（未绑定预设）
+                </div>
                 <div style="display:flex; gap:8px; width:100%;">
                     <button id="gg_api_profile_save" style="flex:1; padding:6px 8px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">💾 存为预设</button>
                     <button id="gg_api_profile_del" style="flex:1; padding:6px 8px; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold;">🗑️ 删除预设</button>
@@ -9591,65 +9761,146 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
 
-            // ================= 新增：云端账号预设管理逻辑 =================
-            // 确保 API_CONFIG.profiles 数组存在（它会自动随 API_CONFIG 同步到酒馆后端）
-            if (!Array.isArray(API_CONFIG.profiles)) {
-                API_CONFIG.profiles = [];
-            }
+            // ================= 云端账号预设管理逻辑（激活状态可视化版） =================
+            if (!Array.isArray(API_CONFIG.profiles)) API_CONFIG.profiles = [];
+            if (typeof API_CONFIG.activeProfileId !== 'string') API_CONFIG.activeProfileId = '';
+
+            const normalizeApiProfiles = () => {
+                let changed = false;
+                API_CONFIG.profiles = API_CONFIG.profiles
+                    .filter(p => p && typeof p === 'object' && p.name)
+                    .map(p => {
+                        const createdId = !p.id;
+                        const normalized = {
+                            id: String(p.id || `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`),
+                            name: String(p.name || '').trim(),
+                            provider: String(p.provider || ''),
+                            url: String(p.url || '').trim(),
+                            key: String(p.key || '').trim(),
+                            model: String(p.model || '').trim()
+                        };
+                        if (createdId) changed = true;
+                        return normalized;
+                    });
+                if (!API_CONFIG.profiles.some(p => p.id === API_CONFIG.activeProfileId)) {
+                    API_CONFIG.activeProfileId = '';
+                    changed = true;
+                }
+                if (changed) {
+                    try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
+                }
+            };
+
+            const readCurrentApiUi = () => ({
+                provider: String($('#gg_api_provider').val() || ''),
+                url: String($('#gg_api_url').val() || '').trim(),
+                key: String($('#gg_api_key').val() || '').trim(),
+                model: String($('#gg_api_model').val() || '').trim()
+            });
+
+            const isSameApiProfile = (a, b) =>
+                String(a?.provider || '') === String(b?.provider || '') &&
+                String(a?.url || '').trim() === String(b?.url || '').trim() &&
+                String(a?.key || '').trim() === String(b?.key || '').trim() &&
+                String(a?.model || '').trim() === String(b?.model || '').trim();
+
+            const findMatchingProfile = (target) => {
+                return API_CONFIG.profiles.find(p => isSameApiProfile(p, target)) || null;
+            };
+
+            const updateApiProfileHint = () => {
+                const $hint = $('#gg_api_profile_active_hint');
+                if (!$hint.length) return;
+                const active = API_CONFIG.profiles.find(p => p.id === API_CONFIG.activeProfileId);
+                if (active) {
+                    $hint.text(`当前使用预设：${active.name}`).css('opacity', '0.92');
+                } else {
+                    $hint.text('当前使用：自定义（未绑定预设）').css('opacity', '0.75');
+                }
+            };
+
+            const reconcileActiveProfileFromUi = () => {
+                const current = readCurrentApiUi();
+                const matched = findMatchingProfile(current);
+                API_CONFIG.activeProfileId = matched ? matched.id : '';
+                $('#gg_api_profile_select').val(API_CONFIG.activeProfileId || '');
+                updateApiProfileHint();
+            };
 
             function renderApiProfiles() {
+                normalizeApiProfiles();
                 const $sel = $('#gg_api_profile_select');
                 $sel.find('option:not(:first)').remove();
-                API_CONFIG.profiles.forEach((p, i) => {
-                    $sel.append(`<option value="${i}">${p.name}</option>`);
+                API_CONFIG.profiles.forEach((p) => {
+                    $sel.append(`<option value="${p.id}">${p.name}</option>`);
                 });
+                $sel.val(API_CONFIG.activeProfileId || '');
+                updateApiProfileHint();
             }
-            renderApiProfiles(); // 初始化渲染下拉列表
+            renderApiProfiles();
+            reconcileActiveProfileFromUi();
 
-            // 1. 监听下拉框选择 -> 自动填入 URL 和 Key
+            // 1. 监听下拉框选择 -> 自动填入 URL 和 Key，并标记为当前激活预设
             $('#gg_api_profile_select').on('change', function () {
-                const idx = $(this).val();
-                if (idx === '') return;
-                const p = API_CONFIG.profiles[idx];
+                const selectedId = String($(this).val() || '');
+                if (!selectedId) {
+                    API_CONFIG.activeProfileId = '';
+                    updateApiProfileHint();
+                    return;
+                }
+                const p = API_CONFIG.profiles.find(x => x.id === selectedId);
                 if (p) {
                     if (p.provider) $('#gg_api_provider').val(p.provider).trigger('change');
-                    if (p.url) $('#gg_api_url').val(p.url);
-                    if (p.key) $('#gg_api_key').val(p.key);
-                    if (p.model) {
+                    if (p.url !== undefined) $('#gg_api_url').val(p.url);
+                    if (p.key !== undefined) $('#gg_api_key').val(p.key);
+                    if (p.model !== undefined) {
                         $('#gg_api_model').val(p.model);
                         $('#gg_api_model_select').val('__manual__').hide();
                         $('#gg_api_model').show();
                     }
+                    API_CONFIG.activeProfileId = p.id;
+                    updateApiProfileHint();
                     if (typeof toastr !== 'undefined') toastr.success(`已加载账号: ${p.name}`);
                 }
             });
+
+            // 字段改动时自动识别是否仍然匹配某个预设
+            $('#gg_api_provider, #gg_api_url, #gg_api_key, #gg_api_model')
+                .off('input.apiPreset change.apiPreset')
+                .on('input.apiPreset change.apiPreset', function () {
+                    reconcileActiveProfileFromUi();
+                });
 
             // 2. 保存当前输入为云端预设
             $('#gg_api_profile_save').on('click', async function () {
                 const name = prompt('请输入此 API 账号的备注名称\n（例如：OpenAI-主力、DeepSeek-备用）：');
                 if (!name || !name.trim()) return;
 
+                const current = readCurrentApiUi();
+                const now = Date.now();
                 const newProfile = {
+                    id: `ap_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
                     name: name.trim(),
-                    provider: $('#gg_api_provider').val(),
-                    url: $('#gg_api_url').val().trim(),
-                    key: $('#gg_api_key').val().trim(),
-                    model: $('#gg_api_model').val().trim()
+                    provider: current.provider,
+                    url: current.url,
+                    key: current.key,
+                    model: current.model
                 };
 
                 const existingIdx = API_CONFIG.profiles.findIndex(p => p.name === newProfile.name);
                 if (existingIdx >= 0) {
                     if (confirm(`预设 "${newProfile.name}" 已存在，是否覆盖更新？`)) {
+                        newProfile.id = API_CONFIG.profiles[existingIdx].id || newProfile.id;
                         API_CONFIG.profiles[existingIdx] = newProfile;
                     } else return;
                 } else {
                     API_CONFIG.profiles.push(newProfile);
                 }
 
+                API_CONFIG.activeProfileId = newProfile.id;
                 renderApiProfiles();
-                $('#gg_api_profile_select').val(existingIdx >= 0 ? existingIdx : API_CONFIG.profiles.length - 1);
+                $('#gg_api_profile_select').val(newProfile.id);
 
-                // 🚀 核心：触发全局保存，写入酒馆服务器的 settings.json
                 try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
                 if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
                     await window.Gaigai.saveAllSettingsToCloud();
@@ -9660,19 +9911,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             // 3. 删除当前选中的预设
             $('#gg_api_profile_del').on('click', async function () {
-                const idx = $('#gg_api_profile_select').val();
-                if (idx === '') {
+                const selectedId = String($('#gg_api_profile_select').val() || '');
+                if (!selectedId) {
                     alert('请先在下拉框中选择一个要删除的预设');
                     return;
                 }
-                const p = API_CONFIG.profiles[idx];
+                const p = API_CONFIG.profiles.find(x => x.id === selectedId);
+                if (!p) return;
+
                 if (confirm(`确定要从酒馆云端删除预设 "${p.name}" 吗？此操作无法撤销。`)) {
-                    API_CONFIG.profiles.splice(idx, 1);
+                    API_CONFIG.profiles = API_CONFIG.profiles.filter(x => x.id !== selectedId);
+                    if (API_CONFIG.activeProfileId === selectedId) API_CONFIG.activeProfileId = '';
 
                     renderApiProfiles();
                     $('#gg_api_profile_select').val('');
+                    updateApiProfileHint();
 
-                    // 🚀 核心：触发全局保存，写入酒馆服务器的 settings.json
                     try { localStorage.setItem('gg_api', JSON.stringify(API_CONFIG)); } catch (e) { }
                     if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
                         await window.Gaigai.saveAllSettingsToCloud();
@@ -9681,7 +9935,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (typeof toastr !== 'undefined') toastr.info(`已删除云端预设: ${p.name}`);
                 }
             });
-            // ================= 新增逻辑结束 =================
+            // ================= 逻辑结束 =================
             $('input[name="gg_api_mode"]').on('change', function () {
                 const isIndependent = $(this).val() === 'independent';
                 if (isIndependent) {
@@ -10091,6 +10345,18 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 API_CONFIG.useStream = $('#gg_api_use_stream').is(':checked');
                 API_CONFIG.temperature = 0.1;
                 API_CONFIG.enableAI = true;
+
+                // 同步“当前激活预设”状态：完全匹配某个预设则标记为该预设，否则标记为自定义
+                const matchedProfile = findMatchingProfile({
+                    provider: API_CONFIG.provider,
+                    url: API_CONFIG.apiUrl,
+                    key: API_CONFIG.apiKey,
+                    model: API_CONFIG.model
+                });
+                API_CONFIG.activeProfileId = matchedProfile ? matchedProfile.id : '';
+                $('#gg_api_profile_select').val(API_CONFIG.activeProfileId || '');
+                updateApiProfileHint();
+
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
                 try { localStorage.setItem('gg_timestamp', Date.now().toString()); } catch (e) { }
 
@@ -10892,6 +11158,33 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <span id="gg_clear_filter_tags_white" style="background: rgba(211,47,47,0.1); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; color:#d32f2f; transition: background 0.2s;" onmouseover="this.style.background='rgba(211,47,47,0.2)'" onmouseout="this.style.background='rgba(211,47,47,0.1)'" title="清空">🗑️</span>
                 </div>
             </div>
+
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.12);">
+                <label style="font-size:11px; color:var(--g-tc); font-weight: 600; display: block; margin-bottom: 6px;">💾 标签过滤预设</label>
+
+                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                    <select id="gg_filter_preset_select" style="flex:1; min-width:0; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; color:var(--g-tc);">
+                        <option value="">(选择预设)</option>
+                        ${(() => {
+                const presets = Array.isArray(C.filterTagPresets) ? C.filterTagPresets : [];
+                return presets.map(p => {
+                    const selected = (p && p.id === C.filterTagActivePresetId) ? ' selected' : '';
+                    return `<option value="${esc(p.id || '')}"${selected}>${esc(p.name || '(未命名预设)')}</option>`;
+                }).join('');
+            })()}
+                    </select>
+                    <button id="gg_filter_preset_delete" style="padding:5px 8px; border:1px solid rgba(211,47,47,0.35); border-radius:4px; background: rgba(211,47,47,0.08); color:#d32f2f; font-size:11px; cursor:pointer;">删除</button>
+                </div>
+
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="text" id="gg_filter_preset_name" placeholder="输入预设名称后点保存" style="flex:1; min-width:0; padding:5px; border:1px solid rgba(0,0,0,0.1); border-radius:4px; font-size:11px; font-family:monospace; color:var(--g-tc);" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <button id="gg_filter_preset_save" style="padding:5px 8px; border:1px solid rgba(76,175,80,0.35); border-radius:4px; background: rgba(76,175,80,0.12); color:#2e7d32; font-size:11px; cursor:pointer;">保存</button>
+                </div>
+
+                <div style="font-size:10px; color:var(--g-tc); opacity:0.72; margin-top:6px;">
+                    切换预设会立即应用黑/白标签；保存会覆盖同名预设。
+                </div>
+            </div>
         </div>
 
         <div class="gg-sync-vector-zone">
@@ -11427,6 +11720,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 C.autoBigSummaryDelayCount = parseInt($('#gg_c_auto_big_delay_count').val()) || 6;
                 C.filterTags = $('#gg_c_filter_tags').val();
                 C.filterTagsWhite = $('#gg_c_filter_tags_white').val();
+                if (!Array.isArray(C.filterTagPresets)) C.filterTagPresets = [];
+                C.filterTagPresets = C.filterTagPresets
+                    .filter(p => p && typeof p === 'object' && p.id && p.name)
+                    .map(p => ({
+                        id: String(p.id),
+                        name: String(p.name),
+                        black: String(p.black || ''),
+                        white: String(p.white || ''),
+                        createdAt: p.createdAt || Date.now(),
+                        updatedAt: p.updatedAt || Date.now()
+                    }));
+                if (!C.filterTagPresets.some(p => p.id === C.filterTagActivePresetId)) {
+                    C.filterTagActivePresetId = '';
+                }
                 C.syncWorldInfo = $('#gg_c_sync_wi').is(':checked');
                 C.vectorEnabled = $('#gg_c_vector_enabled').is(':checked');
                 C.autoVectorizeSummary = $('#gg_c_auto_vectorize').is(':checked');
@@ -11622,6 +11929,157 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 bigSummaryFloorManualOverride = true;
                 syncUIToConfig();
                 m.save(false, true);
+            });
+
+            // ==================== 标签过滤预设：保存/切换/删除 ====================
+            const normalizeFilterPresetList = (raw) => {
+                if (!Array.isArray(raw)) return [];
+                return raw
+                    .filter(p => p && typeof p === 'object' && p.id && p.name)
+                    .map(p => ({
+                        id: String(p.id),
+                        name: String(p.name),
+                        black: String(p.black || ''),
+                        white: String(p.white || ''),
+                        createdAt: p.createdAt || Date.now(),
+                        updatedAt: p.updatedAt || Date.now()
+                    }));
+            };
+
+            const getFilterPresetList = () => {
+                C.filterTagPresets = normalizeFilterPresetList(C.filterTagPresets);
+                return C.filterTagPresets;
+            };
+
+            const renderFilterPresetSelector = () => {
+                const $select = $('#gg_filter_preset_select');
+                if (!$select.length) return;
+
+                const presets = getFilterPresetList();
+                const options = ['<option value="">(选择预设)</option>'];
+                presets.forEach(p => {
+                    const selected = p.id === C.filterTagActivePresetId ? ' selected' : '';
+                    options.push(`<option value="${esc(p.id)}"${selected}>${esc(p.name)}</option>`);
+                });
+                $select.html(options.join(''));
+            };
+
+            const persistFilterPresetState = async () => {
+                syncUIToConfig();
+                m.save(false, true);
+                if (typeof saveAllSettingsToCloud === 'function') {
+                    saveAllSettingsToCloud().catch(() => { });
+                }
+            };
+
+            const applyFilterPresetById = async (presetId, showToast = true) => {
+                const presets = getFilterPresetList();
+                const preset = presets.find(p => p.id === presetId);
+                if (!preset) return false;
+
+                $('#gg_c_filter_tags').val(preset.black || '');
+                $('#gg_c_filter_tags_white').val(preset.white || '');
+                $('#gg_filter_preset_name').val(preset.name || '');
+
+                C.filterTagActivePresetId = preset.id;
+                $('#gg_filter_preset_select').val(preset.id);
+
+                await persistFilterPresetState();
+                if (showToast && typeof toastr !== 'undefined') toastr.success(`已应用标签预设：${preset.name}`);
+                return true;
+            };
+
+            // 初始化预设选择器
+            renderFilterPresetSelector();
+            if (C.filterTagActivePresetId) {
+                const active = getFilterPresetList().find(p => p.id === C.filterTagActivePresetId);
+                if (active) $('#gg_filter_preset_name').val(active.name || '');
+                else C.filterTagActivePresetId = '';
+            }
+
+            // 切换预设：立即应用
+            $('#gg_filter_preset_select').off('change').on('change', async function () {
+                const presetId = String($(this).val() || '');
+                if (!presetId) {
+                    C.filterTagActivePresetId = '';
+                    $('#gg_filter_preset_name').val('');
+                    await persistFilterPresetState();
+                    return;
+                }
+                await applyFilterPresetById(presetId, true);
+            });
+
+            // 保存预设：同名覆盖；若下拉已选中则直接更新该预设
+            $('#gg_filter_preset_save').off('click').on('click', async function () {
+                const name = String($('#gg_filter_preset_name').val() || '').trim();
+                if (!name) {
+                    if (typeof toastr !== 'undefined') toastr.warning('请输入预设名称');
+                    return;
+                }
+
+                const black = String($('#gg_c_filter_tags').val() || '').trim();
+                const white = String($('#gg_c_filter_tags_white').val() || '').trim();
+                const now = Date.now();
+                const presets = getFilterPresetList();
+                const selectedId = String($('#gg_filter_preset_select').val() || '');
+                let target = null;
+
+                if (selectedId) {
+                    target = presets.find(p => p.id === selectedId) || null;
+                }
+                if (!target) {
+                    target = presets.find(p => p.name === name) || null;
+                }
+
+                if (target) {
+                    target.name = name;
+                    target.black = black;
+                    target.white = white;
+                    target.updatedAt = now;
+                } else {
+                    target = {
+                        id: `ftp_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+                        name,
+                        black,
+                        white,
+                        createdAt: now,
+                        updatedAt: now
+                    };
+                    presets.unshift(target);
+                }
+
+                C.filterTagPresets = presets;
+                C.filterTagActivePresetId = target.id;
+                renderFilterPresetSelector();
+                $('#gg_filter_preset_select').val(target.id);
+
+                await persistFilterPresetState();
+                if (typeof toastr !== 'undefined') toastr.success(`标签预设已保存：${name}`);
+            });
+
+            // 删除预设
+            $('#gg_filter_preset_delete').off('click').on('click', async function () {
+                const selectedId = String($('#gg_filter_preset_select').val() || '');
+                if (!selectedId) {
+                    if (typeof toastr !== 'undefined') toastr.info('请先选择要删除的预设');
+                    return;
+                }
+
+                const presets = getFilterPresetList();
+                const target = presets.find(p => p.id === selectedId);
+                if (!target) return;
+
+                const ok = await customConfirm(`确定删除标签预设「${target.name}」吗？`, '删除确认');
+                if (!ok) return;
+
+                C.filterTagPresets = presets.filter(p => p.id !== selectedId);
+                if (C.filterTagActivePresetId === selectedId) C.filterTagActivePresetId = '';
+
+                renderFilterPresetSelector();
+                $('#gg_filter_preset_name').val('');
+
+                await persistFilterPresetState();
+                if (typeof toastr !== 'undefined') toastr.success(`已删除预设：${target.name}`);
             });
 
             // 🤖 AI 智能诊断提取标签
@@ -11986,6 +12444,14 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (!x || !x.chat) return;
                     const mg = x.chat[i];
                     if (!mg) return; // 消息可能被删了
+
+                    // 🛡️ 重复渲染拦截：同一楼层 + 同一分支 + 同一内容，不重复回滚/写表
+                    const currentSignature = buildMessageProcessSignature(mg);
+                    if (!window.Gaigai.isSwiping && processedMessageSignatures[msgKey] === currentSignature) {
+                        console.log(`⏭️ [重复渲染拦截] 第 ${i} 楼签名未变化，跳过重复处理（兼容二次请求插件）`);
+                        return;
+                    }
+                    processedMessageSignatures[msgKey] = currentSignature;
 
                     console.log(`⚡ [核心计算] 开始处理第 ${i} 楼 (Swipe: ${mg.swipe_id || 0})`);
 
@@ -12398,6 +12864,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             clearTimeout(pendingTimers[key]);
             delete pendingTimers[key];
         });
+        processedMessageSignatures = {};
         console.log('🔒 [ochat] 会话切换锁已启用');
 
         // ✨ [防串味] 重置世界书状态
@@ -12462,6 +12929,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             isRegenerating = false;
             deletedMsgIndex = -1;
             processedMessages.clear();
+            processedMessageSignatures = {};
 
             // 9. 📂 [恢复快照库] 从仓库取出新会话的快照
             if (m.id && window.GaigaiSnapshotStore[m.id]) {
@@ -13989,6 +14457,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         delete snapshotHistory[key];
                         console.log(`🗑️ [Swipe] 已销毁第 ${id} 楼的旧分支快照`);
                     }
+                    delete processedMessageSignatures[key];
 
                     // 4. 💾 [第四步：立即持久化]
                     m.save(true, true);
@@ -14062,6 +14531,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     if (snapshotHistory[currentKey]) {
                         delete snapshotHistory[currentKey];
                     }
+                    delete processedMessageSignatures[currentKey];
 
                     // 6. 立即保存并刷新 UI
                     m.save(true, true);
@@ -14426,12 +14896,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>配置分区重构：</strong>世界书与向量化拆分为独立区块，支持折叠且可记忆上次展开/收起状态。</li>
-                        <li><strong>智能计算保护：</strong>自动联动时大总结上限封顶 100；若用户手动修改大总结阈值，后续联动不再覆盖。</li>
-                        <li><strong>锚点注入安全：</strong>增加世界书/预设开关检测，关闭条目的锚点不再替换，自动回退默认注入位置。</li>
-                        <li><strong>无变量兜底修复：</strong>当提示词中未放置任何 MEMORY 变量时，也会在最终请求体执行兜底注入，避免“界面显示替换但后端未实际发送”。</li>
-                        <li><strong>混合变量防重：</strong>优化 <code>{{MEMORY}}</code> 与 <code>{{MEMORY_SUMMARY}}</code>/<code>{{MEMORY_TABLE}}</code> 并存时的注入决策，同类数据单次发送，避免重复注入。</li>
-                        <li><strong>向量化端点兼容：</strong>向量化支持 Google OpenAI 兼容端点模型，API 地址右侧新增 i 图标可查看 URL 填写示例。</li>
+                        <li><strong>标签过滤预设：</strong>新增黑白标签规则的预设保存/覆盖/删除/切换，支持命名管理并写入配置同步。</li>
+                        <li><strong>主题联动增强：</strong>调整插件外观的部分样式</li>
+                        <li><strong>加强预设兼容：</strong>加强预设的兼容性，确保在不同预设的环境下都能正常注入插件内容</li>
+                        <li><strong>加强插件兼容：</strong>加强插件的兼容性，修复某些插件在对同楼层正文二次修改后，导致实时填表内容失效或回滚</li>
                     </ul>
                 </div>
 

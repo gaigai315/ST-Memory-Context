@@ -1,4 +1,4 @@
-/* Gaigai v2.3.2 */
+/* Gaigai v2.3.3 */
 
 :root {
     --g-c: #888888;
@@ -297,90 +297,92 @@
     min-height: 34px;
 }
 
-/* ========== ✅ 工具栏按钮（优化配色） ========== */
-.g-tl button {
-    padding: 6px 12px;
-    background: var(--g-c);
-    color: var(--g-tc);
-    /* 跟随主题字体颜色 */
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    white-space: nowrap;
-    transition: all 0.2s;
-    min-height: 34px;
-    font-weight: 500;
-    /* ✅ 新增：按钮文字稍微加粗 */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    /* ✅ 新增：轻微阴影 */
+/* ========== 💎 现代极简工具栏按钮 ========== */
+.g-tl button, .g-p button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 8px 16px !important;
+    
+    /* 极淡的半透明背景，自动适应日夜模式 */
+    background: rgba(120, 120, 120, 0.05) !important; 
+    color: var(--g-tc) !important; /* 文字跟随主题颜色 */
+    
+    /* 细微边框营造玻璃边缘感 */
+    border: 1px solid rgba(120, 120, 120, 0.15) !important; 
+    border-radius: 8px !important; 
+    
+    font-size: 12px !important; 
+    font-weight: 500 !important; 
+    cursor: pointer !important; 
+    
+    /* 极弱的底阴影 */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important; 
+    
+    /* 苹果级丝滑过渡 */
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important; 
+    user-select: none !important;
 }
 
-.g-tl button:hover {
-    filter: brightness(0.9);
-    transform: translateY(-1px);
-    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
-    /* ✅ 悬停时阴影加深 */
+/* ✨ 悬浮态：微抬起 + 加深阴影 */
+.g-tl button:hover, .g-p button:hover {
+    background: rgba(120, 120, 120, 0.12) !important;
+    border-color: rgba(120, 120, 120, 0.25) !important;
+    transform: translateY(-1px) !important; 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important; 
 }
 
-.g-tl button:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+/* 🖱️ 点击态：Q弹的物理缩小感 */
+.g-tl button:active, .g-p button:active {
+    transform: translateY(0) scale(0.95) !important; 
+    background: rgba(120, 120, 120, 0.18) !important;
+    box-shadow: none !important; 
 }
 
-/* ========== 按钮颜色（语义化） ========== */
-
-/* 积极操作 - 绿色 */
-#gai-btn-sum {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    /* ✅ 渐变效果 */
-    color: #fff;
+/* 图标悬浮放大动效 */
+.g-tl button i, .g-p button i { 
+    transition: transform 0.2s !important; 
+}
+.g-tl button:hover i, .g-p button:hover i { 
+    transform: scale(1.15) !important; 
 }
 
-/* 危险操作 - 红色 */
-#gai-btn-del {
-    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-    color: #fff;
+/* ========== 🎨 现代高级感：语义化分组着色 ========== */
+
+/* 1. 积极操作：优雅的青绿色 (Teal) */
+#gai-btn-add i { 
+    color: #0d9488 !important; 
 }
 
-/* 极度危险 - 深红 */
-/* 🚀 移动行 - 蓝紫色渐变 */
-#gai-btn-move {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #fff;
-    font-weight: 500;
+/* 2. 危险操作：克制的砖红色 (Rose) */
+#gai-btn-del i, 
+#gai-btn-cleanup i { 
+    color: #e11d48 !important; 
 }
 
-/* 🗑️ 清理数据 - 红色渐变（危险操作） */
-#gai-btn-cleanup {
-    background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
-    color: #fff;
-    font-weight: 600;
-    /* ✅ 最危险的按钮，字体加粗 */
+/* 3. 核心业务逻辑：科技感的靛蓝色 (Indigo) */
+#gai-btn-sum i, 
+#gai-btn-back i, 
+#gai-btn-move i { 
+    color: #4f46e5 !important; 
 }
 
-/* 视图设置 - 琥珀色 */
-#gai-btn-view {
-    background: linear-gradient(135deg, #ffc107 0%, #ffa000 100%);
-    color: #fff;
-    /* 黄色背景需要白色文字 */
-    font-weight: 500;
+/* 4. 系统与辅助工具：统一的高级石板灰 (Slate) */
+#gai-btn-toggle i, 
+#gai-btn-export i, 
+#gai-btn-import i, 
+#gai-btn-view i, 
+#gai-btn-theme i, 
+#gai-btn-config i { 
+    color: #64748b !important; 
 }
 
-/* 辅助功能 - 灰色 */
-#gai-btn-theme,
-#gai-btn-config {
-    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
-    color: #fff;
-}
-
-/* 主操作 - 主题色 */
-#gai-btn-add,
-#gai-btn-export {
-    background: var(--g-c);
-    /* 使用纯主题色，不用渐变避免颜色冲突 */
-    color: var(--g-tc);
-    /* 跟随主题字体颜色 */
+/* 危险操作悬停变红预警 (删除 / 清表) */
+#gai-btn-del:hover, #gai-btn-cleanup:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    color: #ef4444 !important;
 }
 
 /* ========== 平板/窄屏优化 (601px - 900px) ========== */
@@ -1380,6 +1382,37 @@
     margin-top: 10px;
 }
 
+.gg-sync-vector-zone #gg_c_sync_wi,
+.gg-sync-vector-zone #gg_c_vector_enabled,
+.gg-sync-vector-zone #gg_c_auto_vectorize {
+    width: 14px !important;
+    height: 14px !important;
+    min-width: 14px !important;
+    min-height: 14px !important;
+    border-radius: 3px !important;
+    margin-top: 1px !important;
+    margin-right: 6px !important;
+}
+
+.gg-sync-vector-zone #gg_c_sync_wi {
+    position: relative !important;
+    top: 2px !important;
+}
+
+.gg-sync-vector-zone #gg_c_sync_wi::after,
+.gg-sync-vector-zone #gg_c_vector_enabled::after,
+.gg-sync-vector-zone #gg_c_auto_vectorize::after {
+    left: 3px !important;
+    top: 0 !important;
+    width: 4px !important;
+    height: 7px !important;
+}
+
+.gg-sync-vector-zone .gg-cfg-option {
+    gap: 5px;
+    line-height: 1.35;
+}
+
 .gg-cfg-hint {
     margin: 4px 0 0 22px;
     font-size: 10px;
@@ -1455,37 +1488,6 @@
 
 #gai-btn i {
     color: var(--g-c);
-}
-
-/* 选中行的背景色 */
-.g-row.g-selected {
-    background-color: rgba(136, 136, 136, 0.15) !important;
-    outline: 2px solid var(--g-c) !important;
-}
-
-.g-row.g-selected td {
-    background-color: rgba(136, 136, 136, 0.08) !important;
-}
-
-/* ========== 确保所有列都可以滚动（不固定） ========== */
-.g-tbl-wrap th,
-.g-tbl-wrap td {
-    position: relative !important;
-    /* 覆盖任何 sticky 定位 */
-}
-
-.g-tbl-wrap th:first-child,
-.g-tbl-wrap th:last-child,
-.g-tbl-wrap td:first-child,
-.g-tbl-wrap td:last-child {
-    position: relative !important;
-    /* 确保首尾列也不固定 */
-}
-
-/* 只有行号列固定在左侧（可选） */
-.g-col-num {
-    position: relative !important;
-    /* 如果不想固定行号列，保持 relative */
 }
 
 /* 长按时的视觉反馈 */
@@ -1620,11 +1622,13 @@
 
     /* 圆形边框 */
     border: 1px solid var(--g-tc) !important;
+    border-color: color-mix(in srgb, var(--g-tc) 68%, transparent) !important;
     border-radius: 50% !important;
     /* 圆形！ */
 
     /* 默认背景 */
-    background-color: rgba(255, 255, 255, 0.1) !important;
+    background-color: rgba(127, 127, 127, 0.12) !important;
+    background-color: color-mix(in srgb, var(--g-c) 14%, transparent) !important;
 
     cursor: pointer !important;
     position: relative !important;
@@ -1635,13 +1639,23 @@
     box-shadow: none !important;
 }
 
+#gai-main-pop input[type="radio"]:hover,
+.g-w input[type="radio"]:hover,
+.g-p input[type="radio"]:hover {
+    border-color: var(--g-c) !important;
+    background-color: rgba(127, 127, 127, 0.2) !important;
+    background-color: color-mix(in srgb, var(--g-c) 22%, transparent) !important;
+}
+
 /* 2. 选中状态 */
 #gai-main-pop input[type="radio"]:checked,
 .g-w input[type="radio"]:checked,
 .g-p input[type="radio"]:checked {
     /* 边框加粗并变为主题色 */
     border: 2px solid var(--g-c) !important;
-    background-color: rgba(255, 255, 255, 0.2) !important;
+    background-color: rgba(127, 127, 127, 0.26) !important;
+    background-color: color-mix(in srgb, var(--g-c) 30%, transparent) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--g-c) 45%, transparent) !important;
 }
 
 /* 3. 绘制内圆 (选中时显示) */
@@ -2277,4 +2291,41 @@ th.g-col-ops {
     }
 
     /* 只放大1.2倍，不再忽大忽小那么夸张 */
+}
+
+/* ====================================================
+   ✨ 玻璃质感增强（主题兼容版）
+   说明：避免覆盖 thm() 的主题关键色（表头/按钮）
+   ==================================================== */
+
+#gai-main-pop .g-w {
+    backdrop-filter: blur(30px) saturate(150%) brightness(1.08) !important;
+    -webkit-backdrop-filter: blur(30px) saturate(150%) brightness(1.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.45) !important;
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.75),
+        inset 1px 0 1px rgba(255, 255, 255, 0.3),
+        0 15px 40px rgba(0, 0, 0, 0.12) !important;
+}
+
+.g-w.g-gl {
+    backdrop-filter: blur(30px) saturate(150%) brightness(1.02) !important;
+    -webkit-backdrop-filter: blur(30px) saturate(150%) brightness(1.02) !important;
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.1),
+        0 15px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* 容器层由 index.js 的 thm() 动态控制，避免固定透明导致主题色失效 */
+
+/* 搜索框保持更清透，颜色继续交给主题变量 */
+#gai-main-pop .g-search-input {
+    background: rgba(255, 255, 255, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+#gai-main-pop .g-search-input:focus {
+    background: #ffffff !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
 }
