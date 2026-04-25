@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.3.3
+// 记忆表格 v2.3.4
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.3.3 启动');
+    console.log('🚀 记忆表格 v2.3.4 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.3.3';
+    const V = 'v2.3.4';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -3250,11 +3250,62 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 🔴 全局主开关守卫
         const phoneSignal = extractPhoneSignal(ev.chat);
         if (!C.masterSwitch) return;
-        const cloneSplitMessage = (originalMsg, text) => {
-            const cloned = Object.assign({}, originalMsg, { content: text });
-            if (Object.prototype.hasOwnProperty.call(originalMsg, 'mes')) {
-                cloned.mes = text;
+        const getPrimaryTextFromMessage = (msg) => {
+            if (!msg || typeof msg !== 'object') return '';
+            if (typeof msg.content === 'string') return msg.content;
+            if (typeof msg.mes === 'string') return msg.mes;
+
+            if (Array.isArray(msg.parts)) {
+                const part = msg.parts.find(p => p && typeof p.text === 'string');
+                if (part) return part.text;
             }
+
+            if (Array.isArray(msg.content)) {
+                const part = msg.content.find(p => p && typeof p.text === 'string');
+                if (part) return part.text;
+            }
+            return '';
+        };
+        const setPrimaryTextToMessage = (msg, text) => {
+            if (!msg || typeof msg !== 'object') return;
+            let written = false;
+
+            if (typeof msg.content === 'string') {
+                msg.content = text;
+                written = true;
+            }
+            if (typeof msg.mes === 'string') {
+                msg.mes = text;
+                written = true;
+            }
+
+            if (Array.isArray(msg.parts)) {
+                const idx = msg.parts.findIndex(p => p && typeof p.text === 'string');
+                if (idx !== -1) {
+                    msg.parts[idx] = Object.assign({}, msg.parts[idx], { text });
+                } else if (msg.parts.length > 0) {
+                    msg.parts[0] = Object.assign({}, msg.parts[0], { text });
+                } else {
+                    msg.parts.push({ text });
+                }
+                written = true;
+            }
+
+            if (Array.isArray(msg.content)) {
+                const idx = msg.content.findIndex(p => p && typeof p.text === 'string');
+                if (idx !== -1) {
+                    msg.content[idx] = Object.assign({}, msg.content[idx], { text });
+                    written = true;
+                }
+            }
+
+            if (!written) {
+                msg.content = text;
+            }
+        };
+        const cloneSplitMessage = (originalMsg, text) => {
+            const cloned = Object.assign({}, originalMsg);
+            setPrimaryTextToMessage(cloned, text);
             return cloned;
         };
         const hasAnyMemoryVar = (text) => /\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}|\{\{MEMORY_TABLE_.+?\}\}/i.test(String(text || ''));
@@ -3370,7 +3421,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
             if (ev.chat && Array.isArray(ev.chat)) {
                 ev.chat.forEach(msg => {
-                    let c = msg.content || msg.mes || '';
+                    let c = getPrimaryTextFromMessage(msg);
                     if (!c) return;
 
                     let modified = false;
@@ -3383,8 +3434,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     });
 
                     if (modified) {
-                        if (msg.content) msg.content = c;
-                        if (msg.mes) msg.mes = c;
+                        setPrimaryTextToMessage(msg, c);
                     }
                 });
             }
@@ -3394,12 +3444,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         }
         if (phoneSignal && phoneSignal.allowPrompt === false && ev.chat && Array.isArray(ev.chat)) {
             ev.chat.forEach(msg => {
-                let c = msg.content || msg.mes || '';
+                let c = getPrimaryTextFromMessage(msg);
                 if (!c) return;
                 if (c.includes('{{MEMORY_PROMPT}}')) {
                     c = c.split('{{MEMORY_PROMPT}}').join('');
-                    if (msg.content) msg.content = c;
-                    if (msg.mes) msg.mes = c;
+                    setPrimaryTextToMessage(msg, c);
                 }
             });
             console.log('[权限管控] 手机禁止了提示词注入，已清洗 {{MEMORY_PROMPT}} 残留');
@@ -3533,14 +3582,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         };
 
         for (let i = 0; i < ev.chat.length; i++) {
-            let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
+            let msgContent = getPrimaryTextFromMessage(ev.chat[i]);
             let modified = false;
 
             // 开关关闭时，锚点不参与替换，回退默认注入位置
             if (hasAnyMemoryVar(msgContent) && !isAnchorMessageAllowed(ev.chat[i], msgContent)) {
                 const cleaned = stripAllMemoryVars(msgContent);
-                if (ev.chat[i].content !== undefined) ev.chat[i].content = cleaned;
-                if (ev.chat[i].mes !== undefined) ev.chat[i].mes = cleaned;
+                setPrimaryTextToMessage(ev.chat[i], cleaned);
                 if (cleaned.trim() === '') ev.chat[i]._toDelete = true;
                 console.log('🚫 [锚点拦截] 检测到关闭条目，跳过变量锚点并回退默认注入');
                 continue;
@@ -3591,8 +3639,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 } else {
                     // ❌ 没找到表（空表或名字错误），直接抹掉标签，防止漏给大变量
                     msgContent = msgContent.replace(fullTag, '');
-                    if (ev.chat[i].content !== undefined) ev.chat[i].content = msgContent;
-                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    setPrimaryTextToMessage(ev.chat[i], msgContent);
                     console.log(`🧹 [变量清洗] ${fullTag} 已清除（未找到该表或该表为空）`);
                     specificTableRegex.lastIndex = 0; // 字符串变了，重置正则索引
                 }
@@ -3635,7 +3682,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // 预扫描：只统计“允许参与替换”的锚点，供 {{MEMORY}} 做全局去重决策
         for (let i = 0; i < ev.chat.length; i++) {
-            const rawContent = ev.chat[i].content || ev.chat[i].mes || '';
+            const rawContent = getPrimaryTextFromMessage(ev.chat[i]);
             if (!rawContent || !hasAnyMemoryVar(rawContent)) continue;
             if (!isAnchorMessageAllowed(ev.chat[i], rawContent)) continue;
 
@@ -3645,14 +3692,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // ✅ 3. 扫描并清洗变量 (核心修复：支持同一消息内存在任意顺序的多个变量)
         for (let i = 0; i < ev.chat.length; i++) {
-            let msgContent = ev.chat[i].content || ev.chat[i].mes || '';
+            let msgContent = getPrimaryTextFromMessage(ev.chat[i]);
             let splitted = false; // 标记是否发生了数组分裂
 
             // 开关关闭时，锚点不参与替换，回退默认注入位置
             if (hasAnyMemoryVar(msgContent) && !isAnchorMessageAllowed(ev.chat[i], msgContent)) {
                 const cleaned = stripAllMemoryVars(msgContent);
-                if (ev.chat[i].content !== undefined) ev.chat[i].content = cleaned;
-                if (ev.chat[i].mes !== undefined) ev.chat[i].mes = cleaned;
+                setPrimaryTextToMessage(ev.chat[i], cleaned);
                 if (cleaned.trim() === '') ev.chat[i]._toDelete = true;
                 console.log('🚫 [锚点拦截] 检测到关闭条目，已忽略变量锚点');
                 continue;
@@ -3669,8 +3715,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     msgContent = msgContent.replace(varPrompt, '');
                     console.log(`🧹 [变量清洗] {{MEMORY_PROMPT}} 已清空`);
                 }
-                ev.chat[i].content = msgContent;
-                if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                setPrimaryTextToMessage(ev.chat[i], msgContent);
             }
 
             // 2️⃣ 处理：{{MEMORY_SUMMARY}} 
@@ -3679,8 +3724,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 if (replacedSummary) {
                     msgContent = msgContent.replace(varSum, '');
-                    ev.chat[i].content = msgContent;
-                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    setPrimaryTextToMessage(ev.chat[i], msgContent);
                     console.log(`🧹 [去重清洗] ${varSum} 已在前文注入，当前占位符已清除`);
                 } else if (summaryMessages.length > 0) {
                     const varIndex = msgContent.indexOf(varSum);
@@ -3700,8 +3744,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log(`✨ [原地拆分注入] ${varSum} 处理完成`);
                 } else {
                     msgContent = msgContent.replace(varSum, '');
-                    ev.chat[i].content = msgContent;
-                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    setPrimaryTextToMessage(ev.chat[i], msgContent);
                     replacedSummary = true;
                     console.log(`🧹 [变量清洗] ${varSum} 已清除`);
                 }
@@ -3720,8 +3763,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                 if (replacedTable) {
                     msgContent = msgContent.replace(varTable, '');
-                    ev.chat[i].content = msgContent;
-                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    setPrimaryTextToMessage(ev.chat[i], msgContent);
                     console.log(`🧹 [去重清洗] ${varTable} 已在前文注入，当前占位符已清除`);
                 } else if (tableMessages.length > 0) {
                     const varIndex = msgContent.indexOf(varTable);
@@ -3741,8 +3783,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log(`✨ [原地拆分注入] ${varTable} 处理完成`);
                 } else {
                     msgContent = msgContent.replace(varTable, '');
-                    ev.chat[i].content = msgContent;
-                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    setPrimaryTextToMessage(ev.chat[i], msgContent);
                     replacedTable = true;
                     console.log(`🧹 [变量清洗] ${varTable} 已清除`);
                 }
@@ -3792,8 +3833,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     console.log(`✨ [原地拆分注入] ${varSmart} 处理完成 (Summary=${shouldInjectSummaryViaSmart}, Table=${shouldInjectTableViaSmart})`);
                 } else {
                     msgContent = msgContent.replace(varSmart, '');
-                    ev.chat[i].content = msgContent;
-                    if (ev.chat[i].mes !== undefined) ev.chat[i].mes = msgContent;
+                    setPrimaryTextToMessage(ev.chat[i], msgContent);
                     console.log(`🧹 [去重清洗] ${varSmart} 无可注入数据或已由专用变量接管，已清除`);
                 }
             }
@@ -3999,7 +4039,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const varsToClean = ['{{MEMORY}}', '{{MEMORY_SUMMARY}}', '{{MEMORY_TABLE}}', '{{MEMORY_PROMPT}}'];
         if (ev.chat && Array.isArray(ev.chat)) {
             ev.chat.forEach(msg => {
-                let c = msg.content || msg.mes || '';
+                let c = getPrimaryTextFromMessage(msg);
                 if (!c) return;
 
                 let modified = false;
@@ -4011,8 +4051,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 });
 
                 if (modified) {
-                    if (msg.content) msg.content = c;
-                    if (msg.mes) msg.mes = c;
+                    setPrimaryTextToMessage(msg, c);
                     console.log(`⚠️ [最后防线] 清洗了残留的变量名，防止泄漏给 AI`);
                 }
             });
@@ -13612,15 +13651,19 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 for (let i = chatData.chat.length - 1; i >= 0 && collectedMessages.length < depth; i--) {
                     const msg = chatData.chat[i];
 
-                    // 1. 跳过系统指令
-                    if (msg.role === 'system') continue;
+                    const role = String(msg?.role || '').toLowerCase();
+                    const name = String(msg?.name || '').toLowerCase();
+                    const isSystem = msg?.is_system === true ||
+                        role === 'system' ||
+                        role === 'system_instruction' ||
+                        name === 'system';
 
-                    // 2. 判定是否为有效消息 (User 或 Assistant)
-                    const isUser = msg.is_user === true ||
-                        msg.role === 'user' ||
-                        (msg.name !== 'System' && msg.role !== 'assistant');
+                    // 1. 跳过系统/工具类指令消息，避免把超长提示词送去做 embedding
+                    if (isSystem || role === 'tool' || role === 'function') continue;
 
-                    const isAssistant = !isUser && (msg.role === 'assistant' || msg.name !== 'System');
+                    // 2. 判定是否为有效消息 (User 或 Assistant/Model)
+                    const isUser = msg?.is_user === true || role === 'user' || role === 'human';
+                    const isAssistant = msg?.is_user === false || role === 'assistant' || role === 'model' || role === 'ai';
 
                     if (isUser || isAssistant) {
                         // 尝试获取内容（兼容字符串/数组/对象消息）
@@ -13649,6 +13692,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (collectedMessages.length > 0) {
                     userQuery = collectedMessages.map(m => m.content).join('\n');
                     console.log(`✅ [向量检索] 已收集 ${collectedMessages.length} 条消息作为检索上下文`);
+                }
+
+                // 防止向量服务报 413：限制检索查询长度（硅基 Embedding 常见上限 8192 tokens）
+                const MAX_VECTOR_QUERY_CHARS = 6000;
+                if (userQuery.length > MAX_VECTOR_QUERY_CHARS) {
+                    console.warn(`⚠️ [向量检索] 查询过长(${userQuery.length})，已截断至 ${MAX_VECTOR_QUERY_CHARS} 字符以避免 413`);
+                    userQuery = userQuery.slice(-MAX_VECTOR_QUERY_CHARS);
                 }
 
                 if (userQuery.trim()) {
@@ -14472,15 +14522,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                             return originalFetch.apply(this, args);
                                         }
 
-                                        // 正文/手机双场景统一：优先使用当前请求体上下文，兜底再用正文上下文
-                                        const vectorContextChat =
-                                            (Array.isArray(requestChat) && requestChat.length > 0)
-                                                ? requestChat
-                                                : ctx.chat;
-                                        const vectorSource =
-                                            (Array.isArray(requestChat) && requestChat.length > 0)
-                                                ? 'requestBody'
-                                                : 'ctx.chat';
+                                        // 向量检索必须基于酒馆楼层（ctx.chat），避免预设把超长 system 合并进 user 后污染检索输入。
+                                        // 仅在拿不到楼层时，才回退到请求体上下文。
+                                        const hasCtxChat = Array.isArray(ctx.chat) && ctx.chat.length > 0;
+                                        const vectorContextChat = hasCtxChat
+                                            ? ctx.chat
+                                            : ((Array.isArray(requestChat) && requestChat.length > 0) ? requestChat : []);
+                                        const vectorSource = hasCtxChat ? 'ctx.chat' : 'requestBody(fallback)';
 
                                         // 🔥 强制等待向量检索完成，并获取向量内容文本
                                         const vectorText = await executeVectorSearch(vectorContextChat);
@@ -15016,10 +15064,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>标签过滤预设：</strong>新增黑白标签规则的预设保存/覆盖/删除/切换，支持命名管理并写入配置同步。</li>
-                        <li><strong>主题联动增强：</strong>调整插件外观的部分样式</li>
-                        <li><strong>加强预设兼容：</strong>加强预设的兼容性，确保在不同预设的环境下都能正常注入插件内容</li>
-                        <li><strong>加强插件兼容：</strong>加强插件的兼容性，修复某些插件在对同楼层正文二次修改后，导致实时填表内容失效或回滚</li>
+                        <li><strong>修复预设兼容：</strong>修复预设的兼容性，确保在不同预设的环境下都能正常注入插件内容</li>
+                        <li><strong>修复向量化兼容：</strong>修复向量化在不同预设下的兼容性</li>
                     </ul>
                 </div>
 
