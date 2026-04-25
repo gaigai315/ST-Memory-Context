@@ -2182,6 +2182,20 @@
                     if (alreadyExists) {
                         const msg = `⚠️ 拦截提示：检测到总结表格中已存在 [ ${start}-${end} ] 楼层的记录！\n\n大总结已自动取消。请手动前往总结控制台修正【大总结指针】，或自行检查已有内容。`;
                         console.warn(`🛑 [大总结] ${msg}`);
+
+                        // ✅ 防重复触发：既然该区间总结已存在，直接推进大总结指针到区间末尾
+                        const currentBigIndex = API_CONFIG.lastBigSummaryIndex || 0;
+                        if (end > currentBigIndex) {
+                            API_CONFIG.lastBigSummaryIndex = end;
+                            localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
+                            m.save(false, true);
+                            if (typeof window.Gaigai.saveAllSettingsToCloud === 'function') {
+                                window.Gaigai.saveAllSettingsToCloud().catch(err => {
+                                    console.warn('⚠️ [大总结指针同步] 云端同步失败:', err);
+                                });
+                            }
+                            console.log(`✅ [大总结] 检测到区间已存在，指针已自动推进到 ${end}`);
+                        }
                         
                         // 弹出提示 (兼容不同环境)
                         if (typeof toastr !== 'undefined') {

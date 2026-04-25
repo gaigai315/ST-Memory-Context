@@ -12951,7 +12951,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // 模块 C: 自动大总结
                     // ============================================================
                     if (C.autoBigSummary) {
-                        const lastBigIndex = API_CONFIG.lastBigSummaryIndex || 0;
+                        const pendingBigEnd = (window.Gaigai && typeof window.Gaigai.pendingBigSummaryEnd === 'number')
+                            ? window.Gaigai.pendingBigSummaryEnd
+                            : 0;
+                        const lastBigIndex = Math.max(API_CONFIG.lastBigSummaryIndex || 0, pendingBigEnd);
                         const currentCount = x.chat.length;
                         const newBigMsgCount = currentCount - lastBigIndex;
 
@@ -12969,7 +12972,22 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             console.log(`📚 [Auto Big Summary] 触发! 当前:${currentCount}, 上次:${lastBigIndex}, 间隔:${bigInterval}, 延迟:${bigDelay}, 阈值:${bigThreshold}, 目标:${targetEndIndex}`);
 
                             if (window.Gaigai.SummaryManager && typeof window.Gaigai.SummaryManager.runBigSummary === 'function') {
-                                window.Gaigai.SummaryManager.runBigSummary(lastBigIndex, targetEndIndex);
+                                // 防重入：大总结执行期间，阻止同区间/后续消息重复触发
+                                if (window.Gaigai.isBigSummaryRunning) {
+                                    console.log('⏳ [自动大总结] 上一轮任务仍在执行，跳过本次重复触发');
+                                } else {
+                                    window.Gaigai.isBigSummaryRunning = true;
+                                    window.Gaigai.pendingBigSummaryEnd = targetEndIndex;
+
+                                    Promise.resolve(window.Gaigai.SummaryManager.runBigSummary(lastBigIndex, targetEndIndex))
+                                        .catch(err => {
+                                            console.error('❌ [自动大总结] 执行失败:', err);
+                                        })
+                                        .finally(() => {
+                                            window.Gaigai.isBigSummaryRunning = false;
+                                            window.Gaigai.pendingBigSummaryEnd = 0;
+                                        });
+                                }
                             }
                         }
                     }
@@ -15066,6 +15084,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
                         <li><strong>修复预设兼容：</strong>修复预设的兼容性，确保在不同预设的环境下都能正常注入插件内容</li>
                         <li><strong>修复向量化兼容：</strong>修复向量化在不同预设下的兼容性</li>
+                        <li><strong>修复自动大总结触发：</strong>新增防重入与区间已存在时的指针推进，避免大总结在同一区间重复触发</li>
                     </ul>
                 </div>
 
