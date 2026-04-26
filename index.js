@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.3.4
+// 记忆表格 v2.3.5
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.3.4 启动');
+    console.log('🚀 记忆表格 v2.3.5 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.3.4';
+    const V = 'v2.3.5';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -10756,15 +10756,30 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             // ✅ 同步表格结构预设
             if (serverData.tablePresets) {
                 let syncedPresets = serverData.tablePresets;
+                const defaultTablePresetName = 'yuzuki-方案三-表格结构';
+                const legacyDefaultTablePresetName = '默认结构';
 
-                // 🛡️ 安全检查：确保至少有"默认结构"预设
-                if (!syncedPresets['默认结构'] && window.Gaigai.DEFAULT_TABLES) {
+                // 兼容旧键名：若云端仍是旧键，迁移到新键名
+                if (!syncedPresets[defaultTablePresetName] && syncedPresets[legacyDefaultTablePresetName]) {
+                    syncedPresets[defaultTablePresetName] = syncedPresets[legacyDefaultTablePresetName];
+                }
+                if (syncedPresets[legacyDefaultTablePresetName]) {
+                    delete syncedPresets[legacyDefaultTablePresetName];
+                }
+
+                // 🛡️ 安全检查：确保至少有默认结构预设（新命名）
+                if (!syncedPresets[defaultTablePresetName] && window.Gaigai.DEFAULT_TABLES) {
                     console.log('⚠️ [配置同步] 云端数据缺少默认预设，正在补充...');
-                    syncedPresets['默认结构'] = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+                    syncedPresets[defaultTablePresetName] = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
                 }
 
                 localStorage.setItem('gg_table_presets', JSON.stringify(syncedPresets));
                 console.log('✅ [配置同步] 表格结构预设已恢复');
+            }
+
+            // ✅ 同步后统一执行一次 PromptManager 迁移，补齐四套内置默认方案
+            if (window.Gaigai.PromptManager && typeof window.Gaigai.PromptManager.initProfiles === 'function') {
+                window.Gaigai.PromptManager.initProfiles();
             }
 
             // 写入本地缓存
@@ -10826,17 +10841,32 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             delete cleanedApiConfig.lastBackfillIndex;
             const currentLibrary = {}; // 向量库已独立存储，此处设空
 
+            // ✅ 上传前先补齐默认方案，避免云端缺失四套内置预设
+            if (window.Gaigai.PromptManager && typeof window.Gaigai.PromptManager.initProfiles === 'function') {
+                window.Gaigai.PromptManager.initProfiles();
+            }
+
             // ✅ 读取表格结构预设
             let tablePresets = {};
             try {
                 const tp = localStorage.getItem('gg_table_presets');
                 if (tp) tablePresets = JSON.parse(tp);
             } catch (e) { }
+            const defaultTablePresetName = 'yuzuki-方案三-表格结构';
+            const legacyDefaultTablePresetName = '默认结构';
 
-            // 🛡️ 安全检查：确保至少有"默认结构"预设再上传
-            if (!tablePresets['默认结构'] && window.Gaigai.DEFAULT_TABLES) {
+            // 兼容旧键名：优先写入新键，避免后续再被补旧键
+            if (!tablePresets[defaultTablePresetName] && tablePresets[legacyDefaultTablePresetName]) {
+                tablePresets[defaultTablePresetName] = tablePresets[legacyDefaultTablePresetName];
+            }
+            if (tablePresets[legacyDefaultTablePresetName]) {
+                delete tablePresets[legacyDefaultTablePresetName];
+            }
+
+            // 🛡️ 安全检查：确保至少有默认结构预设（新命名）再上传
+            if (!tablePresets[defaultTablePresetName] && window.Gaigai.DEFAULT_TABLES) {
                 console.log('⚠️ [配置上传] 本地缺少默认预设，正在补充...');
-                tablePresets['默认结构'] = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
+                tablePresets[defaultTablePresetName] = JSON.parse(JSON.stringify(window.Gaigai.DEFAULT_TABLES));
                 // 同时写回本地，避免下次再触发
                 try {
                     localStorage.setItem('gg_table_presets', JSON.stringify(tablePresets));
@@ -14805,17 +14835,20 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 console.log('✅ [Loader] debug_manager.js 加载成功 (优先加载)');
 
                 // 🚀 [优先级2] 调试模块就绪后，开始加载业务模块
-                // 动态加载 prompt_manager.js
+                // 动态加载内置方案数据包（可选）+ prompt_manager.js
+                const promptBundleUrl = `${EXTENSION_PATH}/builtin_preset_bundle.js`;
                 const promptManagerUrl = `${EXTENSION_PATH}/prompt_manager.js`;
-                $.getScript(promptManagerUrl)
-                    .done(function () {
-                        console.log('✅ [Loader] prompt_manager.js 加载成功');
 
-                        // 🆕 加载 io_manager.js
-                        const ioManagerUrl = `${EXTENSION_PATH}/io_manager.js`;
-                        $.getScript(ioManagerUrl)
-                            .done(function () {
-                                console.log('✅ [Loader] io_manager.js 加载成功');
+                const loadPromptManager = function () {
+                    $.getScript(promptManagerUrl)
+                        .done(function () {
+                            console.log('✅ [Loader] prompt_manager.js 加载成功');
+
+                            // 🆕 加载 io_manager.js
+                            const ioManagerUrl = `${EXTENSION_PATH}/io_manager.js`;
+                            $.getScript(ioManagerUrl)
+                                .done(function () {
+                                    console.log('✅ [Loader] io_manager.js 加载成功');
 
                                 // 🆕 加载 backfill_manager.js
                                 const backfillManagerUrl = `${EXTENSION_PATH}/backfill_manager.js`;
@@ -14929,16 +14962,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 console.error(`💡 提示：请检查文件是否存在，或控制台 Network 面板查看具体错误`);
                                 // 即使加载失败，也继续初始化（降级模式）
                                 setTimeout(tryInit, 500);
-                            });
+                                });
+                        })
+                        .fail(function (jqxhr, settings, exception) {
+                            console.error('❌ [Loader] prompt_manager.js 加载失败！请检查文件夹名称是否为 ST-Memory-Context');
+                            console.error(`📍 尝试加载的 URL: ${promptManagerUrl}`);
+                            console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
+                            console.error(`📍 错误详情:`, exception);
+                            console.error(`💡 提示：请检查 EXTENSION_PATH 是否正确，当前值为: ${EXTENSION_PATH}`);
+                            // 即使加载失败，也继续初始化（降级模式）
+                            setTimeout(tryInit, 500);
+                        });
+                };
+
+                $.getScript(promptBundleUrl)
+                    .done(function () {
+                        console.log('✅ [Loader] builtin_preset_bundle.js 加载成功');
+                        loadPromptManager();
                     })
-                    .fail(function (jqxhr, settings, exception) {
-                        console.error('❌ [Loader] prompt_manager.js 加载失败！请检查文件夹名称是否为 ST-Memory-Context');
-                        console.error(`📍 尝试加载的 URL: ${promptManagerUrl}`);
-                        console.error(`📍 HTTP 状态码: ${jqxhr.status}`);
-                        console.error(`📍 错误详情:`, exception);
-                        console.error(`💡 提示：请检查 EXTENSION_PATH 是否正确，当前值为: ${EXTENSION_PATH}`);
-                        // 即使加载失败，也继续初始化（降级模式）
-                        setTimeout(tryInit, 500);
+                    .fail(function () {
+                        console.warn('⚠️ [Loader] builtin_preset_bundle.js 加载失败，回退到 prompt_manager 内置默认常量');
+                        loadPromptManager();
                     });
             })
             .fail(function (jqxhr, settings, exception) {
@@ -14949,15 +14993,28 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 console.error(`💡 提示：调试模块加载失败，将无法捕获后续错误日志`);
 
                 // 即使调试模块失败，也尝试加载业务模块（降级模式）
+                const promptBundleUrl = `${EXTENSION_PATH}/builtin_preset_bundle.js`;
                 const promptManagerUrl = `${EXTENSION_PATH}/prompt_manager.js`;
-                $.getScript(promptManagerUrl)
+                const loadPromptManagerFallback = function () {
+                    $.getScript(promptManagerUrl)
+                        .done(function () {
+                            console.log('✅ [Loader] prompt_manager.js 加载成功 (降级模式)');
+                            // 继续加载其他模块...
+                            setTimeout(tryInit, 500);
+                        })
+                        .fail(function () {
+                            console.error('❌ [Loader] 严重错误：核心模块加载失败，插件无法启动');
+                        });
+                };
+
+                $.getScript(promptBundleUrl)
                     .done(function () {
-                        console.log('✅ [Loader] prompt_manager.js 加载成功 (降级模式)');
-                        // 继续加载其他模块...
-                        setTimeout(tryInit, 500);
+                        console.log('✅ [Loader] builtin_preset_bundle.js 加载成功 (降级模式)');
+                        loadPromptManagerFallback();
                     })
                     .fail(function () {
-                        console.error('❌ [Loader] 严重错误：核心模块加载失败，插件无法启动');
+                        console.warn('⚠️ [Loader] builtin_preset_bundle.js 加载失败 (降级模式)，回退到内置常量');
+                        loadPromptManagerFallback();
                     });
             });
     }
@@ -15086,9 +15143,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>修复预设兼容：</strong>修复预设的兼容性，确保在不同预设的环境下都能正常注入插件内容</li>
-                        <li><strong>修复向量化兼容：</strong>修复向量化在不同预设下的兼容性</li>
-                        <li><strong>修复自动大总结触发：</strong>新增防重入与区间已存在时的指针推进，避免大总结在同一区间重复触发</li>
+                        <li><strong>新增默认提示词方案：</strong>增加并内置四套提示词+表格结构方案，支持默认方案联动切换与同步恢复</li>
                     </ul>
                 </div>
 
