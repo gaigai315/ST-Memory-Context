@@ -12924,7 +12924,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                                     C.autoSummarySilent,
                                                     false,
                                                     false,
-                                                    C.autoSummaryTargetTables  // 🆕 传入配置的表格范围
+                                                    C.autoSummaryTargetTables,  // 🆕 传入配置的表格范围
+                                                    false,
+                                                    true
                                                 );
                                             }
                                         } else {
@@ -12940,7 +12942,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         C.autoSummarySilent,
                                         false,
                                         false,
-                                        C.autoSummaryTargetTables  // 🆕 传入配置的表格范围
+                                        C.autoSummaryTargetTables,  // 🆕 传入配置的表格范围
+                                        false,
+                                        true
                                     );
                                 }
                             }

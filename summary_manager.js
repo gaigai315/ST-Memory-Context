@@ -1256,8 +1256,9 @@
          * @param {boolean} isBatch - 是否批量模式
          * @param {boolean} skipSave - 是否跳过保存
          * @param {Array<number>} targetTableIndices - 🆕 指定要总结的表格索引数组（仅表格模式有效，为空则默认所有表）
+         * @param {boolean} useRawRange - 聊天模式下是否把 forceStart/forceEnd 按原始消息索引解释（自动流程用）
          */
-        async callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false, skipSave = false, targetTableIndices = null, skipWorldInfoSync = false) {
+        async callAIForSummary(forceStart = null, forceEnd = null, forcedMode = null, isSilent = false, isBatch = false, skipSave = false, targetTableIndices = null, skipWorldInfoSync = false, useRawRange = false) {
             // 使用 window.Gaigai.loadConfig 确保配置最新
             const loadConfig = window.Gaigai.loadConfig || (() => Promise.resolve());
             await loadConfig();
@@ -1281,7 +1282,7 @@
                 if (!tableContentRaw) {
                     if (!isSilent) {
                         if (await window.Gaigai.customConfirm('⚠️ 当前表格没有【未总结】的新内容。\n（所有行可能都已标记为绿色/已归档）\n\n是否转为"总结聊天历史"？', '无新内容')) {
-                            return this.callAIForSummary(forceStart, forceEnd, 'chat', isSilent);
+                            return this.callAIForSummary(forceStart, forceEnd, 'chat', isSilent, isBatch, skipSave, targetTableIndices, skipWorldInfoSync, useRawRange);
                         }
                     } else {
                         console.log('🛑 [自动总结] 表格内容为空（或全已归档），跳过。');
@@ -1350,30 +1351,46 @@
                     return { success: false, error: '聊天记录为空' };
                 }
 
-                // ✅ 修复：手动输入的楼层数应该只计算对话消息（不含 System）
+                // 支持两种口径：
+                // 1) 手动模式：按对话楼层（排除 system/插件注入）
+                // 2) 自动模式：按原始消息索引（useRawRange=true）
                 if (forceEnd !== null) {
-                    const targetDialogueCount = parseInt(forceEnd);
-                    let dialogueCount = 0;
-                    endIndex = ctx.chat.length; // 默认到末尾
+                    const parsedEnd = parseInt(forceEnd);
 
-                    // 遍历找到第 N 条对话消息的实际索引
-                    for (let i = 0; i < ctx.chat.length; i++) {
-                        const msg = ctx.chat[i];
-                        // 跳过 System 消息
-                        if (msg.role === 'system' || msg.isGaigaiPrompt || msg.isGaigaiData) continue;
-
-                        dialogueCount++;
-                        if (dialogueCount === targetDialogueCount) {
-                            endIndex = i + 1; // +1 因为 slice 是右开区间
-                            break;
+                    if (useRawRange) {
+                        if (!isNaN(parsedEnd)) {
+                            endIndex = Math.max(0, Math.min(parsedEnd, ctx.chat.length));
+                        } else {
+                            endIndex = ctx.chat.length;
                         }
+                        console.log(`📍 [楼层映射-RAW] end=${parsedEnd} → 实际索引 ${Math.max(0, endIndex - 1)}（slice 到 ${endIndex}）`);
+                    } else {
+                        const targetDialogueCount = parsedEnd;
+                        let dialogueCount = 0;
+                        endIndex = ctx.chat.length; // 默认到末尾
+
+                        // 遍历找到第 N 条对话消息的实际索引
+                        for (let i = 0; i < ctx.chat.length; i++) {
+                            const msg = ctx.chat[i];
+                            // 跳过 System 消息
+                            if (msg.role === 'system' || msg.isGaigaiPrompt || msg.isGaigaiData) continue;
+
+                            dialogueCount++;
+                            if (dialogueCount === targetDialogueCount) {
+                                endIndex = i + 1; // +1 因为 slice 是右开区间
+                                break;
+                            }
+                        }
+                        console.log(`📍 [楼层映射] 用户输入第 ${targetDialogueCount} 楼 → 实际索引 ${endIndex - 1}（slice 到 ${endIndex}）`);
                     }
-                    console.log(`📍 [楼层映射] 用户输入第 ${targetDialogueCount} 楼 → 实际索引 ${endIndex - 1}（slice 到 ${endIndex}）`);
                 } else {
                     endIndex = ctx.chat.length;
                 }
 
                 startIndex = (forceStart !== null) ? parseInt(forceStart) : (API_CONFIG.lastSummaryIndex || 0);
+                if (useRawRange && !isNaN(startIndex)) {
+                    startIndex = Math.max(0, Math.min(startIndex, ctx.chat.length));
+                }
                 if (startIndex < 0) startIndex = 0;
                 if (startIndex >= endIndex) {
                     if (!isSilent) await window.Gaigai.customAlert(`范围无效`, '提示');
@@ -1569,7 +1586,7 @@
 
                 const shouldRetry = await customRetryAlert(e.message, '⚠️ 请求错误');
                 if (shouldRetry) {
-                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
+                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices, skipWorldInfoSync, useRawRange);
                 } else {
                     return { success: false, error: e.message };
                 }
@@ -1607,7 +1624,7 @@
                         window.isSummarizing = false; // ✅ 弹窗前先解锁,避免阻塞
                         const shouldRetry = await window.Gaigai.customRetryAlert("总结内容过短或为空，AI 可能没看懂指令。", "⚠️ 内容无效");
                         if (shouldRetry) {
-                            return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
+                            return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices, skipWorldInfoSync, useRawRange);
                         }
                     } else {
                         window.isSummarizing = false; // ✅ 静默模式也要解锁
@@ -1713,7 +1730,7 @@
                 }
 
                 // ✨ 如果是表格模式且用户未勾选静默，会执行到这里，弹出预览窗口
-                const regenParams = { forceStart, forceEnd, forcedMode, isSilent, targetTableIndices };
+                const regenParams = { forceStart, forceEnd, forcedMode, isSilent, targetTableIndices, useRawRange };
                 const res = await this.showSummaryPreview(cleanSummary, filteredTables, isTableMode, endIndex, regenParams, currentRangeStr, isBatch);
                 return res;
 
@@ -1748,7 +1765,7 @@
 
                 if (shouldRetry) {
                     // 用户点击"重试"，递归调用
-                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices);
+                    return this.callAIForSummary(forceStart, forceEnd, forcedMode, isSilent, isBatch, skipSave, targetTableIndices, skipWorldInfoSync, useRawRange);
                 } else {
                     // 用户点击"放弃"，停止递归
                     return { success: false, error: errorText };
@@ -1854,7 +1871,9 @@
                                     true,  // isSilent
                                     false, // isBatch
                                     true,  // skipSave
-                                    regenParams.targetTableIndices  // 🆕 传递表格索引
+                                    regenParams.targetTableIndices,  // 🆕 传递表格索引
+                                    false,
+                                    regenParams.useRawRange === true
                                 );
 
                                 if (res && res.success && res.summary && res.summary.trim()) {
@@ -1883,7 +1902,9 @@
                                         false,
                                         false,
                                         false,
-                                        regenParams.targetTableIndices  // 🆕 传递表格索引
+                                        regenParams.targetTableIndices,  // 🆕 传递表格索引
+                                        false,
+                                        regenParams.useRawRange === true
                                     );
                                     return;
                                 }
@@ -2217,7 +2238,7 @@
                 window.isSummarizing = true;
 
                 // 1. 触发 AI 总结
-                const result = await this.callAIForSummary(start, end, null, true, false, true, null, true);
+                const result = await this.callAIForSummary(start, end, null, true, false, true, null, true, true);
 
                 if (!result || !result.success || !result.summary) {
                     console.warn('❌ [大总结] AI 总结失败');
