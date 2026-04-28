@@ -15228,10 +15228,81 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
             $('#gg_btn_copy_config').on('click', function() {
+                const ctx = m.ctx();
+                const currentFloorCount = (ctx && Array.isArray(ctx.chat)) ? ctx.chat.length : 0;
+                const summaryPointer = API_CONFIG.lastSummaryIndex || 0;
+                const backfillPointer = API_CONFIG.lastBackfillIndex || 0;
+                const summaryProgress = Math.min(summaryPointer, currentFloorCount);
+                const backfillProgress = Math.min(backfillPointer, currentFloorCount);
+                const providerKey = String(API_CONFIG.provider || '');
+                const providerNameMap = {
+                    proxy_only: 'OpenAI 兼容模式/反代(如build)',
+                    openai: 'OpenAI 官方',
+                    compatible: '兼容中转/代理',
+                    local: '本地/内网（本地反代）',
+                    claude: 'Claude 官方',
+                    deepseek: 'DeepSeek 官方',
+                    siliconflow: '硅基流动 (SiliconFlow)',
+                    gemini: 'Google Gemini 官方'
+                };
+                const providerDisplayName = providerNameMap[providerKey] || providerKey || '未设置';
+                const promptManager = window.Gaigai && window.Gaigai.PromptManager ? window.Gaigai.PromptManager : null;
+                let currentPromptProfileName = '未知';
+                let currentTablePresetName = '未知';
+
+                if (promptManager) {
+                    try {
+                        const profilesData = promptManager.getProfilesData ? promptManager.getProfilesData() : null;
+                        if (profilesData && profilesData.profiles) {
+                            const charName = promptManager.getCurrentCharacterName ? promptManager.getCurrentCharacterName() : '';
+                            let targetProfileId = profilesData.currentProfileId || 'default';
+                            if (charName && profilesData.charBindings && profilesData.charBindings[charName]) {
+                                targetProfileId = profilesData.charBindings[charName];
+                            }
+                            const targetProfile = profilesData.profiles[targetProfileId] || profilesData.profiles.default;
+                            if (targetProfile && targetProfile.name) {
+                                currentPromptProfileName = targetProfile.name;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ [配置复制] 获取提示词方案名失败:', e);
+                    }
+
+                    try {
+                        const tablePresets = promptManager.getTablePresets ? promptManager.getTablePresets() : {};
+                        const currentTableStructure = m.all().map(s => ({ n: s.n, c: s.c }));
+                        const currentStructureJson = JSON.stringify(currentTableStructure);
+                        let matchedPresetName = '';
+                        if (tablePresets && typeof tablePresets === 'object') {
+                            for (const [presetName, presetStructure] of Object.entries(tablePresets)) {
+                                if (JSON.stringify(presetStructure) === currentStructureJson) {
+                                    matchedPresetName = presetName;
+                                    break;
+                                }
+                            }
+                        }
+                        currentTablePresetName = matchedPresetName || '自定义/未保存';
+                    } catch (e) {
+                        console.warn('⚠️ [配置复制] 获取表格结构方案名失败:', e);
+                    }
+                }
                 const configText = `
 === 记忆表格 (Memory Context) 运行配置 ===
 版本: v${cleanVer}
-API模式: ${API_CONFIG.useIndependentAPI ? '独立API (' + API_CONFIG.provider + ')' : '酒馆API'}
+API模式: ${API_CONFIG.useIndependentAPI ? '独立API (' + providerDisplayName + ')' : '酒馆API'}
+独立API供应商: ${API_CONFIG.useIndependentAPI ? providerDisplayName : 'N/A'}
+流式模式: ${API_CONFIG.useIndependentAPI ? (API_CONFIG.useStream !== false ? '流式' : '非流式') : 'N/A'}
+使用模型: ${API_CONFIG.useIndependentAPI ? (API_CONFIG.model || '未设置') : 'N/A'}
+最大输出: ${API_CONFIG.useIndependentAPI ? ((API_CONFIG.maxTokens || 8192) + ' tokens') : 'N/A'}
+
+【进度状态】
+当前楼层数: ${currentFloorCount}
+总结指针: ${summaryPointer}
+填表指针: ${backfillPointer}
+总结进度: ${summaryProgress}/${currentFloorCount}
+填表进度: ${backfillProgress}/${currentFloorCount}
+提示词方案: ${currentPromptProfileName}
+表格结构方案: ${currentTablePresetName}
 
 【填表设置】
 实时填表: ${C.enabled ? '开启' : '关闭'}
