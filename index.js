@@ -50,6 +50,7 @@
         filterTagActivePresetId: '', // 当前激活的标签预设ID
         contextLimit: true,     // ✅ 默认开启隐藏楼层
         contextLimitCount: 30,  // ✅ 隐藏30楼
+        autoSummaryHideContext: false,
         autoCalculateParams: true, // ✨ 默认开启智能计算联动
         tableInj: true,
         tablePos: 'system',
@@ -1358,6 +1359,7 @@
                     masterSwitch: C.masterSwitch,
                     contextLimit: C.contextLimit,
                     contextLimitCount: C.contextLimitCount,
+                    autoSummaryHideContext: C.autoSummaryHideContext,
                     filterTags: C.filterTags,
                     filterTagsWhite: C.filterTagsWhite,
                     filterTagPresets: C.filterTagPresets,
@@ -1685,6 +1687,7 @@
                 C.autoBigSummaryFloorManual = globalConfig.autoBigSummaryFloorManual !== undefined ? globalConfig.autoBigSummaryFloorManual : false;
                 C.contextLimit = globalConfig.contextLimit !== undefined ? globalConfig.contextLimit : true;
                 C.contextLimitCount = globalConfig.contextLimitCount !== undefined ? globalConfig.contextLimitCount : 30;
+                C.autoSummaryHideContext = globalConfig.autoSummaryHideContext !== undefined ? globalConfig.autoSummaryHideContext : false;
                 C.filterTags = globalConfig.filterTags !== undefined ? globalConfig.filterTags : '';
                 C.filterTagsWhite = globalConfig.filterTagsWhite !== undefined ? globalConfig.filterTagsWhite : '';
                 C.filterTagPresets = Array.isArray(globalConfig.filterTagPresets) ? globalConfig.filterTagPresets : [];
@@ -15127,8 +15130,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     当前版本: v${cleanVer}
                     <span style="margin: 0 8px; opacity: 0.5;">|</span>
                     <a href="https://pcnsnlcapni4.feishu.cn/wiki/AfPuwMlCSieXbckthFUc5bQYnMe" target="_blank" style="text-decoration:none; color:var(--g-tc); border-bottom:1px dashed var(--g-tc);">
-                       📖 详细使用说明书
+                        详细使用说明书
                     </a>
+                    <span style="margin: 0 8px; opacity: 0.5;">|</span>
+                    <span id="gg_btn_copy_config" style="cursor:pointer; color:var(--g-tc); border-bottom:1px dashed var(--g-tc); transition:opacity 0.2s;" onmouseover="this.style.opacity=0.7" onmouseout="this.style.opacity=1" title="一键复制核心配置信息，方便向作者反馈问题">
+                        复制当前配置
+                    </span>
                 </div>
                 <div id="update-status" style="background:rgba(0,0,0,0.05); padding:6px; border-radius:4px; font-size:11px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--g-tc);">
                     ⏳ 正在连接 GitHub 检查更新...
@@ -15218,6 +15225,60 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     localStorage.setItem('gg_notice_ver', V);
                 } else {
                     localStorage.removeItem('gg_notice_ver');
+                }
+            });
+            $('#gg_btn_copy_config').on('click', function() {
+                const configText = `
+=== 记忆表格 (Memory Context) 运行配置 ===
+版本: v${cleanVer}
+API模式: ${API_CONFIG.useIndependentAPI ? '独立API (' + API_CONFIG.provider + ')' : '酒馆API'}
+
+【填表设置】
+实时填表: ${C.enabled ? '开启' : '关闭'}
+批量填表: ${C.autoBackfill ? '开启 (每' + C.autoBackfillFloor + '层触发)' : '关闭'}
+注入表格: ${C.tableInj ? '开启' : '关闭'}
+隐藏楼层: ${C.contextLimit ? '开启 (留' + C.contextLimitCount + '层)' : '关闭'}
+
+【总结设置】
+自动总结: ${C.autoSummary ? '开启 (每' + C.autoSummaryFloor + '层触发)' : '关闭'}
+总结来源: ${API_CONFIG.summarySource === 'table' ? '仅表格' : '聊天历史'}
+大总结: ${C.autoBigSummary ? '开启 (每' + C.autoBigSummaryFloor + '层触发)' : '关闭'}
+总结后隐藏: ${C.autoSummaryHideContext ? '开启' : '关闭'}
+
+【标签过滤】
+黑名单(去除): ${C.filterTags ? C.filterTags : '未设置'}
+白名单(仅留): ${C.filterTagsWhite ? C.filterTagsWhite : '未设置'}
+
+【外部联动】
+世界书同步: ${C.syncWorldInfo ? '开启' : '关闭'}
+独立向量化: ${C.vectorEnabled ? '开启' : '关闭'} (总结后自动: ${C.autoVectorizeSummary ? '开启' : '关闭'})
+====================================
+`.trim();
+
+                const fallbackCopyTextToClipboard = (text) => {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        if (typeof toastr !== 'undefined') toastr.success('✅ 核心配置信息已复制到剪贴板，可直接粘贴给作者。');
+                        else alert('✅ 核心配置信息已复制到剪贴板');
+                    } catch (err) {
+                        alert('❌ 复制失败，请重试');
+                    }
+                    document.body.removeChild(textArea);
+                };
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(configText).then(() => {
+                        if (typeof toastr !== 'undefined') toastr.success('✅ 核心配置信息已复制到剪贴板，可直接粘贴给作者。');
+                        else alert('✅ 核心配置信息已复制到剪贴板');
+                    }).catch(() => fallbackCopyTextToClipboard(configText));
+                } else {
+                    fallbackCopyTextToClipboard(configText);
                 }
             });
             checkForUpdates(cleanVer);
