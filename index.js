@@ -15249,15 +15249,34 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 const promptManager = window.Gaigai && window.Gaigai.PromptManager ? window.Gaigai.PromptManager : null;
                 let currentPromptProfileName = '未知';
                 let currentTablePresetName = '未知';
+                let activePromptProfileId = '';
+
+                try {
+                    let cfg = null;
+                    const rawCfg = localStorage.getItem('gg_config');
+                    if (rawCfg) cfg = JSON.parse(rawCfg);
+                    if (!cfg && window.Gaigai && window.Gaigai.config_obj) cfg = window.Gaigai.config_obj;
+                    if (cfg && typeof cfg === 'object') {
+                        activePromptProfileId = String(cfg.activePromptProfileId || '').trim();
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [配置复制] 读取 active 状态失败:', e);
+                }
+
+                currentTablePresetName = (window.Gaigai && window.Gaigai.config_obj && window.Gaigai.config_obj.activeTablePresetName)
+                    ? window.Gaigai.config_obj.activeTablePresetName
+                    : '未保存/自定义';
 
                 if (promptManager) {
                     try {
                         const profilesData = promptManager.getProfilesData ? promptManager.getProfilesData() : null;
                         if (profilesData && profilesData.profiles) {
-                            const charName = promptManager.getCurrentCharacterName ? promptManager.getCurrentCharacterName() : '';
-                            let targetProfileId = profilesData.currentProfileId || 'default';
-                            if (charName && profilesData.charBindings && profilesData.charBindings[charName]) {
-                                targetProfileId = profilesData.charBindings[charName];
+                            let targetProfileId = activePromptProfileId || profilesData.currentProfileId || 'default';
+                            if (!profilesData.profiles[targetProfileId]) {
+                                const charName = promptManager.getCurrentCharacterName ? promptManager.getCurrentCharacterName() : '';
+                                if (charName && profilesData.charBindings && profilesData.charBindings[charName]) {
+                                    targetProfileId = profilesData.charBindings[charName];
+                                }
                             }
                             const targetProfile = profilesData.profiles[targetProfileId] || profilesData.profiles.default;
                             if (targetProfile && targetProfile.name) {
@@ -15268,23 +15287,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         console.warn('⚠️ [配置复制] 获取提示词方案名失败:', e);
                     }
 
-                    try {
-                        const tablePresets = promptManager.getTablePresets ? promptManager.getTablePresets() : {};
-                        const currentTableStructure = m.all().map(s => ({ n: s.n, c: s.c }));
-                        const currentStructureJson = JSON.stringify(currentTableStructure);
-                        let matchedPresetName = '';
-                        if (tablePresets && typeof tablePresets === 'object') {
-                            for (const [presetName, presetStructure] of Object.entries(tablePresets)) {
-                                if (JSON.stringify(presetStructure) === currentStructureJson) {
-                                    matchedPresetName = presetName;
-                                    break;
-                                }
-                            }
-                        }
-                        currentTablePresetName = matchedPresetName || '自定义/未保存';
-                    } catch (e) {
-                        console.warn('⚠️ [配置复制] 获取表格结构方案名失败:', e);
-                    }
                 }
                 const configText = `
 === 记忆表格 (Memory Context) 运行配置 ===
