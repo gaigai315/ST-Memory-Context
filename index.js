@@ -12848,7 +12848,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // 计算目标结束点 (Target End Floor)
                             // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
                             // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
-                            const targetEndIndex = (C.autoBackfillDelay === true) ? (lastBfIndex + bfInterval) : currentCount;
+                            const targetEndIndex = Math.min(lastBfIndex + bfInterval, currentCount); // 强制严格按设定的步长切分，解决多1层问题
 
                             console.log(`⚡ [Auto Backfill] 触发! 填表范围: ${lastBfIndex}-${targetEndIndex}`);
 
@@ -12919,7 +12919,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // 计算目标结束点 (Target End Floor)
                             // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
                             // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
-                            const targetEndIndex = C.autoSummaryDelay ? (lastIndex + sumInterval) : currentCount;
+                            const targetEndIndex = Math.min(lastIndex + sumInterval, currentCount); // 强制严格按设定的步长切分，解决多1层问题
 
                             if (hasBackfilledThisTurn) {
                                 console.log(`🚦 [防撞车] 总结任务顺延。`);
@@ -13005,7 +13005,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 return;
                             }
 
-                            const targetEndIndex = C.autoBigSummaryDelay ? (lastBigIndex + bigInterval) : currentCount;
+                            const targetEndIndex = Math.min(lastBigIndex + bigInterval, currentCount); // 强制严格按设定的步长切分，解决多1层问题
                             console.log(`📚 [Auto Big Summary] 触发! 当前:${currentCount}, 上次:${lastBigIndex}, 间隔:${bigInterval}, 延迟:${bigDelay}, 阈值:${bigThreshold}, 目标:${targetEndIndex}`);
 
                             if (window.Gaigai.SummaryManager && typeof window.Gaigai.SummaryManager.runBigSummary === 'function') {
