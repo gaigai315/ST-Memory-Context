@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.3.5
+// 记忆表格 v2.3.7
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.3.5 启动');
+    console.log('🚀 记忆表格 v2.3.7 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.3.5';
+    const V = 'v2.3.7';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -15134,7 +15134,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>新增默认提示词方案：</strong>增加并内置四套提示词+表格结构方案，支持默认方案联动切换与同步恢复</li>
+                        <li><strong>优化提示词：</strong>更新破甲与聊天总结默认提示词，并确保四套内置方案同步使用最新共享内容。</li>
+                        <li><strong>优化总结功能：</strong>聊天总结规则移动到聊天历史之后，末尾使用独立指令触发总结，并为 Gemini 增加总结正文预填以减少前置说明。</li>
                     </ul>
                 </div>
 
