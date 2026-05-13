@@ -1428,13 +1428,7 @@
                     content: window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('nsfwPrompt'), ctx)
                 });
 
-                // 2. System Prompt (总结提示词主体 - 规则、格式等)
-                messages.push({
-                    role: 'system',
-                    content: targetPrompt
-                });
-
-                // 3. 背景资料（仅包含角色名和用户名）
+                // 2. 背景资料（仅包含角色名和用户名）
                 const contextText = `【背景资料】\n角色: ${charName}\n用户: ${userName}`;
                 messages.push({ role: 'system', content: contextText });
 
@@ -1508,16 +1502,15 @@
                     return { success: false, error: '范围内无有效内容' };
                 }
 
-                // 4. 执行指令（对话历史结束标记）
+                // 7. 总结规则：保持 system 角色，只从聊天历史前方移动到后方
+                messages.push({
+                    role: 'system',
+                    content: targetPrompt
+                });
+
+                // 8. 执行指令：最后用独立 user 消息收口，触发立即总结
                 const endMarker = window.Gaigai.PromptManager.CHAT_HISTORY_END_MARKER;
-                const lastMsg = messages[messages.length - 1];
-                if (lastMsg && lastMsg.role === 'user') {
-                    // 如果最后一条是 user，直接追加
-                    lastMsg.content += '\n\n' + endMarker;
-                } else {
-                    // 如果最后一条是 assistant，单独发一条 user 消息
-                    messages.push({ role: 'user', content: endMarker });
-                }
+                messages.push({ role: 'user', content: endMarker });
 
                 logMsg = `📝 聊天总结: ${startIndex}-${endIndex} (消息数:${messages.length})`;
 
