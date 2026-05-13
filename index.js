@@ -9951,7 +9951,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (!$hint.length) return;
                 const active = API_CONFIG.profiles.find(p => p.id === API_CONFIG.activeProfileId);
                 if (active) {
-                    $hint.text(`当前使用预设：${active.name}`).css('opacity', '0.92');
+                    const current = readCurrentApiUi();
+                    const isModified = !isSameApiProfile(active, current);
+                    $hint.text(isModified ? `当前编辑预设：${active.name}（有未保存修改）` : `当前使用预设：${active.name}`).css('opacity', '0.92');
                 } else {
                     $hint.text('当前使用：自定义（未绑定预设）').css('opacity', '0.75');
                 }
@@ -9961,8 +9963,13 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (isApplyingApiProfileSelection) return;
                 const current = readCurrentApiUi();
                 const matched = findMatchingProfile(current);
-                API_CONFIG.activeProfileId = matched ? matched.id : '';
-                $('#gg_api_profile_select').val(API_CONFIG.activeProfileId || '');
+                const selectedId = String($('#gg_api_profile_select').val() || '');
+                if (selectedId && API_CONFIG.profiles.some(p => p.id === selectedId)) {
+                    API_CONFIG.activeProfileId = selectedId;
+                } else {
+                    API_CONFIG.activeProfileId = matched ? matched.id : '';
+                    $('#gg_api_profile_select').val(API_CONFIG.activeProfileId || '');
+                }
                 updateApiProfileHint();
             };
 
@@ -10009,7 +10016,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 }
             });
 
-            // 字段改动时自动识别是否仍然匹配某个预设
+            // 字段改动时保留当前选中的预设；未选择时才自动识别完全匹配的预设
             $('#gg_api_provider, #gg_api_url, #gg_api_key, #gg_api_model')
                 .off('input.apiPreset change.apiPreset')
                 .on('input.apiPreset change.apiPreset', function () {
@@ -10492,15 +10499,27 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 API_CONFIG.temperature = normalizeApiTemperature(API_CONFIG.temperature);
                 API_CONFIG.enableAI = true;
 
-                // 同步“当前激活预设”状态：完全匹配某个预设则标记为该预设，否则标记为自定义
-                const matchedProfile = findMatchingProfile({
+                const currentProfileData = {
                     provider: API_CONFIG.provider,
                     url: API_CONFIG.apiUrl,
                     key: API_CONFIG.apiKey,
                     model: API_CONFIG.model
-                });
-                API_CONFIG.activeProfileId = matchedProfile ? matchedProfile.id : '';
+                };
+                const selectedProfileId = String($('#gg_api_profile_select').val() || API_CONFIG.activeProfileId || '');
+                const selectedProfile = API_CONFIG.profiles.find(p => p.id === selectedProfileId);
+                if (selectedProfile) {
+                    selectedProfile.provider = currentProfileData.provider;
+                    selectedProfile.url = currentProfileData.url;
+                    selectedProfile.key = currentProfileData.key;
+                    selectedProfile.model = currentProfileData.model;
+                    API_CONFIG.activeProfileId = selectedProfile.id;
+                } else {
+                    // 未绑定预设时，完全匹配某个预设才标记为该预设，否则保持自定义
+                    const matchedProfile = findMatchingProfile(currentProfileData);
+                    API_CONFIG.activeProfileId = matchedProfile ? matchedProfile.id : '';
+                }
                 $('#gg_api_profile_select').val(API_CONFIG.activeProfileId || '');
+                renderApiProfiles();
                 updateApiProfileHint();
 
                 try { localStorage.setItem(AK, JSON.stringify(API_CONFIG)); } catch (e) { }
