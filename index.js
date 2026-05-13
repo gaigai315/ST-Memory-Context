@@ -111,7 +111,7 @@
         apiUrl: '',
         apiKey: '',
         model: 'gemini-2.5-pro',
-        temperature: 0.7,
+        temperature: 1,
         maxTokens: 65536,
         summarySource: 'table',    // ✅ 默认为表格总结（最佳实践）
         lastSummaryIndex: 0,
@@ -121,6 +121,15 @@
         profiles: [],              // ☁️ API 账号预设列表
         activeProfileId: ''        // 当前激活预设ID（用于UI显示）
     };
+
+    const DEFAULT_API_TEMPERATURE = 1;
+    function normalizeApiTemperature(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return DEFAULT_API_TEMPERATURE;
+        // 旧版本保存配置时会把温度硬写成 0.1；没有温度输入框时按默认值迁移回 1。
+        if (n === 0.1) return DEFAULT_API_TEMPERATURE;
+        return n;
+    }
 
     // ========================================================================
     // ⚠️ 提示词管理已迁移到 prompt_manager.js
@@ -7922,6 +7931,28 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             return { content, reasoning, finishReason, error: null };
         }
 
+        function cleanThinkingText(rawText, logPrefix = 'API清洗') {
+            if (!rawText) return rawText;
+
+            const original = String(rawText);
+            let cleaned = original
+                .replace(/<think>[\s\S]*?<\/think>/gi, '')
+                .replace(/^[\s\S]*?<\/think>/i, '')
+                .trim();
+
+            if (/<think>/i.test(cleaned)) {
+                console.warn(`⚠️ [${logPrefix}] 检测到未闭合 <think>，保留原文以避免误删后续内容`);
+                return cleaned || original;
+            }
+
+            return cleaned || original;
+        }
+
+        function appendTokenTruncationMarker(text, source) {
+            const marker = `[⚠️ 上游返回 finish_reason=length，已输出已接收内容；插件本次发送的 maxTokens=${maxTokens}，来源=${source}]`;
+            const base = String(text || '');
+            return base.includes('finish_reason=length') ? base : `${base}\n\n${marker}`;
+        }
 
         // ========================================
         // 🔧 Helper: Universal Streaming Reader (Fixed Version)
@@ -8023,7 +8054,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         const apiKey = API_CONFIG.apiKey.trim();  // 不做任何修改，保持原值（可能为空）
         // 如果用户没填或配置不存在，默认使用 8192 以防止报错
         const maxTokens = API_CONFIG.maxTokens || 8192;
-        const temperature = API_CONFIG.temperature || 0.5;
+        const temperature = normalizeApiTemperature(API_CONFIG.temperature);
         const provider = API_CONFIG.provider || 'openai';
 
         // ✅ URL 处理：使用统一工具函数（包含 0.0.0.0 -> 127.0.0.1 转换）
@@ -8185,7 +8216,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
                             if (isTruncated && fullText && fullText.length > 0) {
                                 console.warn('⚠️ [Gemini官方] Token截断但有内容，返回部分响应');
-                                return { success: true, summary: fullText };
+                                return { success: true, summary: appendTokenTruncationMarker(fullText, 'Gemini官方') };
                             }
 
                             // 如果有正常内容或思考内容，返回
@@ -8292,7 +8323,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
                                 if (isTruncated && fullText && fullText.length > 0) {
                                     console.warn('⚠️ [Gemini反代] Token截断但有内容，返回部分响应');
-                                    return { success: true, summary: fullText };
+                                    return { success: true, summary: appendTokenTruncationMarker(fullText, 'Gemini反代') };
                                 }
 
                                 // 如果有正常内容或思考内容，返回
@@ -8523,28 +8554,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                             // ✅ 优先返回：如果截断且有内容，直接返回（用户希望看到部分内容）
                             if (isTruncated && fullText && fullText.length > 0) {
                                 console.warn('⚠️ [后端代理] Token截断但有内容，返回部分响应');
-                                fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
-                                return { success: true, summary: fullText };
+                                return { success: true, summary: appendTokenTruncationMarker(fullText, '后端代理') };
                             }
 
                             // 清洗 <think> 标签
                             if (fullText) {
                                 const beforeClean = fullText;
-                                let cleaned = fullText
-                                    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                                    .replace(/^[\s\S]*?<\/think>/i, '')
-                                    .trim();
-
-                                cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
-
-                                if (!cleaned && beforeClean.trim().length > 0) {
-                                    console.warn('⚠️ [后端代理清洗] 清洗后内容为空，触发回退保护');
-                                    fullText = beforeClean;
-                                } else {
-                                    fullText = cleaned;
-                                    if (beforeClean.length !== cleaned.length) {
-                                        console.log(`🧹 [后端代理清洗] 已移除 <think> 标签`);
-                                    }
+                                fullText = cleanThinkingText(fullText, '后端代理清洗');
+                                if (beforeClean.length !== fullText.length) {
+                                    console.log(`🧹 [后端代理清洗] 已移除闭合 <think> 标签`);
                                 }
                             }
 
@@ -8649,28 +8667,15 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                 // ✅ 优先返回：如果截断且有内容，直接返回
                                 if (isTruncated && fullText && fullText.length > 0) {
                                     console.warn('⚠️ [降级重试] Token截断但有内容，返回部分响应');
-                                    fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
-                                    return { success: true, summary: fullText };
+                                    return { success: true, summary: appendTokenTruncationMarker(fullText, '降级重试') };
                                 }
 
                                 // 清洗 <think> 标签
                                 if (fullText) {
                                     const beforeClean = fullText;
-                                    let cleaned = fullText
-                                        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                                        .replace(/^[\s\S]*?<\/think>/i, '')
-                                        .trim();
-
-                                    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
-
-                                    if (!cleaned && beforeClean.trim().length > 0) {
-                                        console.warn('⚠️ [降级重试清洗] 清洗后内容为空，触发回退保护');
-                                        fullText = beforeClean;
-                                    } else {
-                                        fullText = cleaned;
-                                        if (beforeClean.length !== cleaned.length) {
-                                            console.log(`🧹 [降级重试清洗] 已移除 <think> 标签`);
-                                        }
+                                    fullText = cleanThinkingText(fullText, '降级重试清洗');
+                                    if (beforeClean.length !== fullText.length) {
+                                        console.log(`🧹 [降级重试清洗] 已移除闭合 <think> 标签`);
                                     }
                                 }
 
@@ -8992,7 +8997,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                         // 如果检测到截断，在文本末尾添加视觉标记
                         if (isTruncated) {
-                            fullText += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+                            fullText = appendTokenTruncationMarker(fullText, '浏览器直连流式');
                             console.warn('⚠️ [流式模式] 已在输出末尾添加截断标记');
                         }
 
@@ -9027,28 +9032,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         // 2️⃣ 清洗策略：无论来源如何，必须清洗掉 <think> 标签，只留正文
                         // 防止 DeepSeek/Gemini 在 content 里混合输出了思考标签
                         if (fullText) {
-                            const rawText = fullText; // 备份一份原始数据
-                            let cleaned = fullText
-                                .replace(/<think>[\s\S]*?<\/think>/gi, '')  // 移除标准成对
-                                .replace(/^[\s\S]*?<\/think>/i, '')         // 移除残缺开头
-                                .trim();
-
-                            // 针对截断情况的额外清洗（如果思考没闭合）
-                            cleaned = cleaned.replace(/<think>[\s\S]*/gi, '').trim();
-
-                            // ✨✨✨ 核心修复：如果清洗后变为空（说明全都是思考内容），则回退到原文
-                            // 这样虽然格式不对，但至少不会报“空内容”错误，用户能看到思考过程
-                            if (!cleaned && rawText.trim().length > 0) {
-                                console.warn('⚠️ [流式清洗] 清洗后内容为空（AI仅输出了思考内容），触发回退保护，保留原文');
-                                fullText = rawText;
-                            } else {
-                                fullText = cleaned;
-
-                                const beforeClean = rawText.length;
-                                const afterClean = fullText.length;
-                                if (beforeClean !== afterClean) {
-                                    console.log(`🧹 [清洗完成] 已移除 <think> 标签，清洗前: ${beforeClean} 字符，清洗后: ${afterClean} 字符`);
-                                }
+                            const rawText = fullText;
+                            fullText = cleanThinkingText(fullText, '流式清洗');
+                            if (rawText.length !== fullText.length) {
+                                console.log(`🧹 [清洗完成] 已移除闭合 <think> 标签，清洗前: ${rawText.length} 字符，清洗后: ${fullText.length} 字符`);
                             }
                         }
 
@@ -9431,13 +9418,10 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 // 移除思考过程 (带回退保护)
                 if (summary && summary.includes('</think>')) {
                     const raw = summary;
-                    const cleaned = summary
-                        .replace(/<think>[\s\S]*?<\/think>/gi, '')  // 移除标准成对
-                        .replace(/^[\s\S]*?<\/think>/i, '')         // 移除残缺开头
-                        .trim();
-                    // 如果清洗后为空，保留原文
-                    summary = cleaned || raw;
-                    console.log('🧹 [酒馆API] 已清理思考标签');
+                    summary = cleanThinkingText(summary, '酒馆API');
+                    if (raw.length !== summary.length) {
+                        console.log('🧹 [酒馆API] 已清理闭合思考标签');
+                    }
                 }
 
                 if (summary && summary.trim()) {
@@ -10505,7 +10489,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 API_CONFIG.model = ($('#gg_api_model').val() || '');
                 API_CONFIG.maxTokens = parseInt($('#gg_api_max_tokens').val()) || 8192;
                 API_CONFIG.useStream = $('#gg_api_use_stream').is(':checked');
-                API_CONFIG.temperature = 0.1;
+                API_CONFIG.temperature = normalizeApiTemperature(API_CONFIG.temperature);
                 API_CONFIG.enableAI = true;
 
                 // 同步“当前激活预设”状态：完全匹配某个预设则标记为该预设，否则标记为自定义
