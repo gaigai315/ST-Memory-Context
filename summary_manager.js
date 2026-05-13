@@ -11,6 +11,31 @@
 (function() {
     'use strict';
 
+    function cleanSummaryOutput(text) {
+        if (!text) return text;
+        let output = String(text).trim();
+
+        if (output.includes('</think>')) {
+            const raw = output;
+            const cleaned = output
+                .replace(/<think>[\s\S]*?<\/think>/gi, '')
+                .replace(/^[\s\S]*?<\/think>/i, '')
+                .trim();
+            output = cleaned || raw;
+        }
+
+        const formalStart = output.search(/(?:^|\n)\s*(?:【\s*(?:主线剧情|支线剧情|记忆总结|剧情总结|人物档案|人物关系|世界设定|物品追踪|约定)[^】]*】|\d{4}年\d{1,2}月\d{1,2}日[^\n]*\[)/);
+        if (formalStart > 0) {
+            const removed = output.slice(0, formalStart).trim();
+            if (removed) {
+                console.log(`🧹 [总结清洗] 已移除正式标题前的模型前置说明 (${removed.length} 字符)`);
+            }
+            output = output.slice(formalStart).trim();
+        }
+
+        return output;
+    }
+
     // 【全局单例】总结控制台表格选择按钮监听器（防止重复绑定）
     (function() {
         if (window._gg_sum_table_selector_bound) return;
@@ -1606,20 +1631,7 @@
                     return { success: false, error: 'AI 返回空内容' };
                 }
 
-                let cleanSummary = result.summary;
-                console.log(`🔍 [总结返回] 原始长度: ${String(cleanSummary || '').length} 字符`);
-                // 移除思考过程 (带回退保护)
-                // 移除思维链 (标准成对 + 残缺开头)
-                if (cleanSummary.includes('</think>')) {
-                    const raw = cleanSummary;
-                    let cleaned = cleanSummary
-                        .replace(/<think>[\s\S]*?<\/think>/gi, '') // 移除标准成对
-                        .replace(/^[\s\S]*?<\/think>/i, '')        // 移除残缺开头
-                        .trim();
-                    // 如果清洗后为空，保留原文(防止报错)，否则使用清洗结果
-                    cleanSummary = cleaned || raw;
-                    console.log(`🧹 [总结清洗] think清理后长度: ${String(cleanSummary || '').length} 字符`);
-                }
+                let cleanSummary = cleanSummaryOutput(result.summary);
 
                 if (!cleanSummary || cleanSummary.length < 10) {
                     if (!isSilent) {
