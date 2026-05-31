@@ -1517,7 +1517,7 @@
 
                 const isGeminiSummaryModel = (API_CONFIG.provider === 'gemini') ||
                     String(API_CONFIG.model || '').toLowerCase().includes('gemini');
-                const summaryPrefill = '【主线剧情：';
+                const summaryPrefill = '我将开始直接总结剧情：';
                 if (!isTableMode && isGeminiSummaryModel) {
                     messages.push({ role: 'assistant', content: summaryPrefill });
                     console.log('✅ [总结Prefill] Gemini模型已添加 Assistant Prefill');
@@ -1582,7 +1582,8 @@
                 }
             }
             const finalMsg = messages[messages.length - 1];
-            if (!finalMsg || finalMsg.role !== 'user') {
+            const finalRole = finalMsg ? finalMsg.role : '';
+            if (!finalMsg || !['user', 'assistant', 'model'].includes(finalRole)) {
                 messages.push({ role: 'user', content: '请继续执行上述总结任务。' });
             }
 
