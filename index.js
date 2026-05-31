@@ -113,7 +113,7 @@
         model: 'gemini-2.5-pro',
         temperature: 1,
         maxTokens: 65536,
-        summarySource: 'table',    // ✅ 默认为表格总结（最佳实践）
+        summarySource: 'chat',     // ✅ 默认总结聊天历史
         lastSummaryIndex: 0,
         lastBackfillIndex: 0,
         lastBigSummaryIndex: 0,    // 🆕 大总结进度指针
@@ -1720,7 +1720,7 @@
                 C.sinkHiddenRows = globalConfig.sinkHiddenRows !== undefined ? globalConfig.sinkHiddenRows : false;
 
                 if (globalApiConfig.summarySource !== undefined) API_CONFIG.summarySource = globalApiConfig.summarySource;
-                else API_CONFIG.summarySource = 'table';
+                else API_CONFIG.summarySource = 'chat';
 
                 console.log('🧹 [配置清洗] 内存状态已重置为全局/默认值，准备加载会话专属配置...');
             } catch (e) {
@@ -11528,8 +11528,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         setTimeout(() => {
             // ✅✅✅ [修复] 强制同步 UI 状态与内存配置
-            // 优先读取 API_CONFIG.summarySource，如果未定义则默认为 'table' (与定义保持一致)
-            const currentSummarySource = API_CONFIG.summarySource || 'table';
+            // 优先读取 API_CONFIG.summarySource，如果未定义则默认为 'chat' (与定义保持一致)
+            const currentSummarySource = API_CONFIG.summarySource || 'chat';
 
             // 1. 先重置所有选中状态
             $('input[name="cfg-sum-src"]').prop('checked', false);
@@ -11539,8 +11539,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             if ($targetRadio.length > 0) {
                 $targetRadio.prop('checked', true);
             } else {
-                // 兜底：如果值不对，默认选中 table
-                $('input[name="cfg-sum-src"][value="table"]').prop('checked', true);
+                // 兜底：如果值不对，默认选中 chat
+                $('input[name="cfg-sum-src"][value="chat"]').prop('checked', true);
             }
 
             // 3. 触发 change 事件以更新关联 UI (如显示/隐藏子选项)
@@ -14381,11 +14381,28 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         window.fetch = async function (...args) {
                             const url = args[0] ? args[0].toString() : '';
                             const C = window.Gaigai.config_obj;
+                            const isPhoneInternalApiRequest = (() => {
+                                if (args[1]?.stPhoneInternalApi === true) return true;
+                                const headers = args[1]?.headers;
+                                if (!headers) return false;
+                                if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+                                    return headers.get('X-ST-Phone-Internal-API') === '1';
+                                }
+                                if (Array.isArray(headers)) {
+                                    return headers.some(([key, value]) => String(key || '').toLowerCase() === 'x-st-phone-internal-api' && String(value) === '1');
+                                }
+                                if (typeof headers === 'object') {
+                                    return Object.entries(headers).some(([key, value]) => String(key || '').toLowerCase() === 'x-st-phone-internal-api' && String(value) === '1');
+                                }
+                                return false;
+                            })();
 
                             const isTextGeneration = (
-                                url.includes('/api/backends/chat-completions/generate') ||
-                                url.includes('/v1/chat/completions') ||
-                                (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
+                                !isPhoneInternalApiRequest &&
+                                !url.includes('xiaomimimo.com') &&
+                                (url.includes('/api/backends/chat-completions/generate') ||
+                                    url.includes('/v1/chat/completions') ||
+                                    (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/')))
                             );
 
                             if (!C || !C.masterSwitch || !isTextGeneration || window.isSummarizing || !args[1] || typeof args[1].body !== 'string') {
@@ -14474,6 +14491,21 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const originalFetch = window.fetch;
                         window.fetch = async function (...args) {
                             const url = args[0] ? args[0].toString() : '';
+                            const isPhoneInternalApiRequest = (() => {
+                                if (args[1]?.stPhoneInternalApi === true) return true;
+                                const headers = args[1]?.headers;
+                                if (!headers) return false;
+                                if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+                                    return headers.get('X-ST-Phone-Internal-API') === '1';
+                                }
+                                if (Array.isArray(headers)) {
+                                    return headers.some(([key, value]) => String(key || '').toLowerCase() === 'x-st-phone-internal-api' && String(value) === '1');
+                                }
+                                if (typeof headers === 'object') {
+                                    return Object.entries(headers).some(([key, value]) => String(key || '').toLowerCase() === 'x-st-phone-internal-api' && String(value) === '1');
+                                }
+                                return false;
+                            })();
 
                             // 🔴 全局主开关守卫
                             const C = window.Gaigai.config_obj;
@@ -14489,9 +14521,11 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
                             // 检查是否是文本生成请求，严格排除画图(sd)、语音(tts)等无关请求
                             const isTextGeneration = (
-                                url.includes('/api/backends/chat-completions/generate') ||
-                                url.includes('/v1/chat/completions') ||
-                                (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/'))
+                                !isPhoneInternalApiRequest &&
+                                !url.includes('xiaomimimo.com') &&
+                                (url.includes('/api/backends/chat-completions/generate') ||
+                                    url.includes('/v1/chat/completions') ||
+                                    (url.includes('/generate') && !url.includes('/api/sd/') && !url.includes('/api/tts/') && !url.includes('/api/images/')))
                             );
 
                             if (isTextGeneration && !window.isSummarizing) {
@@ -15153,8 +15187,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化提示词：</strong>更新破甲与聊天总结默认提示词，并确保四套内置方案同步使用最新共享内容。</li>
-                        <li><strong>优化总结功能：</strong>聊天总结规则移动到聊天历史之后，末尾使用独立指令触发总结，并为 Gemini 增加总结正文预填以减少前置说明。</li>
+                        <li><strong>优化默认设置：</strong>自动总结的初始来源改为“聊天历史”，更适合多数用户的默认使用场景。</li>
                     </ul>
                 </div>
 
