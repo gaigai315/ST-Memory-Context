@@ -12091,8 +12091,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     $('#gg_c_auto_bf_floor').val(Math.max(5, v - 5));
                     // 批量填表滞后 = 2 楼
                     $('#gg_c_auto_bf_delay_count').val(2);
-                    // 小总结 = 50 楼（固定值）
-                    $('#gg_c_auto_floor').val(50);
+                    // 保留用户设置的小总结楼层，不因隐藏楼层调整而覆盖
                     // 小总结滞后 = 3 楼
                     $('#gg_c_auto_sum_delay_count').val(3);
                     // 大总结 = 100 楼（固定值）
