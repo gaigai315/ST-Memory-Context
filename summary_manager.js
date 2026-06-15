@@ -1660,7 +1660,7 @@
                 }
 
                 // ✅✅✅ [核心修复] 无论是表格模式还是聊天模式，只要是自动(静默)执行，就必须推进指针，防止重复触发
-                if (isSilent && endIndex !== null && endIndex !== undefined) {
+                if (isSilent && !skipSave && endIndex !== null && endIndex !== undefined) {
                     const currentLast = API_CONFIG.lastSummaryIndex || 0;
                     // 只有当新位置比旧位置靠后时才更新
                     // ✅ 使用原始索引，而不是对话数量，避免 System 消息导致的索引错位
@@ -2208,6 +2208,9 @@
             const m = window.Gaigai.m;
             const API_CONFIG = window.Gaigai.config;
             const C = window.Gaigai.config_obj;
+            const wasBigSummaryRunning = !!window.Gaigai.isBigSummaryRunning;
+            window.Gaigai.isBigSummaryRunning = true;
+            window.Gaigai.pendingBigSummaryEnd = Math.max(window.Gaigai.pendingBigSummaryEnd || 0, end);
 
             console.log(`📚 [大总结] 开始执行: ${start}-${end}`);
 
@@ -2271,8 +2274,11 @@
                     console.warn('❌ [大总结] AI 总结失败');
                     return;
                 }
+                // callAIForSummary(skipSave=true) 会释放通用总结锁；大总结清理/写入阶段继续持锁。
+                window.isSummarizing = true;
 
                 // 2. 获取总结表
+                m.load();
                 const sumSheet = m.get(m.s.length - 1);
                 if (!sumSheet) {
                     console.error('❌ [大总结] 总结表不存在');
@@ -2326,6 +2332,9 @@
 
                 // 4. 更新进度指针
                 API_CONFIG.lastBigSummaryIndex = end;
+                if ((API_CONFIG.lastSummaryIndex || 0) < end) {
+                    API_CONFIG.lastSummaryIndex = end;
+                }
                 localStorage.setItem('gg_api', JSON.stringify(API_CONFIG));
                 m.save(true, true);
 
@@ -2345,6 +2354,12 @@
                 console.error('❌ [大总结] 执行失败:', error);
             } finally {
                 window.isSummarizing = false;
+                if (!wasBigSummaryRunning) {
+                    window.Gaigai.isBigSummaryRunning = false;
+                }
+                if ((window.Gaigai.pendingBigSummaryEnd || 0) <= end) {
+                    window.Gaigai.pendingBigSummaryEnd = 0;
+                }
             }
         }
 

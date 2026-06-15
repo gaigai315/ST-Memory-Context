@@ -3262,6 +3262,9 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
         // 🔴 全局主开关守卫
         const phoneSignal = extractPhoneSignal(ev.chat);
         if (!C.masterSwitch) return;
+        const phoneAllowsSummary = !!phoneSignal && phoneSignal.allowSummary === true;
+        const phoneAllowsTable = !!phoneSignal && phoneSignal.allowTable === true;
+        const phoneAllowsPrompt = !!phoneSignal && phoneSignal.allowPrompt === true;
         const getPrimaryTextFromMessage = (msg) => {
             if (!msg || typeof msg !== 'object') return '';
             if (typeof msg.content === 'string') return msg.content;
@@ -3545,7 +3548,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 
         // C. 准备提示词 (仅当开关开启时，才准备提示词，因为关了就不应该填表)
         // 逻辑：如果开启了批量填表(autoBackfill)，或者检测到是手机专属聊天，强制屏蔽实时填表提示词！
-        if (C.enabled && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
+        if ((C.enabled || phoneAllowsPrompt) && !C.autoBackfill && window.Gaigai.PromptManager.get('tablePrompt')) {
             strPrompt = window.Gaigai.PromptManager.resolveVariables(window.Gaigai.PromptManager.get('tablePrompt'), m.ctx());
         }
         // 核心权限拦截：必须在所有变量扫描之前执行！
@@ -3811,7 +3814,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 if (idxSmartVar === -1) idxSmartVar = i;
 
                 const shouldInjectSummaryViaSmart = summaryMessages.length > 0 && !replacedSummary && !hasAllowedSummaryAnchor;
-                const shouldInjectTableViaSmart = C.tableInj && tableMessages.length > 0 && !replacedTable && !hasAllowedTableAnchor;
+                const shouldInjectTableViaSmart = (C.tableInj || phoneAllowsTable) && tableMessages.length > 0 && !replacedTable && !hasAllowedTableAnchor;
                 const hasData = shouldInjectSummaryViaSmart || shouldInjectTableViaSmart;
 
                 if (hasData) {
@@ -3917,8 +3920,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 summaryPos = idxSmartVar;
                 summaryStrategy = `⚓ 智能变量 {{MEMORY}} (位置 #${idxSmartVar})`;
             }
-            // Priority 3: 默认位置 (✅ [修复] 仅当 C.tableInj 开启时)
-            else if (C.tableInj) {
+            // Priority 3: 默认位置（全局注入或手机 App 单独授权时）
+            else if (C.tableInj || phoneAllowsSummary) {
                 summaryPos = getDefaultPosition();
                 summaryStrategy = `📍 默认位置 (Start a new Chat 前，#${summaryPos})`;
             }
@@ -3950,8 +3953,8 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 tableStrategy = `⚓ 智能变量 {{MEMORY}} (位置 #${idxSmartVar})`;
                 shouldInject = true; // 有变量锚点，强制注入
             }
-            // Priority 3: 默认位置 (✅ [修复] 仅当 C.tableInj 开启时)
-            else if (C.tableInj) {
+            // Priority 3: 默认位置（全局注入或手机 App 单独授权时）
+            else if (C.tableInj || phoneAllowsTable) {
                 tablePos = getDefaultPosition();
                 tableStrategy = `📍 默认位置 (Start a new Chat 前，#${tablePos})`;
                 shouldInject = true;
@@ -12897,6 +12900,32 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     }
 
+                    // 先计算大总结是否到期。大总结到期时，本轮不再启动小总结，
+                    // 避免 0-100 与 80-100 这类边界区间同时生成。
+                    let autoBigSummaryTask = null;
+                    if (C.autoBigSummary) {
+                        const pendingBigEnd = (window.Gaigai && typeof window.Gaigai.pendingBigSummaryEnd === 'number')
+                            ? window.Gaigai.pendingBigSummaryEnd
+                            : 0;
+                        const lastBigIndex = Math.max(API_CONFIG.lastBigSummaryIndex || 0, pendingBigEnd);
+                        const currentCount = x.chat.length;
+                        const newBigMsgCount = currentCount - lastBigIndex;
+                        const bigInterval = C.autoBigSummaryFloor || 100;
+                        const bigDelay = C.autoBigSummaryDelay ? (parseInt(C.autoBigSummaryDelayCount) || 6) : 0;
+                        const bigThreshold = bigInterval + bigDelay;
+
+                        if (newBigMsgCount >= bigThreshold) {
+                            autoBigSummaryTask = {
+                                lastBigIndex,
+                                currentCount,
+                                bigInterval,
+                                bigDelay,
+                                bigThreshold,
+                                targetEndIndex: Math.min(lastBigIndex + bigInterval, currentCount)
+                            };
+                        }
+                    }
+
                     // ============================================================
                     // 模块 B: 自动总结
                     // ============================================================
@@ -12912,75 +12941,87 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         const sumThreshold = sumInterval + sumDelay;
 
                         if (newMsgCount >= sumThreshold) {
-                            // 🛡️ UI 冲突检测：检查是否有插件弹窗正在显示
-                            if ($('.g-ov').length > 0) {
-                                console.log('⏸️ [自动总结] 检测到插件弹窗打开，跳过本次触发以防止覆盖用户界面');
-                                return;
-                            }
-
-                            // 计算目标结束点 (Target End Floor)
-                            // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
-                            // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
-                            const targetEndIndex = Math.min(lastIndex + sumInterval, currentCount); // 强制严格按设定的步长切分，解决多1层问题
-
-                            if (hasBackfilledThisTurn) {
-                                console.log(`🚦 [防撞车] 总结任务顺延。`);
+                            if (autoBigSummaryTask || window.Gaigai.isBigSummaryRunning || (window.Gaigai.pendingBigSummaryEnd || 0) > lastIndex) {
+                                console.log('⏸️ [自动总结] 自动大总结已到期或正在执行，跳过本轮小总结以避免区间重叠');
                             } else {
-                                console.log(`🤖 [Auto Summary] 触发逻辑! 当前:${currentCount}, 上次:${lastIndex}, 间隔:${sumInterval}, 延迟:${sumDelay}, 阈值:${sumThreshold}, 目标结束点:${targetEndIndex}`);
+                                // 🛡️ UI 冲突检测：检查是否有插件弹窗正在显示
+                                if ($('.g-ov').length > 0) {
+                                    console.log('⏸️ [自动总结] 检测到插件弹窗打开，跳过本次触发以防止覆盖用户界面');
+                                    return;
+                                }
 
-                                // ✨ 发起模式逻辑（与完成模式一致）：勾选=静默，未勾选=弹窗
-                                if (!C.autoSummaryPrompt) {
-                                    // 弹窗模式（未勾选时）
-                                    showAutoTaskConfirm('summary', currentCount, lastIndex, sumThreshold).then(result => {
-                                        if (result.action === 'confirm') {
-                                            if (result.postpone > 0) {
-                                                // 用户选择顺延
-                                                API_CONFIG.lastSummaryIndex = currentCount - sumThreshold + result.postpone;
-                                                localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+                                // 计算目标结束点 (Target End Floor)
+                                // 如果开启延迟：结束点 = 上次位置 + 间隔 (只处理这一段，后面的留作缓冲)
+                                // 如果关闭延迟：结束点 = 当前位置 (处理所有未记录的内容，保持旧逻辑)
+                                const targetEndIndex = Math.min(lastIndex + sumInterval, currentCount); // 强制严格按设定的步长切分，解决多1层问题
 
-                                                // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
-                                                if (typeof saveAllSettingsToCloud === 'function') {
-                                                    saveAllSettingsToCloud().catch(err => {
-                                                        console.warn('⚠️ [总结顺延] 云端同步失败:', err);
-                                                    });
-                                                }
+                                if (hasBackfilledThisTurn) {
+                                    console.log(`🚦 [防撞车] 总结任务顺延。`);
+                                } else {
+                                    console.log(`🤖 [Auto Summary] 触发逻辑! 当前:${currentCount}, 上次:${lastIndex}, 间隔:${sumInterval}, 延迟:${sumDelay}, 阈值:${sumThreshold}, 目标结束点:${targetEndIndex}`);
 
-                                                m.save(false, true); // ✅ 修复：立即同步进度到聊天记录
-                                                console.log(`⏰ [自动总结] 顺延 ${result.postpone} 楼，新触发点：${API_CONFIG.lastSummaryIndex + sumThreshold}`);
-                                                if (typeof toastr !== 'undefined') {
-                                                    toastr.info(`自动总结已顺延 ${result.postpone} 楼`, '记忆表格');
+                                    // ✨ 发起模式逻辑（与完成模式一致）：勾选=静默，未勾选=弹窗
+                                    if (!C.autoSummaryPrompt) {
+                                        // 弹窗模式（未勾选时）
+                                        showAutoTaskConfirm('summary', currentCount, lastIndex, sumThreshold).then(result => {
+                                            if (result.action === 'confirm') {
+                                                if (result.postpone > 0) {
+                                                    // 用户选择顺延
+                                                    API_CONFIG.lastSummaryIndex = currentCount - sumThreshold + result.postpone;
+                                                    localStorage.setItem(AK, JSON.stringify(API_CONFIG));
+
+                                                    // ✅✅✅ 修复：同步到云端，防止 loadConfig 回滚
+                                                    if (typeof saveAllSettingsToCloud === 'function') {
+                                                        saveAllSettingsToCloud().catch(err => {
+                                                            console.warn('⚠️ [总结顺延] 云端同步失败:', err);
+                                                        });
+                                                    }
+
+                                                    m.save(false, true); // ✅ 修复：立即同步进度到聊天记录
+                                                    console.log(`⏰ [自动总结] 顺延 ${result.postpone} 楼，新触发点：${API_CONFIG.lastSummaryIndex + sumThreshold}`);
+                                                    if (typeof toastr !== 'undefined') {
+                                                        toastr.info(`自动总结已顺延 ${result.postpone} 楼`, '记忆表格');
+                                                    }
+                                                } else {
+                                                    if (window.Gaigai.isBigSummaryRunning || (window.Gaigai.pendingBigSummaryEnd || 0) > lastIndex) {
+                                                        console.log('⏸️ [自动总结] 确认执行时检测到大总结占用，取消本轮小总结');
+                                                        return;
+                                                    }
+                                                    // 立即执行（传入目标结束点、模式、静默参数和表格范围）
+                                                    window.Gaigai.SummaryManager.callAIForSummary(
+                                                        null,
+                                                        targetEndIndex,
+                                                        null,
+                                                        C.autoSummarySilent,
+                                                        false,
+                                                        false,
+                                                        C.autoSummaryTargetTables,  // 🆕 传入配置的表格范围
+                                                        false,
+                                                        true
+                                                    );
                                                 }
                                             } else {
-                                                // 立即执行（传入目标结束点、模式、静默参数和表格范围）
-                                                window.Gaigai.SummaryManager.callAIForSummary(
-                                                    null,
-                                                    targetEndIndex,
-                                                    null,
-                                                    C.autoSummarySilent,
-                                                    false,
-                                                    false,
-                                                    C.autoSummaryTargetTables,  // 🆕 传入配置的表格范围
-                                                    false,
-                                                    true
-                                                );
+                                                console.log(`🚫 [自动总结] 用户取消`);
                                             }
-                                        } else {
-                                            console.log(`🚫 [自动总结] 用户取消`);
+                                        });
+                                    } else {
+                                        if (window.Gaigai.isBigSummaryRunning || (window.Gaigai.pendingBigSummaryEnd || 0) > lastIndex) {
+                                            console.log('⏸️ [自动总结] 执行前检测到大总结占用，取消本轮小总结');
+                                            return;
                                         }
-                                    });
-                                } else {
-                                    // 静默模式（勾选时）：直接执行
-                                    window.Gaigai.SummaryManager.callAIForSummary(
-                                        null,
-                                        targetEndIndex,
-                                        null,
-                                        C.autoSummarySilent,
-                                        false,
-                                        false,
-                                        C.autoSummaryTargetTables,  // 🆕 传入配置的表格范围
-                                        false,
-                                        true
-                                    );
+                                        // 静默模式（勾选时）：直接执行
+                                        window.Gaigai.SummaryManager.callAIForSummary(
+                                            null,
+                                            targetEndIndex,
+                                            null,
+                                            C.autoSummarySilent,
+                                            false,
+                                            false,
+                                            C.autoSummaryTargetTables,  // 🆕 传入配置的表格范围
+                                            false,
+                                            true
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -12989,44 +13030,31 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                     // ============================================================
                     // 模块 C: 自动大总结
                     // ============================================================
-                    if (C.autoBigSummary) {
-                        const pendingBigEnd = (window.Gaigai && typeof window.Gaigai.pendingBigSummaryEnd === 'number')
-                            ? window.Gaigai.pendingBigSummaryEnd
-                            : 0;
-                        const lastBigIndex = Math.max(API_CONFIG.lastBigSummaryIndex || 0, pendingBigEnd);
-                        const currentCount = x.chat.length;
-                        const newBigMsgCount = currentCount - lastBigIndex;
+                    if (autoBigSummaryTask) {
+                        if ($('.g-ov').length > 0) {
+                            console.log('⏸️ [自动大总结] 检测到插件弹窗打开，跳过本次触发');
+                            return;
+                        }
 
-                        const bigInterval = C.autoBigSummaryFloor || 100;
-                        const bigDelay = C.autoBigSummaryDelay ? (parseInt(C.autoBigSummaryDelayCount) || 6) : 0;
-                        const bigThreshold = bigInterval + bigDelay;
+                        const { lastBigIndex, currentCount, bigInterval, bigDelay, bigThreshold, targetEndIndex } = autoBigSummaryTask;
+                        console.log(`📚 [Auto Big Summary] 触发! 当前:${currentCount}, 上次:${lastBigIndex}, 间隔:${bigInterval}, 延迟:${bigDelay}, 阈值:${bigThreshold}, 目标:${targetEndIndex}`);
 
-                        if (newBigMsgCount >= bigThreshold) {
-                            if ($('.g-ov').length > 0) {
-                                console.log('⏸️ [自动大总结] 检测到插件弹窗打开，跳过本次触发');
-                                return;
-                            }
+                        if (window.Gaigai.SummaryManager && typeof window.Gaigai.SummaryManager.runBigSummary === 'function') {
+                            // 防重入：大总结执行期间，阻止同区间/后续消息重复触发
+                            if (window.Gaigai.isBigSummaryRunning) {
+                                console.log('⏳ [自动大总结] 上一轮任务仍在执行，跳过本次重复触发');
+                            } else {
+                                window.Gaigai.isBigSummaryRunning = true;
+                                window.Gaigai.pendingBigSummaryEnd = targetEndIndex;
 
-                            const targetEndIndex = Math.min(lastBigIndex + bigInterval, currentCount); // 强制严格按设定的步长切分，解决多1层问题
-                            console.log(`📚 [Auto Big Summary] 触发! 当前:${currentCount}, 上次:${lastBigIndex}, 间隔:${bigInterval}, 延迟:${bigDelay}, 阈值:${bigThreshold}, 目标:${targetEndIndex}`);
-
-                            if (window.Gaigai.SummaryManager && typeof window.Gaigai.SummaryManager.runBigSummary === 'function') {
-                                // 防重入：大总结执行期间，阻止同区间/后续消息重复触发
-                                if (window.Gaigai.isBigSummaryRunning) {
-                                    console.log('⏳ [自动大总结] 上一轮任务仍在执行，跳过本次重复触发');
-                                } else {
-                                    window.Gaigai.isBigSummaryRunning = true;
-                                    window.Gaigai.pendingBigSummaryEnd = targetEndIndex;
-
-                                    Promise.resolve(window.Gaigai.SummaryManager.runBigSummary(lastBigIndex, targetEndIndex))
-                                        .catch(err => {
-                                            console.error('❌ [自动大总结] 执行失败:', err);
-                                        })
-                                        .finally(() => {
-                                            window.Gaigai.isBigSummaryRunning = false;
-                                            window.Gaigai.pendingBigSummaryEnd = 0;
-                                        });
-                                }
+                                Promise.resolve(window.Gaigai.SummaryManager.runBigSummary(lastBigIndex, targetEndIndex))
+                                    .catch(err => {
+                                        console.error('❌ [自动大总结] 执行失败:', err);
+                                    })
+                                    .finally(() => {
+                                        window.Gaigai.isBigSummaryRunning = false;
+                                        window.Gaigai.pendingBigSummaryEnd = 0;
+                                    });
                             }
                         }
                     }
