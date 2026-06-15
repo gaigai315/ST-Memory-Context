@@ -14445,13 +14445,35 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                                         : (Array.isArray(bodyObj.contents) ? bodyObj.contents : null));
 
                                 const phoneSignal = extractPhoneSignal(requestChat);
+                                const hasMemoryVars = /\{\{MEMORY(?:_SUMMARY|_TABLE|_PROMPT)?\}\}|\{\{MEMORY_TABLE_.+?\}\}/.test(args[1].body);
+                                const hasGaigaiInjectedMarkers = /"isGaigaiData"\s*:\s*true|"isGaigaiPrompt"\s*:\s*true/.test(args[1].body);
+                                if ((phoneSignal || hasMemoryVars) && !hasGaigaiInjectedMarkers && Array.isArray(requestChat)) {
+                                    const key = Array.isArray(bodyObj.messages)
+                                        ? 'messages'
+                                        : (Array.isArray(bodyObj.prompt) ? 'prompt' : 'contents');
+                                    const safeBodyChat = safeDeepClone(requestChat);
+                                    const safeBodyEvent = { chat: safeBodyChat };
+                                    await opmt(safeBodyEvent);
+                                    bodyObj[key] = safeBodyEvent.chat;
+                                    args[1].body = JSON.stringify(bodyObj);
+                                    console.log(phoneSignal
+                                        ? '[Fetch Hijack-Modern] phone request memory injection fallback applied'
+                                        : '[Fetch Hijack-Modern] MEMORY variable body injection fallback applied');
+                                }
+
+                                const requestChatAfterOpmt = Array.isArray(bodyObj.messages)
+                                    ? bodyObj.messages
+                                    : (Array.isArray(bodyObj.prompt)
+                                        ? bodyObj.prompt
+                                        : (Array.isArray(bodyObj.contents) ? bodyObj.contents : requestChat));
+
                                 if (phoneSignal && phoneSignal.allowVector === false) {
                                     return originalFetch.apply(this, args);
                                 }
 
                                 const vectorText = await executeVectorSearch(
-                                    (Array.isArray(requestChat) && requestChat.length > 0)
-                                        ? requestChat
+                                    (Array.isArray(requestChatAfterOpmt) && requestChatAfterOpmt.length > 0)
+                                        ? requestChatAfterOpmt
                                         : (SillyTavern.getContext()?.chat || [])
                                 );
 
