@@ -1505,6 +1505,21 @@
     }
 }
 
+/* 顶部入口由 Pointer 事件自行识别短按/长按，禁止浏览器接管图片与文本手势。 */
+#gaigai-wrapper,
+#gaigai-wrapper *,
+#gaigai-top-btn {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-user-drag: none !important;
+}
+
+#gaigai-top-btn {
+    touch-action: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+}
+
 /* ==========================================
    ✅ 复选框终极重构 (强制颜色跟随主题)
    ========================================== */

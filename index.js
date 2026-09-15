@@ -14231,16 +14231,24 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
 `).appendTo('head');
         }
 
-        // 长按计时器和标志
-        let pressTimer;
+        // 长按计时器和 Pointer 手势状态
+        const LONG_PRESS_MS = 650;
+        const PRESS_MOVE_CANCEL_PX = 12;
+        let pressTimer = null;
         let isLongPress = false;
+        let isPressCancelled = false;
+        let activePointerId = null;
+        let pressStartX = 0;
+        let pressStartY = 0;
 
         // 3. 创建图标 (原生结构：Font Awesome 类直接在 div 上)
         const $icon = $('<div>', {
             id: 'gaigai-top-btn',
             class: `drawer-icon fa-solid fa-table fa-fw interactable closedIcon${C.masterSwitch ? ' gg-enabled' : ''}`,
             title: '记忆表格 (点击打开 | 长按开关)',
-            tabindex: '0'
+            tabindex: '0',
+            role: 'button',
+            'aria-label': '记忆表格：点击打开，长按开启或关闭'
         });
 
         // 创建 drawer-toggle 包装层（复刻酒馆标准结构）
@@ -14248,94 +14256,143 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             class: 'drawer-toggle'
         });
 
-        $icon.on('mousedown touchstart', function (e) {
-            // 1. 按下时：重置标记，启动计时器
+        const clearPressTimer = () => {
+            if (pressTimer !== null) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        };
+
+        const setMasterSwitch = (nextState) => {
+            C.masterSwitch = !!nextState;
+
+            try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch (e) { }
+            m.save(false, true);
+            if (typeof saveAllSettingsToCloud === 'function') saveAllSettingsToCloud();
+            console.log(`✅ [入口开关] 配置已保存，masterSwitch = ${C.masterSwitch}`);
+
+            $('#gaigai-top-btn').toggleClass('gg-enabled', C.masterSwitch);
+
+            if (navigator.vibrate) navigator.vibrate(50);
+
+            if (typeof toastr !== 'undefined') {
+                toastr.clear();
+                if (C.masterSwitch) {
+                    toastr.success('✅ 插件已启用 (短按图标打开配置)', '系统提示', {
+                        timeOut: 3000,
+                        progressBar: true
+                    });
+                } else {
+                    toastr.info('💤 插件已休眠 (长按切换，或短按恢复)', '系统提示', {
+                        timeOut: 3000,
+                        progressBar: true
+                    });
+                }
+            }
+
+            console.log(`🔄 [入口开关] 插件状态已切换为: ${C.masterSwitch ? '启用' : '休眠'}`);
+        };
+
+        const handleShortPress = async () => {
+            console.log(`🖱️ [短按图标] 检测到短按事件，当前 masterSwitch = ${C.masterSwitch}`);
+
+            if (C.masterSwitch) {
+                if (typeof toastr !== 'undefined') toastr.clear();
+                shw();
+                return;
+            }
+
+            const shouldWake = await customConfirm(
+                '插件当前处于休眠状态。是否重新启用并打开配置面板？',
+                '启用记忆表格'
+            );
+            if (!shouldWake) return;
+
+            setMasterSwitch(true);
+            shw();
+        };
+
+        const startPress = function (e) {
+            const pointerEvent = e.originalEvent || e;
+            if (pointerEvent.isPrimary === false) return;
+            if (pointerEvent.pointerType === 'mouse' && pointerEvent.button !== 0) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+            clearPressTimer();
             isLongPress = false;
+            isPressCancelled = false;
+            activePointerId = pointerEvent.pointerId;
+            pressStartX = pointerEvent.clientX;
+            pressStartY = pointerEvent.clientY;
+
+            if (this.setPointerCapture && activePointerId !== undefined) {
+                try { this.setPointerCapture(activePointerId); } catch (error) { }
+            }
 
             pressTimer = setTimeout(() => {
-                isLongPress = true; // 标记为长按事件
+                pressTimer = null;
+                isLongPress = true;
+                setMasterSwitch(!C.masterSwitch);
+            }, LONG_PRESS_MS);
+        };
 
-                // --- 切换全局主开关逻辑 ---
-                C.masterSwitch = !C.masterSwitch;
+        const movePress = function (e) {
+            const pointerEvent = e.originalEvent || e;
+            if (activePointerId === null || pointerEvent.pointerId !== activePointerId) return;
 
-                // 保存配置
-                try { localStorage.setItem('gg_config', JSON.stringify(C)); } catch (e) { }
-                m.save(false, true);
-                if (typeof saveAllSettingsToCloud === 'function') saveAllSettingsToCloud();
-                console.log(`✅ [长按开关] 配置已保存，masterSwitch = ${C.masterSwitch}`);
+            const movedX = Math.abs(pointerEvent.clientX - pressStartX);
+            const movedY = Math.abs(pointerEvent.clientY - pressStartY);
+            if (movedX > PRESS_MOVE_CANCEL_PX || movedY > PRESS_MOVE_CANCEL_PX) {
+                isPressCancelled = true;
+                clearPressTimer();
+            }
+        };
 
-                // 更新状态视觉反馈
-                if (C.masterSwitch) {
-                    $('#gaigai-top-btn').addClass('gg-enabled');
-                } else {
-                    $('#gaigai-top-btn').removeClass('gg-enabled');
-                }
+        const endPress = function (e) {
+            const pointerEvent = e.originalEvent || e;
+            if (activePointerId === null || pointerEvent.pointerId !== activePointerId) return;
 
-                // 震动反馈 (手机端)
-                if (navigator.vibrate) navigator.vibrate(50);
+            e.preventDefault();
+            e.stopPropagation();
+            clearPressTimer();
+            activePointerId = null;
 
-                // 提示用户
-                if (typeof toastr !== 'undefined') {
-                    // ✅ 清除所有现有的 toast 通知，避免旧消息干扰
-                    toastr.clear();
+            if (!isLongPress && !isPressCancelled) void handleShortPress();
+        };
 
-                    if (C.masterSwitch) {
-                        toastr.success('✅ 插件已启用 (短按图标打开配置)', '系统提示', {
-                            timeOut: 3000,
-                            progressBar: true
-                        });
-                    } else {
-                        toastr.info('💤 插件已休眠 (再次长按开启)', '系统提示', {
-                            timeOut: 3000,
-                            progressBar: true
-                        });
-                    }
-                }
+        const cancelPress = () => {
+            clearPressTimer();
+            activePointerId = null;
+            isLongPress = false;
+            isPressCancelled = true;
+        };
 
-                console.log(`🔄 [长按开关] 插件状态已切换为: ${C.masterSwitch ? '启用' : '休眠'}`);
-
-            }, 800); // 800毫秒判定为长按
-        })
-            .on('mouseup touchend mouseleave touchcancel', function (e) {
-                // 2. 松开/移出时：清除计时器
-                clearTimeout(pressTimer);
-
-                // 如果不是长按（即短点击）且是 mouseup/touchend 事件
-                if (!isLongPress && (e.type === 'mouseup' || e.type === 'touchend')) {
-                    e.preventDefault();
-
-                    console.log(`🖱️ [短按图标] 检测到短按事件，当前 masterSwitch = ${C.masterSwitch}`);
-
-                    // 检查全局主开关状态
-                    if (C.masterSwitch) {
-                        console.log('✅ [短按图标] 插件已启用，正在打开配置面板...');
-
-                        // ✅ 清除可能存在的旧 toast 通知
-                        if (typeof toastr !== 'undefined') {
-                            toastr.clear();
-                        }
-
-                        shw(); // 正常打开
-                    } else {
-                        console.log('⚠️ [短按图标] 插件处于休眠状态，显示警告提示');
-
-                        // 提醒用户
-                        if (typeof toastr !== 'undefined') {
-                            toastr.clear(); // 清除旧通知
-                            toastr.warning('⚠️ 插件已休眠 (长按图标开启)', '未启用', {
-                                timeOut: 3000,
-                                progressBar: true
-                            });
-                        }
-                    }
-                }
-                return false;
-            })
-            .on('contextmenu', (e) => {
-                // 4. 禁用右键菜单（防止长按弹出浏览器菜单）
+        $icon.on('pointerdown', startPress)
+            .on('pointermove', movePress)
+            .on('pointerup', endPress)
+            .on('pointercancel', cancelPress)
+            .on('click', (e) => {
+                // Pointer 事件已经完整处理短按，屏蔽浏览器补发的 click。
                 e.preventDefault();
-                return false;
+                e.stopPropagation();
+            })
+            .on('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                e.stopPropagation();
+                void handleShortPress();
             });
+
+        // Android Chrome/WebView 可能把 Font Awesome SVG 当作图片处理。
+        // 在捕获阶段阻止系统图片菜单，避免它先于长按计时器取消 Pointer 序列。
+        const suppressNativeIconAction = (e) => {
+            if (e.cancelable) e.preventDefault();
+        };
+        $wrapper[0].addEventListener('touchstart', suppressNativeIconAction, { capture: true, passive: false });
+        $wrapper[0].addEventListener('contextmenu', suppressNativeIconAction, { capture: true });
+        $wrapper[0].addEventListener('dragstart', suppressNativeIconAction, { capture: true });
+        $wrapper[0].addEventListener('selectstart', suppressNativeIconAction, { capture: true });
 
         // 4. 组装 (复刻酒馆标准结构)
         $toggle.append($icon);        // 图标放入 toggle 层
