@@ -1515,14 +1515,6 @@
                     content: `${endMarker}\n\n🛑 严禁输出思考过程、分析过程、任务说明、英文小标题或任何前置解释。请直接从正式总结正文开始输出。`
                 });
 
-                const isGeminiSummaryModel = (API_CONFIG.provider === 'gemini') ||
-                    String(API_CONFIG.model || '').toLowerCase().includes('gemini');
-                const summaryPrefill = '我将开始直接总结剧情：';
-                if (!isTableMode && isGeminiSummaryModel) {
-                    messages.push({ role: 'assistant', content: summaryPrefill });
-                    console.log('✅ [总结Prefill] Gemini模型已添加 Assistant Prefill');
-                }
-
                 logMsg = `📝 聊天总结: ${startIndex}-${endIndex} (消息数:${messages.length})`;
 
             } else {
@@ -1583,7 +1575,7 @@
             }
             const finalMsg = messages[messages.length - 1];
             const finalRole = finalMsg ? finalMsg.role : '';
-            if (!finalMsg || !['user', 'assistant', 'model'].includes(finalRole)) {
+            if (!finalMsg || finalRole !== 'user') {
                 messages.push({ role: 'user', content: '请继续执行上述总结任务。' });
             }
 
@@ -1636,15 +1628,7 @@
                     return { success: false, error: 'AI 返回空内容' };
                 }
 
-                let rawSummary = result.summary;
-                if (!isTableMode && typeof summaryPrefill === 'string' && summaryPrefill && isGeminiSummaryModel) {
-                    const trimmed = String(rawSummary || '').trimStart();
-                    if (trimmed && !trimmed.startsWith(summaryPrefill) && !trimmed.startsWith('【主线剧情')) {
-                        rawSummary = summaryPrefill + trimmed;
-                        console.log('✅ [总结Prefill重建] 已补回主线剧情标题前缀');
-                    }
-                }
-                let cleanSummary = cleanSummaryOutput(rawSummary);
+                let cleanSummary = cleanSummaryOutput(result.summary);
 
                 if (!cleanSummary || cleanSummary.length < 10) {
                     if (!isSilent) {

@@ -1,5 +1,5 @@
 ﻿// ========================================================================
-// 记忆表格 v2.3.7
+// 记忆表格 v2.4.0
 // SillyTavern 记忆管理系统 - 提供表格化记忆、自动总结、批量填表等功能
 // ========================================================================
 (function () {
@@ -16,7 +16,7 @@
     }
     window.GaigaiLoaded = true;
 
-    console.log('🚀 记忆表格 v2.3.7 启动');
+    console.log('🚀 记忆表格 v2.4.0 启动');
 
     // ===== 防止配置被后台同步覆盖的标志 =====
     window.isEditingConfig = false;
@@ -28,7 +28,7 @@
     window.Gaigai.isSwiping = false;
 
     // ==================== 全局常量定义 ====================
-    const V = 'v2.3.7';
+    const V = 'v2.4.0';
     const SK = 'gg_data';              // 数据存储键
     const UK = 'gg_ui';                // UI配置存储键
     const AK = 'gg_api';               // API配置存储键
@@ -8083,21 +8083,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             };
         });
 
-        const shouldForceMemoryPrefill = options?.forceMemoryPrefill === true;
-
-        // ✨ [预填充补丁] 仅填表场景：Gemini 且最后没有预填充时，强制追加
-        if (shouldForceMemoryPrefill && (model || '').toLowerCase().includes('gemini') && cleanMessages.length > 0) {
-            const lastMsg = cleanMessages[cleanMessages.length - 1];
-            if (lastMsg.role !== 'assistant' && lastMsg.role !== 'model') {
-                cleanMessages.push({
-                    role: 'assistant',
-                    content: '<Memory>\n'
-                });
-                console.log('✨ [预填充补丁] 填表场景 + Gemini：已为独立 API 自动追加 <Memory> 预填充');
-            }
-        }
-
-        // 🔍 [Prefill 探针] 显示最后发送的消息结构
+        // 🔍 [消息探针] 显示最后发送的消息结构
         console.log('📤 [消息探针] 准备发送的消息数量:', cleanMessages.length);
         if (cleanMessages.length > 0) {
             const lastMsg = cleanMessages[cleanMessages.length - 1];
@@ -8105,10 +8091,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
             console.log('   - 角色 (role):', lastMsg.role);
             console.log('   - 内容长度:', (lastMsg.content || '').length);
             console.log('   - 内容前100字符:', (lastMsg.content || '').substring(0, 100));
-
-            if (lastMsg.role === 'assistant' || lastMsg.role === 'model') {
-                console.log('✨ [Prefill 探针] 检测到预填提示词 (Assistant Prefill)');
-            }
         }
 
         // ========================================
@@ -8178,15 +8160,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         ]
                     };
 
-                    // 🔍 [后端代理 Prefill 探针] 显示发送给酒馆后端的 messages 最后一条
+                    // 🔍 [后端代理消息探针] 显示发送给酒馆后端的 messages 最后一条
                     if (proxyPayload.messages && proxyPayload.messages.length > 0) {
                         const lastMsg = proxyPayload.messages[proxyPayload.messages.length - 1];
                         console.log('📤 [后端代理-Gemini] 发送给酒馆的 messages 最后一条:');
                         console.log('   - role:', lastMsg.role);
                         console.log('   - content 前100字符:', (lastMsg.content || '').substring(0, 100));
-                        if (lastMsg.role === 'assistant' || lastMsg.role === 'model') {
-                            console.log('✨ [后端代理 Prefill 探针] 检测到 Prefill，酒馆后端将转为 Gemini 格式');
-                        }
                     }
 
                     // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
@@ -8790,15 +8769,12 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         }
                     };
 
-                    // 🔍 [Gemini Prefill 探针] 显示转换后的 contents 最后一条
+                    // 🔍 [Gemini 消息探针] 显示转换后的 contents 最后一条
                     if (requestBody.contents && requestBody.contents.length > 0) {
                         const lastContent = requestBody.contents[requestBody.contents.length - 1];
                         console.log('📤 [Gemini 探针] 转换后 contents 最后一条:');
                         console.log('   - role:', lastContent.role);
                         console.log('   - parts:', JSON.stringify(lastContent.parts).substring(0, 150));
-                        if (lastContent.role === 'model') {
-                            console.log('✨ [Gemini Prefill 探针] 已将 assistant 转为 model (Gemini Prefill)');
-                        }
                     }
 
                     // 🧠 [Thinking Model 支持] 如果是思考模型，启用思考并给予充足预算
@@ -9258,21 +9234,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 finalPrompt = [{ role: 'user', content: String(prompt) }];
             }
 
-            const shouldForceMemoryPrefill = options?.forceMemoryPrefill === true;
-
-            // ✨ [预填充补丁] 仅填表场景：Gemini 且最后没有预填充时，强制追加
-            if (shouldForceMemoryPrefill && isGemini && finalPrompt.length > 0) {
-                const lastMsg = finalPrompt[finalPrompt.length - 1];
-                if (lastMsg.role !== 'assistant' && lastMsg.role !== 'model') {
-                    finalPrompt.push({
-                        role: 'assistant', // 注意：发送给酒馆后端的必须是 assistant
-                        content: '<Memory>\n'
-                    });
-                    console.log('✨[预填充补丁] 填表场景 + Gemini：已为酒馆 API 自动追加 <Memory> 预填充');
-                }
-            }
-
-            // 🔍 [Tavern API Prefill 探针] 显示发送给酒馆的消息
+            // 🔍 [酒馆 API 消息探针] 显示发送给酒馆的消息
             console.log('📤 [酒馆API探针] 准备发送的消息数量:', finalPrompt.length);
             if (finalPrompt.length > 0) {
                 const lastMsg = finalPrompt[finalPrompt.length - 1];
@@ -9280,10 +9242,6 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                 console.log('   - 角色 (role):', lastMsg.role);
                 console.log('   - 内容长度:', (lastMsg.content || '').length);
                 console.log('   - 内容前100字符:', (lastMsg.content || '').substring(0, 100));
-
-                if (lastMsg.role === 'assistant' || lastMsg.role === 'model') {
-                    console.log('✨ [酒馆API Prefill 探针] 检测到预填提示词 (Assistant Prefill)');
-                }
             }
 
             if (isGemini) {
@@ -15293,7 +15251,7 @@ updateRow(1, 0, {4: "王五销毁了图纸..."})
                         📢 本次更新内容 (v${cleanVer})
                     </h4>
                     <ul style="margin:0; padding-left:20px; font-size:12px; color:var(--g-tc); opacity:0.9;">
-                        <li><strong>优化默认设置：</strong>自动总结的初始来源改为“聊天历史”，更适合多数用户的默认使用场景。</li>
+                        <li>优化 Gemini Flash 模型请求。</li>
                     </ul>
                 </div>
 
